@@ -53,6 +53,9 @@
   .input:focus{border-color:var(--amber);}
   .input-icon{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 10px;}
   .input-icon input{border:none;background:transparent;padding:9px 0;flex:1;color:var(--text);outline:none;font-size:14px;}
+  .locate-btn{background:none;border:none;color:var(--amber);display:flex;align-items:center;padding:6px;cursor:pointer;flex-shrink:0;}
+  .locate-btn:disabled{color:var(--muted);}
+  .locate-btn svg{width:18px;height:18px;}
   .row-2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
   .toggle-row{display:flex;gap:8px;}
   .toggle{flex:1;padding:9px;border-radius:8px;font-size:14px;font-weight:600;background:transparent;
@@ -115,6 +118,8 @@ const SUPERVISORS_KEY = "driving-log:supervisors";
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
 const GOOGLE_CLIENT_ID = "247082567215-2sethv759pn3rp0g7fvrkf0lgnfok0e0.apps.googleusercontent.com";
+const GOOGLE_MAPS_API_KEY = "AIzaSyB2oTEiedrTleQf_ugwHqgodNltiakkoyk";
+function mapsConfigured() { return GOOGLE_MAPS_API_KEY && !GOOGLE_MAPS_API_KEY.startsWith("PASTE_"); }
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets";
 let googleTokenClient = null;
 let googleAccessToken = null;
@@ -210,6 +215,9 @@ const state = {
   pendingTag: "normal",
   startPointInput: "",
   endPoint: "",
+  locatingStart: false,
+  locatingEnd: false,
+  locateError: "",
   distance: "",
   filterTag: "all",
   filterFrom: "",
@@ -242,11 +250,53 @@ const icons = {
   lock: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>`,
   drive: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3h8l6 10-4 7H6l-4-7z"/><path d="M8 3l4 7M16 3l-4 7M4 13h16"/></svg>`,
   gear: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  locate: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z"/></svg>`,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const nowTimeStr = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+
+function getCurrentPosition() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) return reject(new Error("Location isn't available on this device."));
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(pos.coords),
+      () => reject(new Error("Couldn't get your location — check location permission for this site.")),
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  });
+}
+
+async function reverseGeocode(lat, lng) {
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status !== "OK" || !data.results.length) throw new Error("Couldn't find an address for your location.");
+  const comps = data.results[0].address_components;
+  const get = (type) => (comps.find(c => c.types.includes(type)) || {}).long_name;
+  const streetNumber = get("street_number");
+  const route = get("route");
+  const suburb = get("locality") || get("sublocality") || get("postal_town") || get("administrative_area_level_2");
+  const street = [streetNumber, route].filter(Boolean).join(" ");
+  return [street, suburb].filter(Boolean).join(", ") || data.results[0].formatted_address;
+}
+
+async function useMyLocation(target) {
+  if (!mapsConfigured()) { state.locateError = "Location lookup isn't set up for this app yet."; render(); return; }
+  state.locateError = "";
+  if (target === "start") state.locatingStart = true; else state.locatingEnd = true;
+  render();
+  try {
+    const coords = await getCurrentPosition();
+    const address = await reverseGeocode(coords.latitude, coords.longitude);
+    if (target === "start") state.startPointInput = address; else state.endPoint = address;
+  } catch (e) {
+    state.locateError = e.message || "Couldn't get your location.";
+  }
+  state.locatingStart = false; state.locatingEnd = false;
+  render();
+}
 
 const hasClaudeStorage = typeof window.storage !== "undefined" && !!window.storage;
 
@@ -332,9 +382,12 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, recordConditions: false, lastSupervisorId: "" };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, recordConditions: false, lastSupervisorId: "", defaultStartLocation: "", tripType: "normal" };
+  if (state.settings.defaultStartLocation === undefined) state.settings.defaultStartLocation = "";
+  if (state.settings.tripType === undefined) state.settings.tripType = "normal";
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
+  if (!state.active) state.startPointInput = state.settings.defaultStartLocation || "";
   if (state.active) startTicker();
 }
 
@@ -437,15 +490,12 @@ function renderLogTab() {
 
   ${!a ? `
   <div class="card">
-    <label class="field-label">Trip type</label>
-    <div class="toggle-row" style="margin-bottom:16px;">
-      <button class="toggle normal ${state.pendingTag === "normal" ? "on" : ""}" data-tag="normal">Normal</button>
-      <button class="toggle work ${state.pendingTag === "work" ? "on" : ""}" data-tag="work">Work</button>
-    </div>
     <label class="field-label">Start point</label>
     <div class="input-icon" style="margin-bottom:16px;">
       ${icons.pin}<input id="startPointInput" placeholder="e.g. Home" value="${state.startPointInput}" />
+      <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
+    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start trip</button>
   </div>` : `
   <div class="card">
@@ -458,7 +508,9 @@ function renderLogTab() {
     <label class="field-label">End point</label>
     <div class="input-icon" style="margin-bottom:16px;">
       ${icons.pin}<input id="endPointInput" placeholder="e.g. Office" value="${state.endPoint}" />
+      <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
+    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
 
     <label class="field-label">Distance (km)</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:16px;" />
@@ -533,6 +585,23 @@ function renderSettingsTab() {
       </button>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     `}
+  </div>
+
+  <div class="card">
+    <label class="field-label">Default start location</label>
+    <p class="settings-desc" style="margin-top:0;">Pre-fills the start point every time you begin a trip. Leave blank to type it manually each time.</p>
+    <div class="input-icon" style="margin-top:10px;">
+      ${icons.pin}<input id="defaultStartInput" placeholder="e.g. Home" value="${state.settings.defaultStartLocation || ""}" />
+    </div>
+  </div>
+
+  <div class="card">
+    <label class="field-label">Trip type</label>
+    <p class="settings-desc" style="margin-top:0;">Used for every trip you start.</p>
+    <div class="toggle-row" style="margin-top:10px;">
+      <button class="toggle normal ${state.settings.tripType !== "work" ? "on" : ""}" data-triptype="normal">Normal</button>
+      <button class="toggle work ${state.settings.tripType === "work" ? "on" : ""}" data-triptype="work">Work</button>
+    </div>
   </div>
 
   <div class="card">
@@ -634,22 +703,21 @@ function attachAppHandlers() {
 
   if (state.tab === "log") {
     if (!state.active) {
-      document.querySelectorAll(".toggle").forEach(btn => {
-        btn.onclick = () => { state.pendingTag = btn.dataset.tag; render(); };
-      });
       const spi = document.getElementById("startPointInput");
       if (spi) spi.oninput = (e) => { state.startPointInput = e.target.value; };
+      const locStartBtn = document.getElementById("locateStartBtn");
+      if (locStartBtn) locStartBtn.onclick = () => useMyLocation("start");
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
         const trip = {
-          tag: state.pendingTag,
+          tag: state.settings.tripType || "normal",
           startPoint: state.startPointInput.trim() || "Unspecified",
           startTime: nowTimeStr(),
           date: todayStr(),
           startedAt: Date.now(),
         };
         state.active = trip;
-        state.startPointInput = "";
+        state.startPointInput = state.settings.defaultStartLocation || "";
         await storageSet(ACTIVE_KEY, trip);
         startTicker();
         render();
@@ -658,6 +726,8 @@ function attachAppHandlers() {
       renderTimerOnly();
       const epi = document.getElementById("endPointInput");
       if (epi) epi.oninput = (e) => { state.endPoint = e.target.value; };
+      const locEndBtn = document.getElementById("locateEndBtn");
+      if (locEndBtn) locEndBtn.onclick = () => useMyLocation("end");
       const di = document.getElementById("distanceInput");
       if (di) di.oninput = (e) => {
         state.distance = e.target.value.replace(/[^0-9.]/g, "");
@@ -706,6 +776,21 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
+
+    const dsi = document.getElementById("defaultStartInput");
+    if (dsi) dsi.onchange = async (e) => {
+      state.settings.defaultStartLocation = e.target.value.trim();
+      await storageSet(SETTINGS_KEY, state.settings);
+      if (!state.active && !state.startPointInput) state.startPointInput = state.settings.defaultStartLocation;
+    };
+
+    document.querySelectorAll("[data-triptype]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.tripType = btn.dataset.triptype;
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
 
     const connectBtn = document.getElementById("connectSheetBtn");
     if (connectBtn) connectBtn.onclick = async () => {
