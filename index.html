@@ -251,6 +251,7 @@ const icons = {
   drive: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3h8l6 10-4 7H6l-4-7z"/><path d="M8 3l4 7M16 3l-4 7M4 13h16"/></svg>`,
   gear: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   locate: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z"/></svg>`,
+  route: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.2 18 c 4-2 2-8 6-11"/></svg>`,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -295,6 +296,35 @@ async function useMyLocation(target) {
     state.locateError = e.message || "Couldn't get your location.";
   }
   state.locatingStart = false; state.locatingEnd = false;
+  render();
+}
+
+async function estimateRoute(origin, destination) {
+  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&units=metric&key=${GOOGLE_MAPS_API_KEY}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.status !== "OK") throw new Error("Couldn't calculate that route.");
+  const element = data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0];
+  if (!element || element.status !== "OK") throw new Error("Couldn't find a driving route between those points.");
+  return {
+    distanceKm: element.distance.value / 1000,
+    durationMin: Math.max(1, Math.round(element.duration.value / 60)),
+  };
+}
+
+async function runRouteEstimate(origin, destination) {
+  if (!mapsConfigured()) { state.estimateError = "Distance lookup isn't set up for this app yet."; render(); return; }
+  if (!origin || !destination) return;
+  state.estimating = true; state.estimateError = ""; render();
+  try {
+    const { distanceKm, durationMin } = await estimateRoute(origin, destination);
+    state.distance = distanceKm.toFixed(1);
+    state.estimatedDuration = durationMin;
+  } catch (e) {
+    state.estimateError = e.message || "Couldn't calculate distance and time.";
+    state.estimatedDuration = null;
+  }
+  state.estimating = false;
   render();
 }
 
@@ -506,11 +536,19 @@ function renderLogTab() {
     <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${a.startTime}</p>
 
     <label class="field-label">End point</label>
-    <div class="input-icon" style="margin-bottom:16px;">
+    <div class="input-icon" style="margin-bottom:10px;">
       ${icons.pin}<input id="endPointInput" placeholder="e.g. Office" value="${state.endPoint}" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
-    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
+    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
+
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
+        ${icons.route} ${state.estimating ? "Calculating…" : "Estimate distance & time"}
+      </button>
+      ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.estimatedDuration} min drive</span>` : ""}
+    </div>
+    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : `<p class="settings-desc" style="margin:0 0 12px;">Fills in distance and an estimated drive time from the two addresses. You can still edit the number below.</p>`}
 
     <label class="field-label">Distance (km)</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:16px;" />
@@ -718,6 +756,8 @@ function attachAppHandlers() {
         };
         state.active = trip;
         state.startPointInput = state.settings.defaultStartLocation || "";
+        state.estimatedDuration = null;
+        state.estimateError = "";
         await storageSet(ACTIVE_KEY, trip);
         startTicker();
         render();
@@ -725,9 +765,20 @@ function attachAppHandlers() {
     } else {
       renderTimerOnly();
       const epi = document.getElementById("endPointInput");
-      if (epi) epi.oninput = (e) => { state.endPoint = e.target.value; };
+      if (epi) {
+        epi.oninput = (e) => { state.endPoint = e.target.value; };
+        epi.onblur = () => {
+          const dest = state.endPoint.trim();
+          if (dest && !state.estimating) runRouteEstimate(state.active.startPoint, dest);
+        };
+      }
       const locEndBtn = document.getElementById("locateEndBtn");
       if (locEndBtn) locEndBtn.onclick = () => useMyLocation("end");
+      const estimateBtn = document.getElementById("estimateRouteBtn");
+      if (estimateBtn) estimateBtn.onclick = () => {
+        const dest = state.endPoint.trim();
+        if (dest) runRouteEstimate(state.active.startPoint, dest);
+      };
       const di = document.getElementById("distanceInput");
       if (di) di.oninput = (e) => {
         state.distance = e.target.value.replace(/[^0-9.]/g, "");
@@ -745,6 +796,7 @@ function attachAppHandlers() {
         };
         state.active = null;
         state.endPoint = ""; state.distance = "";
+        state.estimatedDuration = null; state.estimateError = "";
         await storageDelete(ACTIVE_KEY);
         stopTicker();
 
