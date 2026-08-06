@@ -756,7 +756,7 @@ function renderLogTab() {
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button">${icons.clock} Log this Drive</button>` : ""}
       </div>
-      ${state.preTripDistance != null && !state.preTripEstimating ? `<p class="mono" style="color:var(--muted);font-size:12px;margin:0 0 6px;">~${state.preTripDistance} km · ${state.preTripDuration} min</p>` : ""}
+      ${state.preTripDistance != null && !state.preTripEstimating ? `<p class="mono" style="color:var(--muted);font-size:12px;margin:0 0 6px;white-space:nowrap;">~${state.preTripDistance} km · ${state.preTripDuration} min</p>` : ""}
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
     <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
@@ -781,7 +781,7 @@ function renderLogTab() {
       <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
         ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
       </button>
-      ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.estimatedDuration} min drive</span>` : ""}
+      ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
     </div>
     ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
 
@@ -871,7 +871,7 @@ function renderSettingsTab() {
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <a href="${state.sheetLink.url}" target="_blank" class="btn btn-ghost" style="text-decoration:none;">Open Sheet</a>
+        <a href="${state.sheetLink.url}" target="_blank" class="btn btn-ghost" style="text-decoration:none;">Open Sheets</a>
       </div>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
@@ -898,16 +898,16 @@ function renderSettingsTab() {
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
     <p class="settings-desc" style="margin:0;">${
-      state.settings.driveType === "work" ? "Logs new drives as Work — for business or employment driving records."
-      : state.settings.driveType === "supervised" ? "Asks for conditions and supervisor details before saving each drive — for learner logbook requirements."
-      : "Logs new drives as Normal — everyday driving with no extra detail collected."
+      state.settings.driveType === "work" ? "Work — For business and employment driving records."
+      : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
+      : "Normal — For everyday driving."
     }</p>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
     <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
-    <p class="settings-desc">Deletes all logged drives from this device. Can't be undone — your Google Sheet isn't affected.</p>
-    <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear all drive history</button>
+    <p class="settings-desc">Permanently deletes all logged drives from this device. Google Sheet is not affected.</p>
+    <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear all Drive history</button>
   </div>`;
 }
 
@@ -963,7 +963,10 @@ function renderConditionsModal() {
         </div>
       ` : ""}
 
-      <button id="saveConditionsTripBtn" class="btn btn-amber">Save trip</button>
+      <div class="row-2">
+        <button id="backConditionsBtn" class="btn btn-ghost">Back</button>
+        <button id="saveConditionsTripBtn" class="btn btn-amber">Save Drive</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1066,7 +1069,7 @@ function renderLogEstimateModal() {
 
       <div class="row-2">
         <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmLogEstimateBtn" class="btn btn-amber">Save drive</button>
+        <button id="confirmLogEstimateBtn" class="btn btn-amber">Save Drive</button>
       </div>
     </div>
   </div>`;
@@ -1359,6 +1362,14 @@ function attachAppHandlers() {
 
   if (state.pendingTrip) {
     const f = state.conditionsForm;
+
+    const backBtn = document.getElementById("backConditionsBtn");
+    if (backBtn) backBtn.onclick = () => {
+      state.pendingTrip = null;
+      state.addingSupervisor = false;
+      render();
+    };
+
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (el) el.onchange = (e) => { f[key] = e.target.value; };
