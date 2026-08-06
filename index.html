@@ -114,6 +114,7 @@ const ACTIVE_KEY = "driving-log:active";
 const SETTINGS_KEY = "driving-log:settings";
 const SHEET_LINK_KEY = "driving-log:sheet";
 const SUPERVISORS_KEY = "driving-log:supervisors";
+const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
@@ -232,6 +233,7 @@ const state = {
   googleBusy: false,
   googleError: "",
   supervisors: [],
+  recentLocations: [],
   pendingTrip: null,
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -297,6 +299,36 @@ async function useMyLocation(target) {
   }
   state.locatingStart = false; state.locatingEnd = false;
   render();
+}
+
+async function autoFillCurrentLocation() {
+  if (state.active || state.startPointInput || !mapsConfigured()) return;
+  try {
+    const coords = await getCurrentPosition();
+    const address = await reverseGeocode(coords.latitude, coords.longitude);
+    if (!state.active && !state.startPointInput) {
+      state.startPointInput = address;
+      render();
+    }
+  } catch (e) {
+    // Silent fail — user can still type manually or tap the locate button.
+  }
+}
+
+function escAttr(str) {
+  return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+async function addRecentLocations(locs) {
+  let list = state.recentLocations.slice();
+  locs.forEach(loc => {
+    if (!loc) return;
+    list = list.filter(l => l.toLowerCase() !== loc.toLowerCase());
+    list.unshift(loc);
+  });
+  list = list.slice(0, 10);
+  state.recentLocations = list;
+  await storageSet(RECENT_LOCATIONS_KEY, list);
 }
 
 async function estimateRoute(origin, destination) {
@@ -412,12 +444,15 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, recordConditions: false, lastSupervisorId: "", defaultStartLocation: "", tripType: "normal" };
-  if (state.settings.defaultStartLocation === undefined) state.settings.defaultStartLocation = "";
+  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, recordConditions: false, lastSupervisorId: "", tripType: "normal" };
   if (state.settings.tripType === undefined) state.settings.tripType = "normal";
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
-  if (!state.active) state.startPointInput = state.settings.defaultStartLocation || "";
+  state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
+  if (!state.active) {
+    state.startPointInput = "";
+    autoFillCurrentLocation();
+  }
   if (state.active) startTicker();
 }
 
@@ -507,6 +542,9 @@ function renderApp() {
 
     ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
+    <datalist id="recentLocations">
+      ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
+    </datalist>
   </div>`;
 }
 
@@ -522,7 +560,7 @@ function renderLogTab() {
   <div class="card">
     <label class="field-label">Start point</label>
     <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<input id="startPointInput" placeholder="e.g. Home" value="${state.startPointInput}" />
+      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" />
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
@@ -537,7 +575,7 @@ function renderLogTab() {
 
     <label class="field-label">End point</label>
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="endPointInput" placeholder="e.g. Office" value="${state.endPoint}" />
+      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
@@ -611,10 +649,9 @@ function renderSettingsTab() {
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
       <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
-      <button class="btn btn-ghost" style="margin-top:10px;color:var(--normal);border-color:rgba(76,159,112,.4);" disabled>Google Sheets Connected</button>
-      <div class="settings-actions" style="margin-top:8px;">
-        <a href="${state.sheetLink.url}" target="_blank" class="btn btn-ghost" style="text-decoration:none;display:inline-block;">Open my sheet</a>
+      <div class="row-2" style="margin-top:12px;">
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
+        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open my Google Sheet</a>
       </div>
     ` : `
       <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
@@ -626,19 +663,12 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <label class="field-label">Default start location</label>
-    <p class="settings-desc" style="margin-top:0;">Pre-fills the start point every time you begin a trip. Leave blank to type it manually each time.</p>
-    <div class="input-icon" style="margin-top:10px;">
-      ${icons.pin}<input id="defaultStartInput" placeholder="e.g. Home" value="${state.settings.defaultStartLocation || ""}" />
-    </div>
-  </div>
-
-  <div class="card">
-    <label class="field-label">Trip type</label>
-    <p class="settings-desc" style="margin-top:0;">Used for every trip you start.</p>
-    <div class="toggle-row" style="margin-top:10px;">
-      <button class="toggle normal ${state.settings.tripType !== "work" ? "on" : ""}" data-triptype="normal">Normal</button>
-      <button class="toggle work ${state.settings.tripType === "work" ? "on" : ""}" data-triptype="work">Work</button>
+    <div class="switch-row">
+      <div>
+        <p class="settings-title">${icons.car} Trip Type</p>
+        <p class="settings-desc">New trips are logged as <b style="color:${state.settings.tripType === "work" ? "var(--work)" : "var(--normal)"}">${state.settings.tripType === "work" ? "Work" : "Normal"}</b> by default.</p>
+      </div>
+      <div id="tripTypeSwitch" class="switch ${state.settings.tripType === "work" ? "on" : ""}"><div class="knob"></div></div>
     </div>
   </div>
 
@@ -723,6 +753,7 @@ function renderConditionsModal() {
 async function finalizeTrip(trip) {
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
+  await addRecentLocations([trip.startPoint, trip.endPoint]);
   if (state.settings.autoBackup && state.sheetLink) {
     appendTripToSheet(state.sheetLink.spreadsheetId, trip).catch(() => {
       state.googleError = "Last trip didn't sync to Sheets — open Settings to reconnect.";
@@ -755,7 +786,7 @@ function attachAppHandlers() {
           startedAt: Date.now(),
         };
         state.active = trip;
-        state.startPointInput = state.settings.defaultStartLocation || "";
+        state.startPointInput = "";
         state.estimatedDuration = null;
         state.estimateError = "";
         await storageSet(ACTIVE_KEY, trip);
@@ -797,8 +828,10 @@ function attachAppHandlers() {
         state.active = null;
         state.endPoint = ""; state.distance = "";
         state.estimatedDuration = null; state.estimateError = "";
+        state.startPointInput = "";
         await storageDelete(ACTIVE_KEY);
         stopTicker();
+        autoFillCurrentLocation();
 
         if (state.settings.recordConditions) {
           state.pendingTrip = trip;
@@ -829,20 +862,12 @@ function attachAppHandlers() {
       render();
     };
 
-    const dsi = document.getElementById("defaultStartInput");
-    if (dsi) dsi.onchange = async (e) => {
-      state.settings.defaultStartLocation = e.target.value.trim();
+    const tripTypeSwitch = document.getElementById("tripTypeSwitch");
+    if (tripTypeSwitch) tripTypeSwitch.onclick = async () => {
+      state.settings.tripType = state.settings.tripType === "work" ? "normal" : "work";
       await storageSet(SETTINGS_KEY, state.settings);
-      if (!state.active && !state.startPointInput) state.startPointInput = state.settings.defaultStartLocation;
+      render();
     };
-
-    document.querySelectorAll("[data-triptype]").forEach(btn => {
-      btn.onclick = async () => {
-        state.settings.tripType = btn.dataset.triptype;
-        await storageSet(SETTINGS_KEY, state.settings);
-        render();
-      };
-    });
 
     const connectBtn = document.getElementById("connectSheetBtn");
     if (connectBtn) connectBtn.onclick = async () => {
