@@ -220,6 +220,7 @@ const state = {
   locatingStart: false,
   locatingEnd: false,
   locateError: "",
+  distanceError: "",
   distance: "",
   filterTag: "all",
   filterFrom: "",
@@ -604,9 +605,10 @@ function renderLogTab() {
     ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : `<p class="settings-desc" style="margin:0 0 12px;">Fills in distance and an estimated drive time from the two addresses. You can still edit the number below.</p>`}
 
     <label class="field-label">Distance (km)</label>
-    <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:16px;" />
+    <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
+    <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
 
-    <button id="stopTripBtn" class="btn btn-stop" ${!state.distance ? "disabled" : ""}>${icons.stop} Stop & Save</button>
+    <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
   </div>`}
   `;
 }
@@ -916,6 +918,7 @@ function attachAppHandlers() {
         state.startPointInput = "";
         state.estimatedDuration = null;
         state.estimateError = "";
+        state.distanceError = "";
         await storageSet(ACTIVE_KEY, trip);
         startTicker();
         render();
@@ -941,15 +944,27 @@ function attachAppHandlers() {
       if (di) di.oninput = (e) => {
         state.distance = e.target.value.replace(/[^0-9.]/g, "");
         e.target.value = state.distance;
-        document.getElementById("stopTripBtn").disabled = !state.distance;
+        if (state.distanceError) {
+          state.distanceError = "";
+          const errEl = document.getElementById("distanceErrorMsg");
+          if (errEl) { errEl.textContent = ""; errEl.style.display = "none"; }
+        }
       };
       const stopBtn = document.getElementById("stopTripBtn");
       if (stopBtn) stopBtn.onclick = async () => {
-        if (!state.distance || isNaN(parseFloat(state.distance))) return;
+        const distVal = parseFloat(state.distance);
+        if (!state.distance || isNaN(distVal) || distVal <= 0) {
+          state.distanceError = "Enter a distance to save this drive.";
+          render();
+          const diAgain = document.getElementById("distanceInput");
+          if (diAgain) diAgain.focus();
+          return;
+        }
+        state.distanceError = "";
         const a = state.active;
         const trip = {
           id: uid(), date: a.date, startTime: a.startTime, endTime: nowTimeStr(),
-          distance: parseFloat(state.distance), startPoint: a.startPoint,
+          distance: distVal, startPoint: a.startPoint,
           endPoint: state.endPoint.trim() || "Unspecified", tag: a.tag,
         };
         state.active = null;
