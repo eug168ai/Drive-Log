@@ -333,6 +333,7 @@ const state = {
   historySelectMode: false,
   selectedTripIds: [],
   confirmingDeleteSelected: false,
+  logEstimateForm: null,
   editingTrip: null,
 };
 
@@ -695,6 +696,7 @@ function renderApp() {
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
+    ${state.logEstimateForm ? renderLogEstimateModal() : ""}
     <datalist id="recentLocations">
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
     </datalist>
@@ -722,24 +724,25 @@ function renderLogTab() {
   <div class="card">
     <label class="field-label">Start Location</label>
     <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" />
+      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="this.select()" />
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
 
     <label class="field-label">End Location</label>
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" />
+      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="this.select()" />
     </div>
 
-    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "" : "display:none;"}">
+    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
         <button id="preTripEstimateBtn" class="chip" type="button" ${state.preTripEstimating ? "disabled" : ""}>
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate distance & time"}
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
       </div>
-      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 16px;">${state.preTripEstimateError}</p>` : `<p class="settings-desc" style="margin:0 0 16px;">Estimates distance and drive time.</p>`}
+      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
+      ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="btn btn-ghost" style="margin-top:10px;">${icons.clock} Log this as a drive</button>` : ""}
     </div>
     <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
 
@@ -754,18 +757,18 @@ function renderLogTab() {
 
     <label class="field-label">End Location</label>
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" />
+      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="this.select()" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
 
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
       <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
         ${icons.route} ${state.estimating ? "Calculating…" : "Estimate distance & time"}
       </button>
       ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.estimatedDuration} min drive</span>` : ""}
     </div>
-    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : `<p class="settings-desc" style="margin:0 0 12px;">Estimates distance and drive time.</p>`}
+    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
 
     <label class="field-label">Distance (km)</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
@@ -1026,6 +1029,28 @@ function renderDeleteSelectedModal() {
   </div>`;
 }
 
+function renderLogEstimateModal() {
+  const f = state.logEstimateForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Log this estimate</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} km, ~${state.preTripDuration} min) without starting a live trip.</p>
+
+      <label class="field-label">Date</label>
+      <input id="logEstimateDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
+
+      <label class="field-label">Start time</label>
+      <input id="logEstimateStartTime" type="time" class="input" value="${f.startTime}" style="margin-bottom:20px;" />
+
+      <div class="row-2">
+        <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
+        <button id="confirmLogEstimateBtn" class="btn btn-amber">Save drive</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function syncUnsyncedTrips() {
   if (!state.sheetLink) return;
   const unsynced = state.trips.filter(t => !t.synced);
@@ -1099,6 +1124,12 @@ function attachAppHandlers() {
         const origin = state.startPointInput.trim();
         const dest = state.preTripEndLocation.trim();
         if (dest) runPreTripEstimate(origin, dest);
+      };
+
+      const logEstBtn = document.getElementById("logEstimateBtn");
+      if (logEstBtn) logEstBtn.onclick = () => {
+        state.logEstimateForm = { date: todayStr(), startTime: nowTimeStr() };
+        render();
       };
 
       const startBtn = document.getElementById("startTripBtn");
@@ -1420,6 +1451,53 @@ function attachAppHandlers() {
       state.confirmingDeleteSelected = false;
       state.historySelectMode = false;
       render();
+    };
+  }
+
+  if (state.logEstimateForm) {
+    const f = state.logEstimateForm;
+    const led = document.getElementById("logEstimateDate");
+    if (led) led.onchange = (e) => { f.date = e.target.value; };
+    const lest = document.getElementById("logEstimateStartTime");
+    if (lest) lest.onchange = (e) => { f.startTime = e.target.value; };
+
+    const cancelLogBtn = document.getElementById("cancelLogEstimateBtn");
+    if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; render(); };
+
+    const confirmLogBtn = document.getElementById("confirmLogEstimateBtn");
+    if (confirmLogBtn) confirmLogBtn.onclick = async () => {
+      if (!f.date || !f.startTime) return;
+      const startDate = new Date(`1970/01/01 ${f.startTime}`);
+      const endDate = new Date(startDate.getTime() + (state.preTripDuration || 0) * 60000);
+      const endTimeStr = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
+      const trip = {
+        id: uid(),
+        date: f.date,
+        startTime: f.startTime,
+        endTime: endTimeStr,
+        distance: parseFloat(state.preTripDistance) || 0,
+        startPoint: state.startPointInput.trim() || "Unspecified",
+        endPoint: state.preTripEndLocation.trim() || "Unspecified",
+        tag: state.settings.driveType === "work" ? "work" : "normal",
+      };
+      state.logEstimateForm = null;
+      state.startPointInput = "";
+      state.preTripEndLocation = "";
+      state.preTripDistance = null;
+      state.preTripDuration = null;
+      state.preTripEstimateError = "";
+      state.preTripEstimating = false;
+
+      if (state.settings.driveType === "supervised") {
+        state.pendingTrip = trip;
+        state.conditionsForm = { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+        state.addingSupervisor = false;
+        state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        render();
+      } else {
+        await finalizeTrip(trip);
+        render();
+      }
     };
   }
 }
