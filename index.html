@@ -161,6 +161,15 @@ function debounce(fn, delay) {
   return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
 }
 
+function getDeviceRegionCode() {
+  try {
+    const locale = navigator.language || (navigator.languages && navigator.languages[0]) || "";
+    const parts = locale.split("-");
+    if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
+  } catch (e) {}
+  return null;
+}
+
 function attachPlacesAutocomplete(inputEl, onSelect) {
   if (!inputEl) return;
   const wrapper = inputEl.closest(".input-icon");
@@ -179,10 +188,10 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
     if (!libraryPromise || query.length < 3) { hide(); return; }
     try {
       const { AutocompleteSuggestion, AutocompleteSessionToken } = await libraryPromise;
-      const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
-        input: query,
-        sessionToken: new AutocompleteSessionToken(),
-      });
+      const request = { input: query, sessionToken: new AutocompleteSessionToken() };
+      const region = getDeviceRegionCode();
+      if (region) request.includedRegionCodes = [region];
+      const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
       if (!suggestions || !suggestions.length) { hide(); return; }
       dropdown.innerHTML = suggestions.slice(0, 5).map(s => {
         const text = s.placePrediction && s.placePrediction.text ? s.placePrediction.text.text : "";
@@ -319,7 +328,7 @@ const state = {
   loginName: "",
   loginPin: "",
   loginEnterPin: "",
-  settings: { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false },
+  settings: { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true },
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -587,13 +596,13 @@ function renderLogin() {
         <input id="loginName" class="input" placeholder="Your name" value="${state.loginName}" style="margin-bottom:8px;" />
         <input id="loginPin" class="input" placeholder="4+ digit PIN" inputmode="numeric" value="${state.loginPin}" style="margin-bottom:8px;" />
         ${state.loginError ? `<p class="err">${state.loginError}</p>` : ""}
-        <button id="createBtn" class="btn btn-amber" style="margin-top:8px;">${icons.lock} Create & continue</button>
+        <button id="createBtn" class="btn btn-amber" style="margin-top:8px;">${icons.lock} Save</button>
       ` : `
         <input id="enterPin" class="input" placeholder="PIN" inputmode="numeric" value="${state.loginEnterPin}" style="margin-bottom:8px;" />
         ${state.loginError ? `<p class="err">${state.loginError}</p>` : ""}
         <button id="unlockBtn" class="btn btn-amber" style="margin-top:8px;">${icons.lock} Unlock</button>
       `}
-      <p class="note">This PIN only locks the app on this device — it isn't secure account authentication. A real login system would need a backend server.</p>
+      <p class="note">This PIN only locks the app on this device.</p>
     </div>
   </div>`;
 }
@@ -625,11 +634,12 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
   if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
+  if (state.settings.requirePin === undefined) state.settings.requirePin = true;
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
@@ -966,6 +976,16 @@ function renderSettingsTab() {
         <button id="saveSavedOtherBtn" class="btn btn-ghost">Add address</button>
       </div>
     ` : `<button id="addSavedOtherBtn" class="btn btn-ghost" style="margin-top:10px;">+ Add address</button>`}
+  </div>
+
+  <div class="card">
+    <div class="switch-row">
+      <div>
+        <p class="settings-title">${icons.lock} Security</p>
+        <p class="settings-desc">Ask for your PIN each time you open the app.</p>
+      </div>
+      <div id="requirePinSwitch" class="switch ${state.settings.requirePin !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
@@ -1405,6 +1425,13 @@ function attachAppHandlers() {
       render();
     };
 
+    const requirePinSwitch = document.getElementById("requirePinSwitch");
+    if (requirePinSwitch) requirePinSwitch.onclick = async () => {
+      state.settings.requirePin = state.settings.requirePin === false ? true : false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
     const clearHistoryBtn = document.getElementById("clearHistoryBtn");
     if (clearHistoryBtn) clearHistoryBtn.onclick = () => { state.confirmingClearHistory = true; render(); };
 
@@ -1682,7 +1709,13 @@ function attachAppHandlers() {
 (async function init() {
   loadGoogleMapsScript();
   state._existingProfile = await storageGet(PROFILE_KEY);
+  const savedSettings = await storageGet(SETTINGS_KEY);
+  const requirePin = !savedSettings || savedSettings.requirePin !== false;
   state.loadingProfile = false;
+  if (state._existingProfile && !requirePin) {
+    state.profile = state._existingProfile;
+    await loadData();
+  }
   render();
 })();
 </script>
