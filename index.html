@@ -9,7 +9,7 @@
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70;
+    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2;
   }
   *{box-sizing:border-box;}
   body{
@@ -67,7 +67,7 @@
           border:1px solid var(--border);color:var(--muted);cursor:pointer;}
   .toggle.normal.on{background:rgba(76,159,112,.18);border-color:var(--normal);color:var(--normal);}
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
-  .toggle.supervised.on{background:rgba(242,169,59,.18);border-color:var(--amber);color:var(--amber);}
+  .toggle.supervised.on{background:rgba(76,159,242,.18);border-color:var(--blue);color:var(--blue);}
   .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;
        display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-amber{background:var(--amber);color:var(--bg);}
@@ -86,7 +86,7 @@
            text-align:left;padding:8px 10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;}
   tbody td{padding:8px 10px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .route-cell{max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .route-cell{max-width:140px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -121,6 +121,7 @@ const SETTINGS_KEY = "driving-log:settings";
 const SHEET_LINK_KEY = "driving-log:sheet";
 const SUPERVISORS_KEY = "driving-log:supervisors";
 const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
+const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
@@ -336,6 +337,10 @@ const state = {
   selectedTripIds: [],
   confirmingDeleteSelected: false,
   logEstimateForm: null,
+  savedAddresses: { home: "", work: "", other: [] },
+  addingSavedOther: false,
+  newSavedOtherName: "",
+  newSavedOtherAddress: "",
   editingTrip: null,
 };
 
@@ -358,7 +363,16 @@ const icons = {
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
-const nowTimeStr = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+function formatDateForDisplay(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString();
+}
+const nowTimeStr = () => {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function getCurrentPosition() {
@@ -434,6 +448,22 @@ async function autoFillCurrentLocation() {
 
 function escAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function savedAddressList() {
+  const list = [];
+  if (state.savedAddresses.home) list.push({ id: "home", name: "Home", address: state.savedAddresses.home });
+  if (state.savedAddresses.work) list.push({ id: "work", name: "Work", address: state.savedAddresses.work });
+  state.savedAddresses.other.forEach(o => list.push({ id: o.id, name: o.name, address: o.address }));
+  return list;
+}
+
+function renderSavedAddressChips(targetId) {
+  const list = savedAddressList();
+  if (!list.length) return "";
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${list.map(a =>
+    `<button type="button" class="chip savedAddressChip" data-target="${targetId}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`
+  ).join("")}</div>`;
 }
 
 async function addRecentLocations(locs) {
@@ -603,6 +633,7 @@ async function loadData() {
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
+  state.savedAddresses = (await storageGet(SAVED_ADDRESSES_KEY)) || { home: "", work: "", other: [] };
   if (!state.active) {
     state.startPointInput = "";
     autoFillCurrentLocation();
@@ -738,6 +769,7 @@ function renderLogTab() {
     </div>
     ` : ""}
     <label class="field-label">Start Location</label>
+    ${renderSavedAddressChips("startPointInput")}
     <div class="input-icon" style="margin-bottom:16px;">
       ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
@@ -745,6 +777,7 @@ function renderLogTab() {
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
 
     <label class="field-label">End Location</label>
+    ${renderSavedAddressChips("preTripEndInput")}
     <div class="input-icon" style="margin-bottom:10px;">
       ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
     </div>
@@ -771,6 +804,7 @@ function renderLogTab() {
     <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${a.startTime}</p>
 
     <label class="field-label">End Location</label>
+    ${renderSavedAddressChips("endPointInput")}
     <div class="input-icon" style="margin-bottom:10px;">
       ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
@@ -834,18 +868,19 @@ function renderHistoryTab() {
       <table>
         <thead><tr>
           ${sel ? `<th></th>` : ""}
-          <th>Date</th><th>Time</th><th style="text-align:right;">Km</th><th>Route</th><th>Type</th>
+          <th>Date</th><th>Time</th><th style="text-align:right;">Km</th><th style="text-align:right;">Min</th><th>Route</th><th>Type</th>
           ${sel ? `<th></th>` : ""}
         </tr></thead>
         <tbody>
           ${rows.length === 0
-            ? `<tr><td colspan="${sel ? 7 : 5}" class="empty">No trips logged yet.</td></tr>`
+            ? `<tr><td colspan="${sel ? 8 : 6}" class="empty">No trips logged yet.</td></tr>`
             : rows.map(t => `
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
-                <td>${t.date}</td>
+                <td>${formatDateForDisplay(t.date)}</td>
                 <td style="color:var(--muted)">${t.startTime}–${t.endTime}</td>
                 <td class="mono" style="text-align:right;">${t.distance.toFixed(1)}</td>
+                <td class="mono" style="text-align:right;">${tripMinutes(t)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
                 <td><span class="tag ${t.tag}">${t.tag}</span></td>
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
@@ -902,6 +937,35 @@ function renderSettingsTab() {
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
       : "Normal — For everyday driving."
     }</p>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin-bottom:10px;">${icons.pin} Saved Addresses</p>
+    <label class="field-label">Home</label>
+    <input id="savedHomeInput" class="input" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" style="margin-bottom:14px;" />
+    <label class="field-label">Work</label>
+    <input id="savedWorkInput" class="input" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" style="margin-bottom:14px;" />
+
+    <label class="field-label">Other</label>
+    ${state.savedAddresses.other.length ? state.savedAddresses.other.map(o => `
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;">
+        <div style="min-width:0;">
+          <p style="margin:0;font-weight:600;font-size:13px;">${escAttr(o.name)}</p>
+          <p class="settings-desc" style="margin:2px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(o.address)}</p>
+        </div>
+        <button class="icon-btn deleteSavedOtherBtn" data-id="${o.id}" title="Remove">${icons.trash}</button>
+      </div>
+    `).join("") : `<p class="settings-desc" style="margin:4px 0 0;">No other saved addresses yet.</p>`}
+
+    ${state.addingSavedOther ? `
+      <div class="card" style="padding:12px;margin-top:10px;">
+        <label class="field-label">Name</label>
+        <input id="newSavedOtherName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newSavedOtherName)}" placeholder="e.g. Mum's House" />
+        <label class="field-label">Address</label>
+        <input id="newSavedOtherAddress" class="input" style="margin-bottom:12px;" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
+        <button id="saveSavedOtherBtn" class="btn btn-ghost">Add address</button>
+      </div>
+    ` : `<button id="addSavedOtherBtn" class="btn btn-ghost" style="margin-top:10px;">+ Add address</button>`}
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
@@ -1108,6 +1172,28 @@ function attachAppHandlers() {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
   });
 
+  document.querySelectorAll(".savedAddressChip").forEach(chip => {
+    chip.onclick = () => {
+      const targetId = chip.dataset.target;
+      const address = chip.dataset.address;
+      const el = document.getElementById(targetId);
+      if (el) el.value = address;
+      if (targetId === "startPointInput") {
+        state.startPointInput = address;
+      } else if (targetId === "preTripEndInput") {
+        state.preTripEndLocation = address;
+        const section = document.getElementById("preTripEstimateSection");
+        const hint = document.getElementById("preTripEndHint");
+        if (section) section.style.display = "";
+        if (hint) hint.style.display = "none";
+      } else if (targetId === "endPointInput") {
+        state.endPoint = address;
+        const estBtn = document.getElementById("estimateRouteBtn");
+        if (estBtn) estBtn.disabled = false;
+      }
+    };
+  });
+
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.onclick = () => { state.tab = "settings"; render(); };
 
@@ -1272,6 +1358,50 @@ function attachAppHandlers() {
     if (showDriveTypeSwitch) showDriveTypeSwitch.onclick = async () => {
       state.settings.showDriveTypeOnLog = !state.settings.showDriveTypeOnLog;
       await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    const savedHomeInput = document.getElementById("savedHomeInput");
+    if (savedHomeInput) savedHomeInput.onchange = async (e) => {
+      state.savedAddresses.home = e.target.value.trim();
+      await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+      render();
+    };
+    const savedWorkInput = document.getElementById("savedWorkInput");
+    if (savedWorkInput) savedWorkInput.onchange = async (e) => {
+      state.savedAddresses.work = e.target.value.trim();
+      await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+      render();
+    };
+
+    document.querySelectorAll(".deleteSavedOtherBtn").forEach(btn => {
+      btn.onclick = async () => {
+        state.savedAddresses.other = state.savedAddresses.other.filter(o => o.id !== btn.dataset.id);
+        await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      };
+    });
+
+    const addSavedOtherBtn = document.getElementById("addSavedOtherBtn");
+    if (addSavedOtherBtn) addSavedOtherBtn.onclick = () => {
+      state.addingSavedOther = true;
+      state.newSavedOtherName = ""; state.newSavedOtherAddress = "";
+      render();
+    };
+
+    const newSavedOtherNameInput = document.getElementById("newSavedOtherName");
+    if (newSavedOtherNameInput) newSavedOtherNameInput.oninput = (e) => { state.newSavedOtherName = e.target.value; };
+    const newSavedOtherAddressInput = document.getElementById("newSavedOtherAddress");
+    if (newSavedOtherAddressInput) newSavedOtherAddressInput.oninput = (e) => { state.newSavedOtherAddress = e.target.value; };
+
+    const saveSavedOtherBtn = document.getElementById("saveSavedOtherBtn");
+    if (saveSavedOtherBtn) saveSavedOtherBtn.onclick = async () => {
+      const name = state.newSavedOtherName.trim();
+      const address = state.newSavedOtherAddress.trim();
+      if (!name || !address) return;
+      state.savedAddresses.other.push({ id: uid(), name, address });
+      await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+      state.addingSavedOther = false;
       render();
     };
 
