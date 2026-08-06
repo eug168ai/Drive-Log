@@ -42,7 +42,7 @@
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
-  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:24px;}
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:14px;}
   .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
@@ -316,7 +316,7 @@ const state = {
   loginName: "",
   loginPin: "",
   loginEnterPin: "",
-  settings: { driveType: "normal", lastSupervisorId: "" },
+  settings: { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false },
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -593,10 +593,11 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "" };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
+  if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
@@ -625,12 +626,6 @@ function renderTimerOnly() {
 
 function odometer(value) {
   const str = Math.round(Math.max(0, value)).toString().padStart(6, "0").slice(-6);
-  return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
-}
-function odometerTime(mins) {
-  const h = String(Math.min(999, Math.floor(mins / 60))).padStart(3, "0");
-  const m = String(mins % 60).padStart(2, "0");
-  const str = `${h}:${m}`;
   return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
 }
 
@@ -678,10 +673,6 @@ function renderApp() {
           <p class="odo-label">Total distance</p>
           ${odometer(totalMiles())}
         </div>
-        <div class="stat-block">
-          <p class="odo-label">Total time</p>
-          ${odometerTime(totalMinutes())}
-        </div>
         <button id="settingsBtn" class="icon-btn ${state.tab === "settings" ? "active" : ""}" title="Settings">${icons.gear}</button>
       </div>
     </div>
@@ -714,24 +705,32 @@ function renderLogTab() {
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${weekTotal().toFixed(1)} km</p>
       </div>
       <div style="text-align:right;">
-        <p class="field-label" style="margin-bottom:2px;">Total distance</p>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${totalMiles().toFixed(1)} km</p>
+        <p class="field-label" style="margin-bottom:2px;">Total time</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDuration(totalMinutes())}</p>
       </div>
     </div>
   </div>
 
   ${!a ? `
   <div class="card">
+    ${state.settings.showDriveTypeOnLog ? `
+    <label class="field-label">Drive Type</label>
+    <div class="toggle-row" style="margin-bottom:16px;">
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
+    </div>
+    ` : ""}
     <label class="field-label">Start Location</label>
     <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="this.select()" />
+      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
 
     <label class="field-label">End Location</label>
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="this.select()" />
+      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
@@ -757,7 +756,7 @@ function renderLogTab() {
 
     <label class="field-label">End Location</label>
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="this.select()" />
+      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
@@ -876,11 +875,18 @@ function renderSettingsTab() {
       <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
-    <p class="settings-desc" style="margin:0;">${
+    <p class="settings-desc" style="margin:0 0 16px;">${
       state.settings.driveType === "work" ? "Logs new drives as Work — for business or employment driving records."
       : state.settings.driveType === "supervised" ? "Asks for conditions and supervisor details before saving each drive — for learner logbook requirements."
       : "Logs new drives as Normal — everyday driving with no extra detail collected."
     }</p>
+    <div class="switch-row">
+      <div>
+        <p class="settings-title">Show on Log screen</p>
+        <p class="settings-desc">Lets you switch Drive Type right from the Log tab, not just here.</p>
+      </div>
+      <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
+    </div>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
@@ -1089,6 +1095,14 @@ function attachAppHandlers() {
 
   if (state.tab === "log") {
     if (!state.active) {
+      document.querySelectorAll("[data-drivetype]").forEach(btn => {
+        btn.onclick = async () => {
+          state.settings.driveType = btn.dataset.drivetype;
+          await storageSet(SETTINGS_KEY, state.settings);
+          render();
+        };
+      });
+
       const spi = document.getElementById("startPointInput");
       if (spi) {
         spi.oninput = (e) => { state.startPointInput = e.target.value; };
@@ -1235,6 +1249,13 @@ function attachAppHandlers() {
         render();
       };
     });
+
+    const showDriveTypeSwitch = document.getElementById("showDriveTypeOnLogSwitch");
+    if (showDriveTypeSwitch) showDriveTypeSwitch.onclick = async () => {
+      state.settings.showDriveTypeOnLog = !state.settings.showDriveTypeOnLog;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
 
     const clearHistoryBtn = document.getElementById("clearHistoryBtn");
     if (clearHistoryBtn) clearHistoryBtn.onclick = () => { state.confirmingClearHistory = true; render(); };
