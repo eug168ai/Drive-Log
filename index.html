@@ -216,6 +216,11 @@ const state = {
   active: null,
   pendingTag: "normal",
   startPointInput: "",
+  preTripEndLocation: "",
+  preTripEstimating: false,
+  preTripDistance: null,
+  preTripDuration: null,
+  preTripEstimateError: "",
   endPoint: "",
   locatingStart: false,
   locatingEnd: false,
@@ -368,6 +373,23 @@ async function runRouteEstimate(origin, destination) {
     state.estimatedDuration = null;
   }
   state.estimating = false;
+  render();
+}
+
+async function runPreTripEstimate(origin, destination) {
+  if (!mapsConfigured()) { state.preTripEstimateError = "Distance lookup isn't set up for this app yet."; render(); return; }
+  if (!destination) return;
+  if (!origin) { state.preTripEstimateError = "Enter a start location first."; render(); return; }
+  state.preTripEstimating = true; state.preTripEstimateError = ""; render();
+  try {
+    const { distanceKm, durationMin } = await estimateRoute(origin, destination);
+    state.preTripDistance = distanceKm.toFixed(1);
+    state.preTripDuration = durationMin;
+  } catch (e) {
+    state.preTripEstimateError = e.message || "Couldn't calculate distance and time.";
+    state.preTripDistance = null; state.preTripDuration = null;
+  }
+  state.preTripEstimating = false;
   render();
 }
 
@@ -568,18 +590,43 @@ function renderLogTab() {
   const a = state.active;
   return `
   <div class="card">
-    <p class="field-label" style="margin-bottom:2px;">This week</p>
-    <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${weekTotal().toFixed(1)} km</p>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
+      <div>
+        <p class="field-label" style="margin-bottom:2px;">This week</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${weekTotal().toFixed(1)} km</p>
+      </div>
+      <div style="text-align:right;">
+        <p class="field-label" style="margin-bottom:2px;">Total distance</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${totalMiles().toFixed(1)} km</p>
+      </div>
+    </div>
   </div>
 
   ${!a ? `
   <div class="card">
-    <label class="field-label">Start point</label>
+    <label class="field-label">Start Location</label>
     <div class="input-icon" style="margin-bottom:16px;">
       ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" />
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
+
+    <label class="field-label">End Location</label>
+    <div class="input-icon" style="margin-bottom:10px;">
+      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" />
+    </div>
+
+    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "" : "display:none;"}">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+        <button id="preTripEstimateBtn" class="chip" type="button" ${state.preTripEstimating ? "disabled" : ""}>
+          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate distance & time"}
+        </button>
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
+      </div>
+      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 16px;">${state.preTripEstimateError}</p>` : `<p class="settings-desc" style="margin:0 0 16px;">Estimates distance and drive time between the two locations.</p>`}
+    </div>
+    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
+
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start trip</button>
   </div>` : `
   <div class="card">
@@ -905,6 +952,23 @@ function attachAppHandlers() {
       if (spi) spi.oninput = (e) => { state.startPointInput = e.target.value; };
       const locStartBtn = document.getElementById("locateStartBtn");
       if (locStartBtn) locStartBtn.onclick = () => useMyLocation("start");
+
+      const peti = document.getElementById("preTripEndInput");
+      if (peti) peti.oninput = (e) => {
+        state.preTripEndLocation = e.target.value;
+        const hasText = !!state.preTripEndLocation.trim();
+        const section = document.getElementById("preTripEstimateSection");
+        const hint = document.getElementById("preTripEndHint");
+        if (section) section.style.display = hasText ? "" : "none";
+        if (hint) hint.style.display = hasText ? "none" : "";
+      };
+      const preTripEstBtn = document.getElementById("preTripEstimateBtn");
+      if (preTripEstBtn) preTripEstBtn.onclick = () => {
+        const origin = state.startPointInput.trim();
+        const dest = state.preTripEndLocation.trim();
+        if (dest) runPreTripEstimate(origin, dest);
+      };
+
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
         const trip = {
@@ -916,6 +980,11 @@ function attachAppHandlers() {
         };
         state.active = trip;
         state.startPointInput = "";
+        state.preTripEndLocation = "";
+        state.preTripDistance = null;
+        state.preTripDuration = null;
+        state.preTripEstimateError = "";
+        state.preTripEstimating = false;
         state.estimatedDuration = null;
         state.estimateError = "";
         state.distanceError = "";
