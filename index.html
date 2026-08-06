@@ -755,11 +755,11 @@ function renderLogTab() {
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button">${icons.clock} Log this Drive</button>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;margin-left:auto;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
       </div>
-      ${state.preTripDistance != null && !state.preTripEstimating ? `<p class="mono" style="color:var(--muted);font-size:12px;margin:0 0 6px;white-space:nowrap;">~${state.preTripDistance} km · ${state.preTripDuration} min</p>` : ""}
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
-    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
+    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Leave blank to skip or enter to estimate drive.</p>
 
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
   </div>` : `
@@ -907,7 +907,7 @@ function renderSettingsTab() {
   <div class="card" style="border-color:rgba(224,100,44,.35);">
     <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
     <p class="settings-desc">Permanently deletes all logged drives from this device. Google Sheet is not affected.</p>
-    <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear all Drive history</button>
+    <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear All Drive History</button>
   </div>`;
 }
 
