@@ -359,18 +359,33 @@ function getCurrentPosition() {
   });
 }
 
+let geocodingLibraryPromise = null;
+function getGeocodingLibrary() {
+  if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
+  if (!geocodingLibraryPromise) geocodingLibraryPromise = google.maps.importLibrary("geocoding");
+  return geocodingLibraryPromise;
+}
+
 async function reverseGeocode(lat, lng) {
-  const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.status !== "OK" || !data.results.length) throw new Error("Couldn't find an address for your location.");
-  const comps = data.results[0].address_components;
+  const libraryPromise = getGeocodingLibrary();
+  if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
+  const { Geocoder } = await libraryPromise;
+  const geocoder = new Geocoder();
+  let response;
+  try {
+    response = await geocoder.geocode({ location: { lat, lng } });
+  } catch (e) {
+    throw new Error("Couldn't find an address for your location.");
+  }
+  const results = response && response.results;
+  if (!results || !results.length) throw new Error("Couldn't find an address for your location.");
+  const comps = results[0].address_components;
   const get = (type) => (comps.find(c => c.types.includes(type)) || {}).long_name;
   const streetNumber = get("street_number");
   const route = get("route");
   const suburb = get("locality") || get("sublocality") || get("postal_town") || get("administrative_area_level_2");
   const street = [streetNumber, route].filter(Boolean).join(" ");
-  return [street, suburb].filter(Boolean).join(", ") || data.results[0].formatted_address;
+  return [street, suburb].filter(Boolean).join(", ") || results[0].formatted_address;
 }
 
 async function useMyLocation(target) {
