@@ -62,6 +62,7 @@
           border:1px solid var(--border);color:var(--muted);cursor:pointer;}
   .toggle.normal.on{background:rgba(76,159,112,.18);border-color:var(--normal);color:var(--normal);}
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
+  .toggle.supervised.on{background:rgba(242,169,59,.18);border-color:var(--amber);color:var(--amber);}
   .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;
        display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-amber{background:var(--amber);color:var(--bg);}
@@ -228,7 +229,7 @@ const state = {
   loginName: "",
   loginPin: "",
   loginEnterPin: "",
-  settings: { autoBackup: true, recordConditions: false, lastSupervisorId: "" },
+  settings: { autoBackup: true, driveType: "normal", lastSupervisorId: "" },
   sheetLink: null,
   googleBusy: false,
   googleError: "",
@@ -239,6 +240,11 @@ const state = {
   addingSupervisor: false,
   newSupervisorName: "",
   newSupervisorLicence: "",
+  confirmingClearHistory: false,
+  historySelectMode: false,
+  selectedTripIds: [],
+  confirmingDeleteSelected: false,
+  editingTrip: null,
 };
 
 const icons = {
@@ -254,6 +260,9 @@ const icons = {
   gear: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
   locate: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z"/></svg>`,
   route: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.2 18 c 4-2 2-8 6-11"/></svg>`,
+  edit: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  trash: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`,
+  close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -444,8 +453,10 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, recordConditions: false, lastSupervisorId: "", tripType: "normal" };
-  if (state.settings.tripType === undefined) state.settings.tripType = "normal";
+  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, driveType: "normal", lastSupervisorId: "" };
+  if (state.settings.driveType === undefined) {
+    state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
+  }
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
@@ -542,6 +553,9 @@ function renderApp() {
 
     ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
+    ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
+    ${state.editingTrip ? renderEditTripModal() : ""}
+    ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
     <datalist id="recentLocations">
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
     </datalist>
@@ -591,17 +605,23 @@ function renderLogTab() {
     <label class="field-label">Distance (km)</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:16px;" />
 
-    <button id="stopTripBtn" class="btn btn-stop" ${!state.distance ? "disabled" : ""}>${icons.stop} Stop & save trip</button>
+    <button id="stopTripBtn" class="btn btn-stop" ${!state.distance ? "disabled" : ""}>${icons.stop} Stop & Save</button>
   </div>`}
   `;
 }
 
 function renderHistoryTab() {
   const rows = filteredTrips();
+  const sel = state.historySelectMode;
+  const selectedCount = state.selectedTripIds.length;
+  const allVisibleSelected = rows.length > 0 && rows.every(t => state.selectedTripIds.includes(t.id));
   return `
   <div class="card">
-    <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
-      ${icons.filter} Filters
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">
+        ${icons.filter} Filters
+      </div>
+      <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
       ${["all","work","normal"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
@@ -613,22 +633,38 @@ function renderHistoryTab() {
     <input id="filterSearch" class="input" placeholder="Search start or end point…" value="${state.filterSearch}" style="font-size:12px;" />
   </div>
 
+  ${sel ? `
+  <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px;">
+    <label style="display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px;">
+      <input type="checkbox" id="selectAllVisible" ${allVisibleSelected ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" />
+      Select all
+    </label>
+    <span class="mono" style="color:var(--muted);font-size:12px;">${selectedCount} selected</span>
+    <button id="deleteSelectedBtn" class="btn btn-stop" style="width:auto;padding:8px 14px;font-size:13px;" ${selectedCount === 0 ? "disabled" : ""}>
+      ${icons.trash} Delete
+    </button>
+  </div>` : ""}
+
   <div class="card" style="padding:0;overflow:hidden;">
     <div class="table-scroll">
       <table>
         <thead><tr>
+          ${sel ? `<th></th>` : ""}
           <th>Date</th><th>Time</th><th style="text-align:right;">Km</th><th>Route</th><th>Type</th>
+          ${sel ? `<th></th>` : ""}
         </tr></thead>
         <tbody>
           ${rows.length === 0
-            ? `<tr><td colspan="5" class="empty">No trips logged yet.</td></tr>`
+            ? `<tr><td colspan="${sel ? 7 : 5}" class="empty">No trips logged yet.</td></tr>`
             : rows.map(t => `
               <tr>
+                ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td>${t.date}</td>
                 <td style="color:var(--muted)">${t.startTime}–${t.endTime}</td>
                 <td class="mono" style="text-align:right;">${t.distance.toFixed(1)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
                 <td><span class="tag ${t.tag}">${t.tag}</span></td>
+                ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
         </tbody>
       </table>
@@ -638,7 +674,6 @@ function renderHistoryTab() {
 
 function renderSettingsTab() {
   const on = !!state.settings.autoBackup;
-  const condOn = !!state.settings.recordConditions;
   return `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
@@ -649,7 +684,7 @@ function renderSettingsTab() {
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
       <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
-      <div class="row-2" style="margin-top:12px;">
+      <div class="settings-actions" style="margin-top:12px;">
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
         <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open my Google Sheet</a>
       </div>
@@ -663,13 +698,17 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <div class="switch-row">
-      <div>
-        <p class="settings-title">${icons.car} Trip Type</p>
-        <p class="settings-desc">New trips are logged as <b style="color:${state.settings.tripType === "work" ? "var(--work)" : "var(--normal)"}">${state.settings.tripType === "work" ? "Work" : "Normal"}</b> by default.</p>
-      </div>
-      <div id="tripTypeSwitch" class="switch ${state.settings.tripType === "work" ? "on" : ""}"><div class="knob"></div></div>
+    <p class="settings-title" style="margin-bottom:10px;">${icons.car} Drive Type</p>
+    <div class="toggle-row" style="margin-bottom:12px;">
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
+    <p class="settings-desc" style="margin:0;">${
+      state.settings.driveType === "work" ? "Logs new drives as Work — for business or employment driving records."
+      : state.settings.driveType === "supervised" ? "Asks for conditions and supervisor details before saving each drive — for learner logbook requirements."
+      : "Logs new drives as Normal — everyday driving with no extra detail collected."
+    }</p>
   </div>
 
   <div class="card">
@@ -682,14 +721,10 @@ function renderSettingsTab() {
     </div>
   </div>
 
-  <div class="card">
-    <div class="switch-row">
-      <div>
-        <p class="settings-title">${icons.clock} Supervised Driving Log</p>
-        <p class="settings-desc">When you end a trip, prompt for driving conditions and the supervising driver before saving.</p>
-      </div>
-      <div id="recordConditionsSwitch" class="switch ${condOn ? "on" : ""}"><div class="knob"></div></div>
-    </div>
+  <div class="card" style="border-color:rgba(224,100,44,.35);">
+    <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
+    <p class="settings-desc">Permanently deletes every logged drive on this device. Your Google Sheet (if connected) is not affected. This can't be undone.</p>
+    <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear all drive history</button>
   </div>`;
 }
 
@@ -750,6 +785,88 @@ function renderConditionsModal() {
   </div>`;
 }
 
+function renderEditTripModal() {
+  const t = state.editingTrip;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">Edit drive</h2>
+        <button id="closeEditTripBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+
+      <label class="field-label">Date</label>
+      <input id="editDate" type="date" class="input" value="${t.date}" style="margin-bottom:14px;" />
+
+      <div class="row-2" style="margin-bottom:14px;">
+        <div>
+          <label class="field-label">Start time</label>
+          <input id="editStartTime" type="time" class="input" value="${t.startTime}" />
+        </div>
+        <div>
+          <label class="field-label">End time</label>
+          <input id="editEndTime" type="time" class="input" value="${t.endTime}" />
+        </div>
+      </div>
+
+      <label class="field-label">Start point</label>
+      <input id="editStartPoint" class="input" value="${escAttr(t.startPoint)}" style="margin-bottom:14px;" />
+
+      <label class="field-label">End point</label>
+      <input id="editEndPoint" class="input" value="${escAttr(t.endPoint)}" style="margin-bottom:14px;" />
+
+      <label class="field-label">Distance (km)</label>
+      <input id="editDistance" class="input" inputmode="decimal" value="${t.distance}" style="margin-bottom:14px;" />
+
+      <label class="field-label">Type</label>
+      <div class="toggle-row" style="margin-bottom:20px;">
+        <button class="toggle normal ${t.tag !== "work" ? "on" : ""}" data-edittag="normal">Normal</button>
+        <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Work</button>
+      </div>
+
+      <div class="row-2">
+        <button id="deleteEditingTripBtn" class="btn btn-ghost" style="color:var(--work);border-color:rgba(224,100,44,.4);">${icons.trash} Delete</button>
+        <button id="saveEditTripBtn" class="btn btn-amber">Save changes</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderClearHistoryModal() {
+  const count = state.trips.length;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2 style="color:var(--work);">Clear all drive history?</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">
+        This will permanently delete ${count} logged drive${count === 1 ? "" : "s"} from this device, along with saved supervisors and recent locations.
+        ${state.sheetLink ? "Your Google Sheet will not be touched." : ""} This action can't be undone.
+      </p>
+      <div class="row-2">
+        <button id="cancelClearHistoryBtn" class="btn btn-ghost">Cancel</button>
+        <button id="confirmClearHistoryBtn" class="btn btn-stop">Clear history</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderDeleteSelectedModal() {
+  const count = state.selectedTripIds.length;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2 style="color:var(--work);">Delete ${count} drive${count === 1 ? "" : "s"}?</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">
+        This will permanently remove the selected drive${count === 1 ? "" : "s"} from this device. This action can't be undone.
+      </p>
+      <div class="row-2">
+        <button id="cancelDeleteSelectedBtn" class="btn btn-ghost">Cancel</button>
+        <button id="confirmDeleteSelectedBtn" class="btn btn-stop">Delete</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function finalizeTrip(trip) {
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
@@ -779,7 +896,7 @@ function attachAppHandlers() {
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
         const trip = {
-          tag: state.settings.tripType || "normal",
+          tag: state.settings.driveType === "work" ? "work" : "normal",
           startPoint: state.startPointInput.trim() || "Unspecified",
           startTime: nowTimeStr(),
           date: todayStr(),
@@ -797,10 +914,10 @@ function attachAppHandlers() {
       renderTimerOnly();
       const epi = document.getElementById("endPointInput");
       if (epi) {
-        epi.oninput = (e) => { state.endPoint = e.target.value; };
-        epi.onblur = () => {
-          const dest = state.endPoint.trim();
-          if (dest && !state.estimating) runRouteEstimate(state.active.startPoint, dest);
+        epi.oninput = (e) => {
+          state.endPoint = e.target.value;
+          const estBtn = document.getElementById("estimateRouteBtn");
+          if (estBtn) estBtn.disabled = !state.endPoint.trim();
         };
       }
       const locEndBtn = document.getElementById("locateEndBtn");
@@ -833,7 +950,7 @@ function attachAppHandlers() {
         stopTicker();
         autoFillCurrentLocation();
 
-        if (state.settings.recordConditions) {
+        if (state.settings.driveType === "supervised") {
           state.pendingTrip = trip;
           state.conditionsForm = { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
           state.addingSupervisor = false;
@@ -855,19 +972,16 @@ function attachAppHandlers() {
       render();
     };
 
-    const condSw = document.getElementById("recordConditionsSwitch");
-    if (condSw) condSw.onclick = async () => {
-      state.settings.recordConditions = !state.settings.recordConditions;
-      await storageSet(SETTINGS_KEY, state.settings);
-      render();
-    };
+    document.querySelectorAll("[data-drivetype]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.driveType = btn.dataset.drivetype;
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
 
-    const tripTypeSwitch = document.getElementById("tripTypeSwitch");
-    if (tripTypeSwitch) tripTypeSwitch.onclick = async () => {
-      state.settings.tripType = state.settings.tripType === "work" ? "normal" : "work";
-      await storageSet(SETTINGS_KEY, state.settings);
-      render();
-    };
+    const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+    if (clearHistoryBtn) clearHistoryBtn.onclick = () => { state.confirmingClearHistory = true; render(); };
 
     const connectBtn = document.getElementById("connectSheetBtn");
     if (connectBtn) connectBtn.onclick = async () => {
@@ -897,6 +1011,50 @@ function attachAppHandlers() {
     document.getElementById("filterFrom").onchange = (e) => { state.filterFrom = e.target.value; render(); };
     document.getElementById("filterTo").onchange = (e) => { state.filterTo = e.target.value; render(); };
     document.getElementById("filterSearch").oninput = (e) => { state.filterSearch = e.target.value; render(); };
+
+    const toggleSelectBtn = document.getElementById("toggleSelectModeBtn");
+    if (toggleSelectBtn) toggleSelectBtn.onclick = () => {
+      state.historySelectMode = !state.historySelectMode;
+      state.selectedTripIds = [];
+      render();
+    };
+
+    const selectAllBox = document.getElementById("selectAllVisible");
+    if (selectAllBox) selectAllBox.onchange = (e) => {
+      const visibleIds = filteredTrips().map(t => t.id);
+      if (e.target.checked) {
+        state.selectedTripIds = Array.from(new Set([...state.selectedTripIds, ...visibleIds]));
+      } else {
+        state.selectedTripIds = state.selectedTripIds.filter(id => !visibleIds.includes(id));
+      }
+      render();
+    };
+
+    document.querySelectorAll(".tripCheckbox").forEach(cb => {
+      cb.onchange = (e) => {
+        const id = cb.dataset.tripid;
+        if (e.target.checked) {
+          if (!state.selectedTripIds.includes(id)) state.selectedTripIds.push(id);
+        } else {
+          state.selectedTripIds = state.selectedTripIds.filter(x => x !== id);
+        }
+        render();
+      };
+    });
+
+    document.querySelectorAll(".editTripBtn").forEach(btn => {
+      btn.onclick = () => {
+        const trip = state.trips.find(t => t.id === btn.dataset.tripid);
+        if (trip) { state.editingTrip = { ...trip }; render(); }
+      };
+    });
+
+    const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
+    if (deleteSelectedBtn) deleteSelectedBtn.onclick = () => {
+      if (state.selectedTripIds.length === 0) return;
+      state.confirmingDeleteSelected = true;
+      render();
+    };
   }
 
   if (state.pendingTrip) {
@@ -955,6 +1113,79 @@ function attachAppHandlers() {
         await storageSet(SETTINGS_KEY, state.settings);
       }
       await finalizeTrip(trip);
+      render();
+    };
+  }
+
+  if (state.confirmingClearHistory) {
+    const cancelBtn = document.getElementById("cancelClearHistoryBtn");
+    if (cancelBtn) cancelBtn.onclick = () => { state.confirmingClearHistory = false; render(); };
+
+    const confirmBtn = document.getElementById("confirmClearHistoryBtn");
+    if (confirmBtn) confirmBtn.onclick = async () => {
+      state.trips = [];
+      state.supervisors = [];
+      state.recentLocations = [];
+      state.filterTag = "all"; state.filterFrom = ""; state.filterTo = ""; state.filterSearch = "";
+      await storageSet(TRIPS_KEY, state.trips);
+      await storageSet(SUPERVISORS_KEY, state.supervisors);
+      await storageSet(RECENT_LOCATIONS_KEY, state.recentLocations);
+      state.confirmingClearHistory = false;
+      render();
+    };
+  }
+
+  if (state.editingTrip) {
+    const et = state.editingTrip;
+    document.getElementById("editDate").onchange = (e) => { et.date = e.target.value; };
+    document.getElementById("editStartTime").onchange = (e) => { et.startTime = e.target.value; };
+    document.getElementById("editEndTime").onchange = (e) => { et.endTime = e.target.value; };
+    document.getElementById("editStartPoint").oninput = (e) => { et.startPoint = e.target.value; };
+    document.getElementById("editEndPoint").oninput = (e) => { et.endPoint = e.target.value; };
+    document.getElementById("editDistance").oninput = (e) => { et.distance = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = et.distance; };
+
+    document.querySelectorAll("[data-edittag]").forEach(btn => {
+      btn.onclick = () => { et.tag = btn.dataset.edittag; render(); };
+    });
+
+    const closeBtn = document.getElementById("closeEditTripBtn");
+    if (closeBtn) closeBtn.onclick = () => { state.editingTrip = null; render(); };
+
+    const deleteBtn = document.getElementById("deleteEditingTripBtn");
+    if (deleteBtn) deleteBtn.onclick = async () => {
+      state.trips = state.trips.filter(t => t.id !== et.id);
+      state.selectedTripIds = state.selectedTripIds.filter(id => id !== et.id);
+      await storageSet(TRIPS_KEY, state.trips);
+      state.editingTrip = null;
+      render();
+    };
+
+    const saveBtn = document.getElementById("saveEditTripBtn");
+    if (saveBtn) saveBtn.onclick = async () => {
+      const dist = parseFloat(et.distance);
+      if (!et.startPoint.trim() || !et.endPoint.trim() || isNaN(dist)) return;
+      state.trips = state.trips.map(t => t.id === et.id ? {
+        ...t, date: et.date, startTime: et.startTime, endTime: et.endTime,
+        startPoint: et.startPoint.trim(), endPoint: et.endPoint.trim(),
+        distance: dist, tag: et.tag,
+      } : t);
+      await storageSet(TRIPS_KEY, state.trips);
+      state.editingTrip = null;
+      render();
+    };
+  }
+
+  if (state.confirmingDeleteSelected) {
+    const cancelBtn = document.getElementById("cancelDeleteSelectedBtn");
+    if (cancelBtn) cancelBtn.onclick = () => { state.confirmingDeleteSelected = false; render(); };
+
+    const confirmBtn = document.getElementById("confirmDeleteSelectedBtn");
+    if (confirmBtn) confirmBtn.onclick = async () => {
+      state.trips = state.trips.filter(t => !state.selectedTripIds.includes(t.id));
+      await storageSet(TRIPS_KEY, state.trips);
+      state.selectedTripIds = [];
+      state.confirmingDeleteSelected = false;
+      state.historySelectMode = false;
       render();
     };
   }
