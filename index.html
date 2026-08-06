@@ -139,11 +139,11 @@ function loadGoogleMapsScript() {
   document.head.appendChild(script);
 }
 
-let placesAutocompleteService = null;
-function getPlacesService() {
-  if (!window.google || !window.google.maps || !window.google.maps.places) return null;
-  if (!placesAutocompleteService) placesAutocompleteService = new google.maps.places.AutocompleteService();
-  return placesAutocompleteService;
+let placesLibraryPromise = null;
+function getPlacesLibrary() {
+  if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
+  if (!placesLibraryPromise) placesLibraryPromise = google.maps.importLibrary("places");
+  return placesLibraryPromise;
 }
 
 function debounce(fn, delay) {
@@ -162,16 +162,22 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
     wrapper.appendChild(dropdown);
   }
   const hide = () => { dropdown.innerHTML = ""; dropdown.style.display = "none"; };
-  const search = debounce(() => {
+  const search = debounce(async () => {
     if (!mapsConfigured()) return;
-    const service = getPlacesService();
+    const libraryPromise = getPlacesLibrary();
     const query = inputEl.value.trim();
-    if (!service || query.length < 3) { hide(); return; }
-    service.getPlacePredictions({ input: query }, (predictions, status) => {
-      if (status !== "OK" || !predictions || !predictions.length) { hide(); return; }
-      dropdown.innerHTML = predictions.slice(0, 5).map(p =>
-        `<div class="places-suggestion" data-desc="${escAttr(p.description)}">${p.description}</div>`
-      ).join("");
+    if (!libraryPromise || query.length < 3) { hide(); return; }
+    try {
+      const { AutocompleteSuggestion, AutocompleteSessionToken } = await libraryPromise;
+      const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions({
+        input: query,
+        sessionToken: new AutocompleteSessionToken(),
+      });
+      if (!suggestions || !suggestions.length) { hide(); return; }
+      dropdown.innerHTML = suggestions.slice(0, 5).map(s => {
+        const text = s.placePrediction && s.placePrediction.text ? s.placePrediction.text.text : "";
+        return `<div class="places-suggestion" data-desc="${escAttr(text)}">${text}</div>`;
+      }).join("");
       dropdown.style.display = "block";
       dropdown.querySelectorAll(".places-suggestion").forEach(el => {
         el.onmousedown = (e) => {
@@ -180,7 +186,9 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
           hide();
         };
       });
-    });
+    } catch (e) {
+      hide();
+    }
   }, 300);
   inputEl.addEventListener("input", search);
   inputEl.addEventListener("blur", () => setTimeout(hide, 150));
