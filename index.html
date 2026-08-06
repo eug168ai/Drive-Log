@@ -229,9 +229,10 @@ const state = {
   loginName: "",
   loginPin: "",
   loginEnterPin: "",
-  settings: { autoBackup: true, driveType: "normal", lastSupervisorId: "" },
+  settings: { driveType: "normal", lastSupervisorId: "" },
   sheetLink: null,
   googleBusy: false,
+  syncingNow: false,
   googleError: "",
   supervisors: [],
   recentLocations: [],
@@ -453,7 +454,7 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { autoBackup: true, driveType: "normal", lastSupervisorId: "" };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "" };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
@@ -673,7 +674,7 @@ function renderHistoryTab() {
 }
 
 function renderSettingsTab() {
-  const on = !!state.settings.autoBackup;
+  const unsyncedCount = state.trips.filter(t => !t.synced).length;
   return `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
@@ -685,9 +686,12 @@ function renderSettingsTab() {
     ` : state.sheetLink ? `
       <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
       <div class="settings-actions" style="margin-top:12px;">
+        <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open my Google Sheet</a>
+        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open Google Sheets</a>
       </div>
+      ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
+      ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     ` : `
       <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
       <button id="connectSheetBtn" class="btn btn-amber" style="margin-top:10px;" ${state.googleBusy ? "disabled" : ""}>
@@ -709,16 +713,6 @@ function renderSettingsTab() {
       : state.settings.driveType === "supervised" ? "Asks for conditions and supervisor details before saving each drive — for learner logbook requirements."
       : "Logs new drives as Normal — everyday driving with no extra detail collected."
     }</p>
-  </div>
-
-  <div class="card">
-    <div class="switch-row">
-      <div>
-        <p class="settings-title">${icons.download} Auto-Backup</p>
-        <p class="settings-desc">The moment you tap "Stop & Save Trip", your trip is automatically updated in Google Sheets.</p>
-      </div>
-      <div id="autoBackupSwitch" class="switch ${on ? "on" : ""}"><div class="knob"></div></div>
-    </div>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
@@ -867,15 +861,31 @@ function renderDeleteSelectedModal() {
   </div>`;
 }
 
+async function syncUnsyncedTrips() {
+  if (!state.sheetLink) return;
+  const unsynced = state.trips.filter(t => !t.synced);
+  if (unsynced.length === 0) return;
+  let anyFailed = false;
+  for (const t of unsynced) {
+    try {
+      await appendTripToSheet(state.sheetLink.spreadsheetId, t);
+      t.synced = true;
+    } catch (e) {
+      anyFailed = true;
+    }
+  }
+  await storageSet(TRIPS_KEY, state.trips);
+  state.googleError = anyFailed ? "Some drives didn't sync to Sheets — open Settings to try again." : "";
+  render();
+}
+
 async function finalizeTrip(trip) {
+  trip.synced = false;
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
-  if (state.settings.autoBackup && state.sheetLink) {
-    appendTripToSheet(state.sheetLink.spreadsheetId, trip).catch(() => {
-      state.googleError = "Last trip didn't sync to Sheets — open Settings to reconnect.";
-      render();
-    });
+  if (state.sheetLink) {
+    syncUnsyncedTrips();
   }
 }
 
@@ -965,13 +975,6 @@ function attachAppHandlers() {
   }
 
   if (state.tab === "settings") {
-    const sw = document.getElementById("autoBackupSwitch");
-    if (sw) sw.onclick = async () => {
-      state.settings.autoBackup = !state.settings.autoBackup;
-      await storageSet(SETTINGS_KEY, state.settings);
-      render();
-    };
-
     document.querySelectorAll("[data-drivetype]").forEach(btn => {
       btn.onclick = async () => {
         state.settings.driveType = btn.dataset.drivetype;
@@ -990,10 +993,18 @@ function attachAppHandlers() {
         const { spreadsheetId, url } = await createDriveLogSheet();
         state.sheetLink = { spreadsheetId, url };
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
+        syncUnsyncedTrips();
       } catch (e) {
         state.googleError = "Couldn't connect. Make sure you allow the sign-in popup and try again.";
       }
       state.googleBusy = false; render();
+    };
+
+    const syncNowBtn = document.getElementById("syncNowBtn");
+    if (syncNowBtn) syncNowBtn.onclick = async () => {
+      state.syncingNow = true; render();
+      await syncUnsyncedTrips();
+      state.syncingNow = false; render();
     };
 
     const disconnectBtn = document.getElementById("disconnectSheetBtn");
