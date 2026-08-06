@@ -196,7 +196,9 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
         };
       });
     } catch (e) {
-      hide();
+      const detail = (e && (e.message || e.status || e.code)) || (e ? JSON.stringify(e) : "unknown error");
+      dropdown.innerHTML = `<div class="places-suggestion" style="color:var(--work);cursor:default;">Lookup failed (${detail})</div>`;
+      dropdown.style.display = "block";
     }
   }, 300);
   inputEl.addEventListener("input", search);
@@ -748,9 +750,9 @@ function renderLogTab() {
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:6px;">
         <button id="preTripEstimateBtn" class="chip" type="button" ${state.preTripEstimating ? "disabled" : ""}>
-          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate distance & time"}
+          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button">${icons.clock} Log this Drive</button>` : ""}
       </div>
@@ -777,7 +779,7 @@ function renderLogTab() {
 
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
       <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
-        ${icons.route} ${state.estimating ? "Calculating…" : "Estimate distance & time"}
+        ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
       </button>
       ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.estimatedDuration} min drive</span>` : ""}
     </div>
