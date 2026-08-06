@@ -686,16 +686,16 @@ function renderSettingsTab() {
     ${!googleConfigured() ? `
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
-      <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
+      <p class="settings-desc">Every drive automatically syncs to your Google Sheet.</p>
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open Google Sheets</a>
+        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open Sheets</a>
       </div>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     ` : `
-      <p class="settings-desc">Connect your own Google account once, and every trip you end from now on saves straight to a Google Sheet in your Drive.</p>
+      <p class="settings-desc">Connect once to save every drive straight to a Google Sheet.</p>
       <button id="connectSheetBtn" class="btn btn-amber" style="margin-top:10px;" ${state.googleBusy ? "disabled" : ""}>
         ${state.googleBusy ? "Connecting…" : "Connect Google Sheets"}
       </button>
@@ -719,7 +719,7 @@ function renderSettingsTab() {
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
     <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
-    <p class="settings-desc">Permanently deletes every logged drive on this device. Your Google Sheet (if connected) is not affected. This can't be undone.</p>
+    <p class="settings-desc">Deletes all logged drives from this device. Can't be undone — your Google Sheet isn't affected.</p>
     <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear all drive history</button>
   </div>`;
 }
