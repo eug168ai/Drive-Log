@@ -68,7 +68,7 @@
   .toggle.normal.on{background:rgba(76,159,112,.18);border-color:var(--normal);color:var(--normal);}
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
   .toggle.supervised.on{background:rgba(242,169,59,.18);border-color:var(--amber);color:var(--amber);}
-  .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;
+  .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;
        display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-amber{background:var(--amber);color:var(--bg);}
   .btn-stop{background:var(--work);color:#fff;}
@@ -419,17 +419,34 @@ async function addRecentLocations(locs) {
   await storageSet(RECENT_LOCATIONS_KEY, list);
 }
 
+let routesLibraryPromise = null;
+function getRoutesLibrary() {
+  if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
+  if (!routesLibraryPromise) routesLibraryPromise = google.maps.importLibrary("routes");
+  return routesLibraryPromise;
+}
+
 async function estimateRoute(origin, destination) {
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${encodeURIComponent(origin)}&destinations=${encodeURIComponent(destination)}&mode=driving&units=metric&key=${GOOGLE_MAPS_API_KEY}`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if (data.status !== "OK") throw new Error("Couldn't calculate that route.");
-  const element = data.rows && data.rows[0] && data.rows[0].elements && data.rows[0].elements[0];
-  if (!element || element.status !== "OK") throw new Error("Couldn't find a driving route between those points.");
-  return {
-    distanceKm: element.distance.value / 1000,
-    durationMin: Math.max(1, Math.round(element.duration.value / 60)),
-  };
+  const libraryPromise = getRoutesLibrary();
+  if (!libraryPromise) throw new Error("Distance lookup isn't ready yet — try again in a moment.");
+  const { DistanceMatrixService } = await libraryPromise;
+  const service = new DistanceMatrixService();
+  return new Promise((resolve, reject) => {
+    service.getDistanceMatrix({
+      origins: [origin],
+      destinations: [destination],
+      travelMode: google.maps.TravelMode.DRIVING,
+      unitSystem: google.maps.UnitSystem.METRIC,
+    }, (response, status) => {
+      if (status !== "OK") { reject(new Error("Couldn't calculate that route.")); return; }
+      const element = response.rows && response.rows[0] && response.rows[0].elements && response.rows[0].elements[0];
+      if (!element || element.status !== "OK") { reject(new Error("Couldn't find a driving route between those points.")); return; }
+      resolve({
+        distanceKm: element.distance.value / 1000,
+        durationMin: Math.max(1, Math.round(element.duration.value / 60)),
+      });
+    });
+  });
 }
 
 async function runRouteEstimate(origin, destination) {
