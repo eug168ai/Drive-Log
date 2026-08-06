@@ -105,8 +105,8 @@
   .switch.on .knob{transform:translateX(20px);background:var(--bg);}
   .settings-title{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin:0 0 4px;}
   .settings-desc{color:var(--muted);font-size:12px;line-height:1.5;margin:2px 0 0;}
-  .settings-actions{display:flex;gap:8px;flex-wrap:wrap;}
-  .settings-actions .btn{width:auto;padding:9px 14px;font-size:13px;}
+  .settings-actions{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .settings-actions .btn{width:auto;padding:9px 14px;font-size:13px;flex-shrink:0;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -783,12 +783,12 @@ function renderLogTab() {
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-bottom:6px;">
-        <button id="preTripEstimateBtn" class="chip" type="button" ${state.preTripEstimating ? "disabled" : ""}>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:6px;padding-bottom:2px;">
+        <button id="preTripEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;" ${state.preTripEstimating ? "disabled" : ""}>
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
         </button>
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button">${icons.clock} Log this Drive</button>` : ""}
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;margin-left:auto;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;flex-shrink:0;margin-left:auto;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
       </div>
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
