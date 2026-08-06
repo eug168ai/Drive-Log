@@ -628,6 +628,12 @@ function odometer(value) {
   const str = Math.round(Math.max(0, value)).toString().padStart(6, "0").slice(-6);
   return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
 }
+function odometerTime(mins) {
+  const h = String(Math.min(999, Math.floor(mins / 60))).padStart(3, "0");
+  const m = String(mins % 60).padStart(2, "0");
+  const str = `${h}:${m}`;
+  return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
+}
 
 function totalMiles() { return state.trips.reduce((s, t) => s + t.distance, 0); }
 function tripMinutes(t) {
@@ -646,6 +652,11 @@ function weekTotal() {
   const now = new Date();
   const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
   return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance, 0);
+}
+function weekMinutes() {
+  const now = new Date();
+  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + tripMinutes(t), 0);
 }
 function filteredTrips() {
   return state.trips.filter(t => {
@@ -672,6 +683,10 @@ function renderApp() {
         <div class="stat-block">
           <p class="odo-label">Total distance</p>
           ${odometer(totalMiles())}
+        </div>
+        <div class="stat-block">
+          <p class="odo-label">Total time</p>
+          ${odometerTime(totalMinutes())}
         </div>
         <button id="settingsBtn" class="icon-btn ${state.tab === "settings" ? "active" : ""}" title="Settings">${icons.gear}</button>
       </div>
@@ -701,12 +716,11 @@ function renderLogTab() {
   <div class="card">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
-        <p class="field-label" style="margin-bottom:2px;">This week</p>
+        <p class="field-label" style="margin:0 0 2px;">This week</p>
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${weekTotal().toFixed(1)} km</p>
       </div>
       <div style="text-align:right;">
-        <p class="field-label" style="margin-bottom:2px;">Total time</p>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDuration(totalMinutes())}</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDuration(weekMinutes())}</p>
       </div>
     </div>
   </div>
@@ -734,18 +748,18 @@ function renderLogTab() {
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
         <button id="preTripEstimateBtn" class="chip" type="button" ${state.preTripEstimating ? "disabled" : ""}>
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate distance & time"}
         </button>
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button">${icons.clock} Log this Drive</button>` : ""}
       </div>
+      ${state.preTripDistance != null && !state.preTripEstimating ? `<p class="mono" style="color:var(--muted);font-size:12px;margin:0 0 6px;">~${state.preTripDistance} km · ${state.preTripDuration} min</p>` : ""}
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
-      ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="btn btn-ghost" style="margin-top:10px;">${icons.clock} Log this as a drive</button>` : ""}
     </div>
     <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
 
-    <button id="startTripBtn" class="btn btn-amber">${icons.play} Start trip</button>
+    <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
   </div>` : `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -869,24 +883,23 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin-bottom:10px;">${icons.car} Drive Type</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="settings-desc">Show in Log Screen</span>
+        <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
+      </div>
+    </div>
     <div class="toggle-row" style="margin-bottom:12px;">
       <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
       <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
-    <p class="settings-desc" style="margin:0 0 16px;">${
+    <p class="settings-desc" style="margin:0;">${
       state.settings.driveType === "work" ? "Logs new drives as Work — for business or employment driving records."
       : state.settings.driveType === "supervised" ? "Asks for conditions and supervisor details before saving each drive — for learner logbook requirements."
       : "Logs new drives as Normal — everyday driving with no extra detail collected."
     }</p>
-    <div class="switch-row">
-      <div>
-        <p class="settings-title">Show on Log screen</p>
-        <p class="settings-desc">Lets you switch Drive Type right from the Log tab, not just here.</p>
-      </div>
-      <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
-    </div>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
