@@ -68,7 +68,7 @@
   .toggle.normal.on{background:rgba(76,159,112,.18);border-color:var(--normal);color:var(--normal);}
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
   .toggle.supervised.on{background:rgba(242,169,59,.18);border-color:var(--amber);color:var(--amber);}
-  .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;
+  .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;
        display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-amber{background:var(--amber);color:var(--bg);}
   .btn-stop{background:var(--work);color:#fff;}
@@ -128,6 +128,11 @@ const GOOGLE_CLIENT_ID = "247082567215-2sethv759pn3rp0g7fvrkf0lgnfok0e0.apps.goo
 const GOOGLE_MAPS_API_KEY = "AIzaSyB2oTEiedrTleQf_ugwHqgodNltiakkoyk";
 function mapsConfigured() { return GOOGLE_MAPS_API_KEY && !GOOGLE_MAPS_API_KEY.startsWith("PASTE_"); }
 
+window.gm_authFailure = function () {
+  state.mapsAuthError = "Google Maps rejected the API key (auth error) — check the key's restrictions and that \"Maps JavaScript API\" is enabled, not just Places/Geocoding/Routes.";
+  render();
+};
+
 function loadGoogleMapsScript() {
   if (!mapsConfigured()) return;
   if (document.getElementById("googleMapsScript")) return;
@@ -136,6 +141,10 @@ function loadGoogleMapsScript() {
   script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
   script.async = true;
   script.defer = true;
+  script.onerror = () => {
+    state.mapsAuthError = "Google Maps script failed to load — check your connection or the API key setup.";
+    render();
+  };
   document.head.appendChild(script);
 }
 
@@ -312,6 +321,7 @@ const state = {
   googleBusy: false,
   syncingNow: false,
   googleError: "",
+  mapsAuthError: "",
   supervisors: [],
   recentLocations: [],
   pendingTrip: null,
@@ -375,7 +385,8 @@ async function reverseGeocode(lat, lng) {
   try {
     response = await geocoder.geocode({ location: { lat, lng } });
   } catch (e) {
-    throw new Error("Couldn't find an address for your location.");
+    const detail = (e && (e.message || e.status || e.code)) || (e ? JSON.stringify(e) : "unknown error");
+    throw new Error(`Couldn't find an address for your location (${detail}).`);
   }
   const results = response && response.results;
   if (!results || !results.length) throw new Error("Couldn't find an address for your location.");
@@ -453,9 +464,9 @@ async function estimateRoute(origin, destination) {
       travelMode: google.maps.TravelMode.DRIVING,
       unitSystem: google.maps.UnitSystem.METRIC,
     }, (response, status) => {
-      if (status !== "OK") { reject(new Error("Couldn't calculate that route.")); return; }
+      if (status !== "OK") { reject(new Error(`Couldn't calculate that route (${status}).`)); return; }
       const element = response.rows && response.rows[0] && response.rows[0].elements && response.rows[0].elements[0];
-      if (!element || element.status !== "OK") { reject(new Error("Couldn't find a driving route between those points.")); return; }
+      if (!element || element.status !== "OK") { reject(new Error(`Couldn't find a driving route (${element ? element.status : "no route data"}).`)); return; }
       resolve({
         distanceKm: element.distance.value / 1000,
         durationMin: Math.max(1, Math.round(element.duration.value / 60)),
@@ -693,6 +704,7 @@ function renderApp() {
 function renderLogTab() {
   const a = state.active;
   return `
+  ${state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : ""}
   <div class="card">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
