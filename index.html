@@ -51,7 +51,12 @@
   .input, select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
          padding:9px 10px;color:var(--text);font-size:14px;outline:none;}
   .input:focus{border-color:var(--amber);}
-  .input-icon{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 10px;}
+  .input-icon{display:flex;align-items:center;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0 10px;position:relative;}
+  .places-suggestions{position:absolute;left:0;right:0;top:100%;margin-top:4px;background:var(--surface);border:1px solid var(--border);
+                       border-radius:8px;overflow:hidden;z-index:40;display:none;box-shadow:0 8px 24px rgba(0,0,0,.4);}
+  .places-suggestion{padding:9px 12px;font-size:13px;color:var(--text);cursor:pointer;border-bottom:1px solid rgba(42,47,56,.6);}
+  .places-suggestion:last-child{border-bottom:none;}
+  .places-suggestion:hover, .places-suggestion.hovered{background:var(--bg);}
   .input-icon input{border:none;background:transparent;padding:9px 0;flex:1;color:var(--text);outline:none;font-size:14px;}
   .locate-btn{background:none;border:none;color:var(--amber);display:flex;align-items:center;padding:6px;cursor:pointer;flex-shrink:0;}
   .locate-btn:disabled{color:var(--muted);}
@@ -122,6 +127,65 @@ const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const GOOGLE_CLIENT_ID = "247082567215-2sethv759pn3rp0g7fvrkf0lgnfok0e0.apps.googleusercontent.com";
 const GOOGLE_MAPS_API_KEY = "AIzaSyB2oTEiedrTleQf_ugwHqgodNltiakkoyk";
 function mapsConfigured() { return GOOGLE_MAPS_API_KEY && !GOOGLE_MAPS_API_KEY.startsWith("PASTE_"); }
+
+function loadGoogleMapsScript() {
+  if (!mapsConfigured()) return;
+  if (document.getElementById("googleMapsScript")) return;
+  const script = document.createElement("script");
+  script.id = "googleMapsScript";
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+  script.async = true;
+  script.defer = true;
+  document.head.appendChild(script);
+}
+
+let placesAutocompleteService = null;
+function getPlacesService() {
+  if (!window.google || !window.google.maps || !window.google.maps.places) return null;
+  if (!placesAutocompleteService) placesAutocompleteService = new google.maps.places.AutocompleteService();
+  return placesAutocompleteService;
+}
+
+function debounce(fn, delay) {
+  let timer;
+  return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), delay); };
+}
+
+function attachPlacesAutocomplete(inputEl, onSelect) {
+  if (!inputEl) return;
+  const wrapper = inputEl.closest(".input-icon");
+  if (!wrapper) return;
+  let dropdown = wrapper.querySelector(".places-suggestions");
+  if (!dropdown) {
+    dropdown = document.createElement("div");
+    dropdown.className = "places-suggestions";
+    wrapper.appendChild(dropdown);
+  }
+  const hide = () => { dropdown.innerHTML = ""; dropdown.style.display = "none"; };
+  const search = debounce(() => {
+    if (!mapsConfigured()) return;
+    const service = getPlacesService();
+    const query = inputEl.value.trim();
+    if (!service || query.length < 3) { hide(); return; }
+    service.getPlacePredictions({ input: query }, (predictions, status) => {
+      if (status !== "OK" || !predictions || !predictions.length) { hide(); return; }
+      dropdown.innerHTML = predictions.slice(0, 5).map(p =>
+        `<div class="places-suggestion" data-desc="${escAttr(p.description)}">${p.description}</div>`
+      ).join("");
+      dropdown.style.display = "block";
+      dropdown.querySelectorAll(".places-suggestion").forEach(el => {
+        el.onmousedown = (e) => {
+          e.preventDefault();
+          onSelect(el.dataset.desc);
+          hide();
+        };
+      });
+    });
+  }, 300);
+  inputEl.addEventListener("input", search);
+  inputEl.addEventListener("blur", () => setTimeout(hide, 150));
+}
+
 const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets";
 let googleTokenClient = null;
 let googleAccessToken = null;
@@ -623,7 +687,7 @@ function renderLogTab() {
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
       </div>
-      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 16px;">${state.preTripEstimateError}</p>` : `<p class="settings-desc" style="margin:0 0 16px;">Estimates distance and drive time between the two locations.</p>`}
+      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 16px;">${state.preTripEstimateError}</p>` : `<p class="settings-desc" style="margin:0 0 16px;">Estimates distance and drive time.</p>`}
     </div>
     <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional — leave blank to skip, or fill it in for a quick estimate before you go.</p>
 
@@ -636,7 +700,7 @@ function renderLogTab() {
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${a.startTime}</p>
 
-    <label class="field-label">End point</label>
+    <label class="field-label">End Location</label>
     <div class="input-icon" style="margin-bottom:10px;">
       ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" />
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
@@ -649,7 +713,7 @@ function renderLogTab() {
       </button>
       ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;">~${state.estimatedDuration} min drive</span>` : ""}
     </div>
-    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : `<p class="settings-desc" style="margin:0 0 12px;">Fills in distance and an estimated drive time from the two addresses. You can still edit the number below.</p>`}
+    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : `<p class="settings-desc" style="margin:0 0 12px;">Estimates distance and drive time.</p>`}
 
     <label class="field-label">Distance (km)</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
@@ -735,9 +799,9 @@ function renderSettingsTab() {
     ` : state.sheetLink ? `
       <p class="settings-desc">Every drive automatically syncs to your Google Sheet.</p>
       <div class="settings-actions" style="margin-top:12px;">
-        <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync now"}</button>
+        <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <a href="${state.sheetLink.url}" target="_blank" class="btn drive-btn" style="text-decoration:none;">Open Sheets</a>
+        <a href="${state.sheetLink.url}" target="_blank" class="btn btn-ghost" style="text-decoration:none;">Open Sheet</a>
       </div>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
@@ -852,10 +916,10 @@ function renderEditTripModal() {
         </div>
       </div>
 
-      <label class="field-label">Start point</label>
+      <label class="field-label">Start Location</label>
       <input id="editStartPoint" class="input" value="${escAttr(t.startPoint)}" style="margin-bottom:14px;" />
 
-      <label class="field-label">End point</label>
+      <label class="field-label">End Location</label>
       <input id="editEndPoint" class="input" value="${escAttr(t.endPoint)}" style="margin-bottom:14px;" />
 
       <label class="field-label">Distance (km)</label>
@@ -949,19 +1013,35 @@ function attachAppHandlers() {
   if (state.tab === "log") {
     if (!state.active) {
       const spi = document.getElementById("startPointInput");
-      if (spi) spi.oninput = (e) => { state.startPointInput = e.target.value; };
+      if (spi) {
+        spi.oninput = (e) => { state.startPointInput = e.target.value; };
+        attachPlacesAutocomplete(spi, (desc) => {
+          spi.value = desc;
+          state.startPointInput = desc;
+        });
+      }
       const locStartBtn = document.getElementById("locateStartBtn");
       if (locStartBtn) locStartBtn.onclick = () => useMyLocation("start");
 
       const peti = document.getElementById("preTripEndInput");
-      if (peti) peti.oninput = (e) => {
-        state.preTripEndLocation = e.target.value;
-        const hasText = !!state.preTripEndLocation.trim();
-        const section = document.getElementById("preTripEstimateSection");
-        const hint = document.getElementById("preTripEndHint");
-        if (section) section.style.display = hasText ? "" : "none";
-        if (hint) hint.style.display = hasText ? "none" : "";
-      };
+      if (peti) {
+        peti.oninput = (e) => {
+          state.preTripEndLocation = e.target.value;
+          const hasText = !!state.preTripEndLocation.trim();
+          const section = document.getElementById("preTripEstimateSection");
+          const hint = document.getElementById("preTripEndHint");
+          if (section) section.style.display = hasText ? "" : "none";
+          if (hint) hint.style.display = hasText ? "none" : "";
+        };
+        attachPlacesAutocomplete(peti, (desc) => {
+          peti.value = desc;
+          state.preTripEndLocation = desc;
+          const section = document.getElementById("preTripEstimateSection");
+          const hint = document.getElementById("preTripEndHint");
+          if (section) section.style.display = "";
+          if (hint) hint.style.display = "none";
+        });
+      }
       const preTripEstBtn = document.getElementById("preTripEstimateBtn");
       if (preTripEstBtn) preTripEstBtn.onclick = () => {
         const origin = state.startPointInput.trim();
@@ -1001,6 +1081,12 @@ function attachAppHandlers() {
           const estBtn = document.getElementById("estimateRouteBtn");
           if (estBtn) estBtn.disabled = !state.endPoint.trim();
         };
+        attachPlacesAutocomplete(epi, (desc) => {
+          epi.value = desc;
+          state.endPoint = desc;
+          const estBtn = document.getElementById("estimateRouteBtn");
+          if (estBtn) estBtn.disabled = !state.endPoint.trim();
+        });
       }
       const locEndBtn = document.getElementById("locateEndBtn");
       if (locEndBtn) locEndBtn.onclick = () => useMyLocation("end");
@@ -1287,6 +1373,7 @@ function attachAppHandlers() {
 }
 
 (async function init() {
+  loadGoogleMapsScript();
   state._existingProfile = await storageGet(PROFILE_KEY);
   state.loadingProfile = false;
   render();
