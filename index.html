@@ -94,12 +94,16 @@
   .chip{padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
-  table{width:100%;border-collapse:collapse;font-size:12px;}
+  table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;}
   thead th{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);
-           text-align:left;padding:8px 10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;}
-  tbody td{padding:8px 10px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;}
+           text-align:left;padding:8px 6px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;}
+  tbody td{padding:8px 6px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .route-cell{max-width:140px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
+  .col-date{width:56px;}
+  .col-time{width:76px;}
+  .col-num{width:32px;}
+  .col-type{width:60px;}
+  .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -121,8 +125,8 @@
   .settings-actions{display:flex;gap:8px;flex-wrap:wrap;}
   .settings-actions .btn{width:auto;padding:8px 10px;font-size:12px;flex:1 1 0;min-width:0;white-space:nowrap;}
   .settings-inline-controls{display:flex;gap:8px;align-items:center;}
-  .settings-inline-controls .input{flex:1;min-width:0;}
-  .settings-inline-controls .btn{width:auto;flex-shrink:0;padding:9px 12px;font-size:13px;white-space:nowrap;}
+  .settings-inline-controls .input{flex:1 1 0;min-width:0;}
+  .settings-inline-controls .btn{flex:1 1 0;width:auto;min-width:0;padding:9px 12px;font-size:13px;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -653,7 +657,7 @@ const state = {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: false, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
-    fuelMode: "estimated", fuelRate: "", fuelPrice: "",
+    fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
   },
   sheetLink: null,
   googleBusy: false,
@@ -1038,6 +1042,7 @@ async function loadData() {
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
   if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
   if (!state.settings.fuelMode) state.settings.fuelMode = "estimated";
+  if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
@@ -1149,6 +1154,13 @@ function weekMinutes() {
   const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
   return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + tripMinutes(t), 0);
 }
+function weekFuelCost() {
+  const perKm = fuelCostPerKm();
+  if (perKm == null) return null;
+  const now = new Date();
+  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance * perKm, 0);
+}
 
 // --- Fuel cost -------------------------------------------------------------
 // "Accurate" mode: average spend per unit distance, derived from logged
@@ -1178,6 +1190,7 @@ function estimatedFuelCostPerKm() {
   return (rate / 100) * price;
 }
 function fuelCostPerKm() {
+  if (state.settings.fuelTrackingEnabled === false) return null;
   return state.settings.fuelMode === "accurate" ? accurateFuelCostPerKm() : estimatedFuelCostPerKm();
 }
 function formatFuelCostPerUnit() {
@@ -1281,12 +1294,17 @@ function renderLogTab() {
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
         <p class="field-label" style="margin:0 0 2px;">This week</p>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDistance(weekTotal())}</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(weekTotal()).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
       </div>
       <div style="text-align:right;">
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDuration(weekMinutes())}</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${(() => { const mins = weekMinutes(); const h = Math.floor(mins / 60); const m = mins % 60; return `${h}h<span style="margin-left:2px;">${m}m</span>`; })()}</p>
       </div>
     </div>
+    ${(() => { const cost = weekFuelCost(); return cost != null ? `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+      <span class="settings-desc" style="margin:0;">Est. fuel cost</span>
+      <span class="mono" style="font-size:14px;font-weight:600;">${cost.toFixed(2)}</span>
+    </div>` : ""; })()}
   </div>
 
   ${!a ? `
@@ -1391,7 +1409,7 @@ function renderHistoryTab() {
       <input type="date" id="filterFrom" class="input" value="${state.filterFrom}" style="font-size:12px;" />
       <input type="date" id="filterTo" class="input" value="${state.filterTo}" style="font-size:12px;" />
     </div>
-    <input id="filterSearch" class="input" placeholder="Search start or end point…" value="${state.filterSearch}" style="font-size:12px;" />
+    <input id="filterSearch" class="input" placeholder="Search Start and End Location..." value="${state.filterSearch}" style="font-size:12px;" />
   </div>
 
   ${sel ? `
@@ -1410,9 +1428,9 @@ function renderHistoryTab() {
     <div class="table-scroll">
       <table>
         <thead><tr>
-          ${sel ? `<th></th>` : ""}
-          <th>Date</th><th>Time</th><th style="text-align:right;">${unitLabel()}</th><th style="text-align:right;">Min</th><th>Route</th><th>Type</th>${showFuelCol ? `<th style="text-align:right;">Fuel</th>` : ""}
-          ${sel ? `<th></th>` : ""}
+          ${sel ? `<th style="width:28px;"></th>` : ""}
+          <th class="col-date">Date</th><th class="col-time">Time</th><th class="col-num" style="text-align:right;">${unitLabel()}</th><th class="col-num" style="text-align:right;">Min</th><th>Route</th><th class="col-type">Type</th>${showFuelCol ? `<th class="col-num" style="text-align:right;">Fuel</th>` : ""}
+          ${sel ? `<th style="width:36px;"></th>` : ""}
         </tr></thead>
         <tbody>
           ${rows.length === 0
@@ -1450,8 +1468,8 @@ function renderSettingsTab() {
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <button id="openAddDrivesBtn" class="btn btn-ghost">${icons.download} Add Drives from Google Timeline</button>
       </div>
+      <button id="openAddDrivesBtn" class="btn btn-ghost" style="margin-top:8px;">${icons.download} Add Drives from Timeline</button>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     ` : `
@@ -1503,7 +1521,7 @@ function renderSettingsTab() {
     <label class="field-label">Work</label>
     <input id="savedWorkInput" class="input" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" style="margin-bottom:14px;" />
 
-    <label class="field-label">Other</label>
+    ${state.addingSavedOther ? `<label class="field-label">Other</label>` : ""}
     ${state.savedAddresses.other.length ? state.savedAddresses.other.map(o => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;">
         <div style="min-width:0;">
@@ -1520,7 +1538,7 @@ function renderSettingsTab() {
         <input id="newSavedOtherName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newSavedOtherName)}" placeholder="e.g. Mum's House" />
         <label class="field-label">Address</label>
         <input id="newSavedOtherAddress" class="input" style="margin-bottom:12px;" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
-        <button id="saveSavedOtherBtn" class="btn btn-ghost">Add address</button>
+        <button id="saveSavedOtherBtn" class="btn btn-ghost">Add Address</button>
       </div>
     ` : ""}
   </div>
@@ -1544,7 +1562,11 @@ function renderSettingsTab() {
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
+      <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
+    ${state.settings.fuelTrackingEnabled === false ? `
+    <p class="settings-desc" style="margin:0;">Turn this on to estimate or track how much your drives cost in fuel.</p>
+    ` : `
     <label class="field-label">Costing mode</label>
     <div class="toggle-row" style="margin-bottom:14px;">
       <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
@@ -1584,6 +1606,7 @@ function renderSettingsTab() {
         </div>
         <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
       ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
+    `}
     `}
   </div>
 
@@ -2338,6 +2361,13 @@ function attachAppHandlers() {
     const showSavedAddressesSwitch = document.getElementById("showSavedAddressesSwitch");
     if (showSavedAddressesSwitch) showSavedAddressesSwitch.onclick = async () => {
       state.settings.showSavedAddresses = state.settings.showSavedAddresses === false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    const fuelTrackingSwitch = document.getElementById("fuelTrackingSwitch");
+    if (fuelTrackingSwitch) fuelTrackingSwitch.onclick = async () => {
+      state.settings.fuelTrackingEnabled = state.settings.fuelTrackingEnabled === false;
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
