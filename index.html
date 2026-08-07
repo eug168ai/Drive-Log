@@ -42,6 +42,15 @@
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
+  /* Blend scrollbars into the dark theme instead of the bright default OS scrollbar. */
+  .modal-card, .table-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+  .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar{width:8px;height:8px;}
+  .modal-card::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track{background:transparent;}
+  .modal-card::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+  .modal-card::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover{background:var(--faint);}
+  .field-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
+  .date-compact{width:150px;flex-shrink:0;}
+  .time-compact{width:84px;flex-shrink:0;text-align:center;font-variant-numeric:tabular-nums;}
   .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:14px;}
   .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
@@ -68,7 +77,7 @@
   .toggle.normal.on{background:rgba(76,159,112,.18);border-color:var(--normal);color:var(--normal);}
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
   .toggle.supervised.on{background:rgba(76,159,242,.18);border-color:var(--blue);color:var(--blue);}
-  .btn{width:100%;border:none;border-radius:8px;padding:12px 10px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;
+  .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;
        display:flex;align-items:center;justify-content:center;gap:8px;}
   .btn-amber{background:var(--amber);color:var(--bg);}
   .btn-stop{background:var(--work);color:#fff;}
@@ -78,7 +87,11 @@
        font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
   .tag.work{background:rgba(224,100,44,.15);color:var(--work);border:1px solid rgba(224,100,44,.3);}
   .tag.normal{background:rgba(76,159,112,.15);color:var(--normal);border:1px solid rgba(76,159,112,.3);}
-  .chip{padding:5px 10px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
+  .tag.supervised{background:rgba(76,159,242,.15);color:var(--blue);border:1px solid rgba(76,159,242,.3);}
+  .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+            background:rgba(242,169,59,.18);color:var(--amber);border:1px solid rgba(242,169,59,.35);
+            border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
+  .chip{padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
   table{width:100%;border-collapse:collapse;font-size:12px;}
@@ -106,7 +119,7 @@
   .settings-title{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin:0 0 4px;}
   .settings-desc{color:var(--muted);font-size:12px;line-height:1.5;margin:2px 0 0;}
   .settings-actions{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .settings-actions .btn{width:auto;padding:9px 11px;font-size:13px;flex-shrink:0;white-space:nowrap;}
+  .settings-actions .btn{width:auto;padding:9px 14px;font-size:13px;flex-shrink:0;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -122,6 +135,7 @@ const SHEET_LINK_KEY = "driving-log:sheet";
 const SUPERVISORS_KEY = "driving-log:supervisors";
 const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
+const FUEL_FILLUPS_KEY = "driving-log:fuel-fillups";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
@@ -149,6 +163,21 @@ function loadGoogleMapsScript() {
   document.head.appendChild(script);
 }
 
+let jsPDFLoadingPromise = null;
+function loadJsPDF() {
+  if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (!jsPDFLoadingPromise) {
+    jsPDFLoadingPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+      script.onload = () => resolve(window.jspdf.jsPDF);
+      script.onerror = () => reject(new Error("Couldn't load the PDF library — check your connection and try again."));
+      document.head.appendChild(script);
+    });
+  }
+  return jsPDFLoadingPromise;
+}
+
 let placesLibraryPromise = null;
 function getPlacesLibrary() {
   if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
@@ -168,6 +197,272 @@ function getDeviceRegionCode() {
     if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
   } catch (e) {}
   return null;
+}
+
+// --- Units (km/miles) ---------------------------------------------------
+// All distances are stored internally in kilometres. `state.settings.unit`
+// ("km" | "mi") only controls how numbers are displayed and how manual
+// entry fields are interpreted/converted before saving.
+const MILES_LOCALES = ["us", "lr", "mm", "gb"]; // US, Liberia, Myanmar; UK commonly uses miles for road distances
+function defaultUnitForLocale() {
+  const region = getDeviceRegionCode();
+  return region && MILES_LOCALES.includes(region) ? "mi" : "km";
+}
+function currentUnit() { return (state.settings && state.settings.unit) || "km"; }
+function unitLabel() { return currentUnit() === "mi" ? "mi" : "km"; }
+function kmToDisplay(km) { return currentUnit() === "mi" ? km * 0.621371 : km; }
+function displayToKm(val) { return currentUnit() === "mi" ? val / 0.621371 : val; }
+function formatDistance(km, decimals) {
+  const d = decimals == null ? 1 : decimals;
+  return `${kmToDisplay(km).toFixed(d)} ${unitLabel()}`;
+}
+
+// --- Geometry / astronomy helpers ---------------------------------------
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Approximate sunrise/sunset (NOAA algorithm, good to a few minutes) used to
+// auto-compute Day/Night for supervised drives without any external API.
+function sunriseSunsetUTC(date, lat, lng) {
+  const rad = Math.PI / 180;
+  const dayOfYear = Math.floor((date - new Date(Date.UTC(date.getUTCFullYear(), 0, 0))) / 86400000);
+  const zenith = 90.833;
+  function calc(isSunrise) {
+    const lngHour = lng / 15;
+    const t = dayOfYear + ((isSunrise ? 6 : 18) - lngHour) / 24;
+    const M = 0.9856 * t - 3.289;
+    let L = M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634;
+    L = ((L % 360) + 360) % 360;
+    let RA = (1 / rad) * Math.atan(0.91764 * Math.tan(L * rad));
+    RA = ((RA % 360) + 360) % 360;
+    const Lquadrant = Math.floor(L / 90) * 90;
+    const RAquadrant = Math.floor(RA / 90) * 90;
+    RA = RA + (Lquadrant - RAquadrant);
+    RA = RA / 15;
+    const sinDec = 0.39782 * Math.sin(L * rad);
+    const cosDec = Math.cos(Math.asin(sinDec));
+    const cosH = (Math.cos(zenith * rad) - sinDec * Math.sin(lat * rad)) / (cosDec * Math.cos(lat * rad));
+    if (cosH > 1 || cosH < -1) return null; // sun never rises/sets that day at this latitude
+    let H = isSunrise ? 360 - (1 / rad) * Math.acos(cosH) : (1 / rad) * Math.acos(cosH);
+    H = H / 15;
+    const T = H + RA - 0.06571 * t - 6.622;
+    let UT = T - lngHour; // hours, NOT yet wrapped — may be negative or >24
+    // Which UTC calendar day (relative to `date`'s UTC day) this clock time
+    // actually falls on — essential for longitudes far from Greenwich, where
+    // a "day N" sunrise/sunset can land on UTC day N-1 or N+1.
+    const dayOffset = Math.floor(UT / 24);
+    UT = UT - dayOffset * 24;
+    return { UT, dayOffset };
+  }
+  const sunriseRes = calc(true);
+  const sunsetRes = calc(false);
+  if (sunriseRes == null || sunsetRes == null) return null;
+  const toDate = (res) => new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + res.dayOffset) + res.UT * 3600000);
+  return {
+    sunrise: toDate(sunriseRes),
+    sunset: toDate(sunsetRes),
+  };
+}
+// Returns "day" or "night" for a given local Date + coordinates, falling back
+// to a simple 6am-6pm heuristic if we don't have coordinates to work with.
+function tripDateTime(dateStr, timeStr) {
+  const d = new Date(`${dateStr}T${timeStr || "12:00"}:00`);
+  return isNaN(d) ? new Date() : d;
+}
+function defaultDayNightFor(dateStr, timeStr, lat, lng) {
+  return computeDayNight(tripDateTime(dateStr, timeStr), lat, lng);
+}
+function computeDayNight(dateObj, lat, lng) {
+  const heuristic = () => { const h = dateObj.getHours(); return (h >= 6 && h < 18) ? "day" : "night"; };
+  if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return heuristic();
+  // For longitudes far from Greenwich, a single day's sunrise/sunset pair can
+  // land on an adjacent UTC calendar day (the formula's own day-offset
+  // correction). Rather than trust one day's pairing, probe the day before,
+  // the day itself, and the day after, then classify by chronological
+  // interval membership against the resulting timeline of real events —
+  // that's robust regardless of which calendar day each pair claims.
+  const events = [];
+  for (let dOffset = -1; dOffset <= 1; dOffset++) {
+    const probeDate = new Date(dateObj.getTime() + dOffset * 86400000);
+    const times = sunriseSunsetUTC(probeDate, lat, lng);
+    if (times) {
+      events.push({ t: times.sunrise.getTime(), type: "sunrise" });
+      events.push({ t: times.sunset.getTime(), type: "sunset" });
+    }
+  }
+  if (!events.length) return heuristic(); // e.g. polar day/night
+  events.sort((a, b) => a.t - b.t);
+  const target = dateObj.getTime();
+  let last = null;
+  for (const e of events) { if (e.t <= target) last = e; else break; }
+  if (!last) return events[0].type === "sunrise" ? "night" : "day";
+  return last.type === "sunrise" ? "day" : "night";
+}
+
+// --- Google Timeline historical import -----------------------------------
+// Google's on-device Timeline export format isn't publicly documented and
+// has shifted over the years, so this parser walks the JSON generically
+// looking for anything that looks like a timestamped coordinate, rather
+// than assuming one exact schema. Recognises (a) modern semanticSegments /
+// rawSignals exports, (b) the older Records.json-style
+// {latitudeE7,longitudeE7,timestampMs} shape, and (c) plain lat/lng+time pairs.
+function parseLatLngString(str) {
+  if (typeof str !== "string") return null;
+  const m = str.replace(/°/g, "").match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return { lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+}
+function extractCoord(node) {
+  if (!node || typeof node !== "object") return null;
+  if (typeof node.latitudeE7 === "number" && typeof node.longitudeE7 === "number") {
+    return { lat: node.latitudeE7 / 1e7, lng: node.longitudeE7 / 1e7 };
+  }
+  if (typeof node.lat === "number" && typeof node.lng === "number") return { lat: node.lat, lng: node.lng };
+  if (typeof node.latitude === "number" && typeof node.longitude === "number") return { lat: node.latitude, lng: node.longitude };
+  for (const key of ["point", "position", "latLng", "LatLng", "placeLocation"]) {
+    if (typeof node[key] === "string") { const c = parseLatLngString(node[key]); if (c) return c; }
+    if (node[key] && typeof node[key] === "object") {
+      const c = extractCoord(node[key]);
+      if (c) return c;
+      if (typeof node[key].LatLng === "string") { const c2 = parseLatLngString(node[key].LatLng); if (c2) return c2; }
+    }
+  }
+  return null;
+}
+function extractTimeMs(node) {
+  if (!node || typeof node !== "object") return null;
+  for (const key of ["timestamp", "time", "startTime", "pointTimestamp"]) {
+    if (typeof node[key] === "string") {
+      const ms = Date.parse(node[key]);
+      if (!isNaN(ms)) return ms;
+    }
+  }
+  if (typeof node.timestampMs === "string" || typeof node.timestampMs === "number") {
+    const ms = Number(node.timestampMs);
+    if (!isNaN(ms)) return ms;
+  }
+  return null;
+}
+// Recursively walks the parsed JSON collecting {t, lat, lng} points.
+function parseTimelinePoints(json) {
+  const points = [];
+  let lastKnownTime = null;
+  function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) { node.forEach(walk); return; }
+    const coord = extractCoord(node);
+    const t = extractTimeMs(node) || lastKnownTime;
+    if (coord && t) points.push({ t, lat: coord.lat, lng: coord.lng });
+    if (extractTimeMs(node)) lastKnownTime = extractTimeMs(node);
+    // Recurse into the semantic-segment timelinePath array specifically, using
+    // the segment's own startTime as a fallback for path points without one.
+    if (Array.isArray(node.timelinePath)) {
+      const segStart = extractTimeMs(node);
+      node.timelinePath.forEach(p => {
+        const c = extractCoord(p);
+        const pt = extractTimeMs(p) || segStart;
+        if (c && pt) points.push({ t: pt, lat: c.lat, lng: c.lng });
+      });
+    }
+    Object.keys(node).forEach(k => { if (k !== "timelinePath") walk(node[k]); });
+  }
+  walk(json);
+  points.sort((a, b) => a.t - b.t);
+  // De-dupe near-identical consecutive points (same coord within the same second).
+  const deduped = [];
+  for (const p of points) {
+    const prev = deduped[deduped.length - 1];
+    if (prev && prev.t === p.t && prev.lat === p.lat && prev.lng === p.lng) continue;
+    deduped.push(p);
+  }
+  return deduped;
+}
+
+// Groups raw points into candidate driving segments.
+// - GAP_BREAK_MS: gap beyond which we don't compute a speed across two points
+//   (treated as a break — e.g. phone was stationary/off/no signal).
+// - STITCH_GAP_MS: if a driving segment ends and another starts again within
+//   this short a gap, merge them into one drive (e.g. a stoplight/parking stop).
+// - MIN_SPEED / MAX_SPEED (km/h): the "driving" band.
+// - MIN_SEGMENT_MS: minimum sustained duration to count as a real drive.
+const TIMELINE_GAP_BREAK_MS = 2.5 * 60 * 1000;
+const TIMELINE_STITCH_GAP_MS = 5 * 60 * 1000;
+const TIMELINE_MIN_SPEED_KMH = 12;
+const TIMELINE_MAX_SPEED_KMH = 160;
+const TIMELINE_MIN_SEGMENT_MS = 90 * 1000;
+
+function detectDrivingSegments(points) {
+  if (points.length < 2) return [];
+  // 1. Walk consecutive points, compute speed; break the point stream wherever
+  //    the time gap is too large to trust a speed calculation across it.
+  const runs = [[points[0]]];
+  for (let i = 1; i < points.length; i++) {
+    const gap = points[i].t - points[i - 1].t;
+    if (gap > TIMELINE_GAP_BREAK_MS || gap <= 0) {
+      runs.push([points[i]]);
+    } else {
+      runs[runs.length - 1].push(points[i]);
+    }
+  }
+  // 2. Within each unbroken run, find sub-stretches where speed stays in the
+  //    driving band, and merge those into segments.
+  let segments = [];
+  runs.forEach(run => {
+    if (run.length < 2) return;
+    let segStart = 0;
+    let inDrive = false;
+    for (let i = 1; i <= run.length; i++) {
+      let speedOk = false;
+      if (i < run.length) {
+        const a = run[i - 1], b = run[i];
+        const dtH = (b.t - a.t) / 3600000;
+        const distKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
+        const speed = dtH > 0 ? distKm / dtH : 0;
+        speedOk = speed >= TIMELINE_MIN_SPEED_KMH && speed <= TIMELINE_MAX_SPEED_KMH;
+      }
+      if (speedOk && !inDrive) { segStart = i - 1; inDrive = true; }
+      if ((!speedOk || i === run.length) && inDrive) {
+        const segEnd = speedOk ? i : i - 1;
+        if (segEnd > segStart) segments.push(run.slice(segStart, segEnd + 1));
+        inDrive = speedOk;
+        if (speedOk) segStart = i - 1;
+      }
+    }
+  });
+  // 3. Stitch segments that resume shortly after one another (a short pause,
+  //    not a real break in the trip) into a single drive.
+  segments.sort((a, b) => a[0].t - b[0].t);
+  const stitched = [];
+  segments.forEach(seg => {
+    const prev = stitched[stitched.length - 1];
+    if (prev && (seg[0].t - prev[prev.length - 1].t) <= TIMELINE_STITCH_GAP_MS) {
+      prev.push(...seg);
+    } else {
+      stitched.push(seg.slice());
+    }
+  });
+  // 4. Build candidate objects, dropping anything too short to be a real drive.
+  return stitched
+    .filter(seg => seg[seg.length - 1].t - seg[0].t >= TIMELINE_MIN_SEGMENT_MS)
+    .map(seg => {
+      let distanceKm = 0;
+      for (let i = 1; i < seg.length; i++) distanceKm += haversineKm(seg[i - 1].lat, seg[i - 1].lng, seg[i].lat, seg[i].lng);
+      const start = seg[0], end = seg[seg.length - 1];
+      return {
+        id: uid(),
+        startMs: start.t, endMs: end.t,
+        startLat: start.lat, startLng: start.lng,
+        endLat: end.lat, endLng: end.lng,
+        distanceKm,
+        selected: true,
+      };
+    });
 }
 
 function attachPlacesAutocomplete(inputEl, onSelect) {
@@ -286,7 +581,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
   const token = await getFreshGoogleToken();
   const row = [[
     trip.date, trip.startTime, trip.endTime, Number(trip.distance).toFixed(1),
-    trip.startPoint, trip.endPoint, trip.tag === "work" ? "Work" : "Normal",
+    trip.startPoint, trip.endPoint, trip.tag === "work" ? "Work" : trip.tag === "supervised" ? "Supervised" : "Normal",
     trip.timeOfDay ? (trip.timeOfDay === "day" ? "Daytime" : "Nighttime") : "",
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
@@ -309,6 +604,8 @@ const state = {
   active: null,
   pendingTag: "normal",
   startPointInput: "",
+  startCoords: null,
+  endCoords: null,
   preTripEndLocation: "",
   preTripEstimating: false,
   preTripDistance: null,
@@ -328,7 +625,12 @@ const state = {
   loginName: "",
   loginPin: "",
   loginEnterPin: "",
-  settings: { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true },
+  settings: {
+    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true,
+    unit: null, learnRoutes: false,
+    odometerFrequency: "quarterly", lastOdometerReading: null,
+    fuelMode: "estimated", fuelRate: "", fuelPrice: "",
+  },
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -351,6 +653,17 @@ const state = {
   newSavedOtherName: "",
   newSavedOtherAddress: "",
   editingTrip: null,
+  editAddingSupervisor: false,
+  newEditSupervisorName: "",
+  newEditSupervisorLicence: "",
+  splittingTrip: null,
+  routeSuggestion: null,
+  odometerPrompt: null,
+  fuelFillups: [],
+  fuelFillupForm: null,
+  reportForm: null,
+  reportGenerating: false,
+  addDrives: null,
 };
 
 const icons = {
@@ -382,6 +695,45 @@ const nowTimeStr = () => {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
+
+// --- Compact, always-24-hour time fields ---------------------------------
+// Native <input type="time"> renders per the browser/OS locale (12hr with
+// AM/PM on many devices) and silently blanks out if its value isn't exactly
+// "HH:MM", which is what caused Start Time to appear empty in the edit modal
+// for some drives. These plain text inputs are locale-proof, always show
+// 24hr HH:MM, echo back whatever's actually stored, and can be sized freely.
+function formatTimeInputValue(raw) {
+  const digits = raw.replace(/\D/g, "").slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return digits.slice(0, 2) + ":" + digits.slice(2);
+}
+function clampTimeValue(raw) {
+  const digits = raw.replace(/\D/g, "").padEnd(4, "0").slice(0, 4);
+  let h = parseInt(digits.slice(0, 2), 10);
+  let m = parseInt(digits.slice(2, 4), 10);
+  if (isNaN(h)) h = 0;
+  if (isNaN(m)) m = 0;
+  h = Math.min(23, Math.max(0, h));
+  m = Math.min(59, Math.max(0, m));
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+// Wires up input(reformat-as-you-type) + blur(clamp-to-valid-24hr) on a
+// compact time text field. `set(v)` is called with the current string on
+// every keystroke and with the clamped final value on blur.
+function attachTimeInput(el, set) {
+  if (!el) return;
+  el.oninput = (e) => {
+    const formatted = formatTimeInputValue(e.target.value);
+    e.target.value = formatted;
+    set(formatted);
+  };
+  el.onblur = (e) => {
+    if (!e.target.value) return;
+    const clamped = clampTimeValue(e.target.value);
+    e.target.value = clamped;
+    set(clamped);
+  };
+}
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
 function getCurrentPosition() {
@@ -433,7 +785,13 @@ async function useMyLocation(target) {
   try {
     const coords = await getCurrentPosition();
     const address = await reverseGeocode(coords.latitude, coords.longitude);
-    if (target === "start") state.startPointInput = address; else state.endPoint = address;
+    if (target === "start") {
+      state.startPointInput = address;
+      state.startCoords = { lat: coords.latitude, lng: coords.longitude };
+    } else {
+      state.endPoint = address;
+      state.endCoords = { lat: coords.latitude, lng: coords.longitude };
+    }
   } catch (e) {
     state.locateError = e.message || "Couldn't get your location.";
   }
@@ -448,6 +806,7 @@ async function autoFillCurrentLocation() {
     const address = await reverseGeocode(coords.latitude, coords.longitude);
     if (!state.active && !state.startPointInput) {
       state.startPointInput = address;
+      state.startCoords = { lat: coords.latitude, lng: coords.longitude };
       render();
     }
   } catch (e) {
@@ -523,7 +882,7 @@ async function runRouteEstimate(origin, destination) {
   state.estimating = true; state.estimateError = ""; render();
   try {
     const { distanceKm, durationMin } = await estimateRoute(origin, destination);
-    state.distance = distanceKm.toFixed(1);
+    state.distance = kmToDisplay(distanceKm).toFixed(1);
     state.estimatedDuration = durationMin;
   } catch (e) {
     state.estimateError = e.message || "Couldn't calculate distance and time.";
@@ -540,7 +899,7 @@ async function runPreTripEstimate(origin, destination) {
   state.preTripEstimating = true; state.preTripEstimateError = ""; render();
   try {
     const { distanceKm, durationMin } = await estimateRoute(origin, destination);
-    state.preTripDistance = distanceKm.toFixed(1);
+    state.preTripDistance = kmToDisplay(distanceKm).toFixed(1);
     state.preTripDuration = durationMin;
   } catch (e) {
     state.preTripEstimateError = e.message || "Couldn't calculate distance and time.";
@@ -640,15 +999,48 @@ async function loadData() {
   }
   if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
   if (state.settings.requirePin === undefined) state.settings.requirePin = true;
+  if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
+  if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
+  if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
+  if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
+  if (!state.settings.fuelMode) state.settings.fuelMode = "estimated";
+  if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
+  if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
   state.savedAddresses = (await storageGet(SAVED_ADDRESSES_KEY)) || { home: "", work: "", other: [] };
+  state.fuelFillups = (await storageGet(FUEL_FILLUPS_KEY)) || [];
   if (!state.active) {
     state.startPointInput = "";
     autoFillCurrentLocation();
   }
   if (state.active) startTicker();
+  checkOdometerDue();
+}
+
+// --- Odometer reconciliation reminders -----------------------------------
+const ODOMETER_FREQUENCY_DAYS = { monthly: 30, quarterly: 91, biannual: 182, yearly: 365 };
+function odometerDueDate() {
+  const last = state.settings.lastOdometerReading;
+  if (!last || !last.date) return null; // never entered — due immediately
+  const days = ODOMETER_FREQUENCY_DAYS[state.settings.odometerFrequency] || 91;
+  const due = new Date(`${last.date}T00:00:00`);
+  due.setDate(due.getDate() + days);
+  return due;
+}
+function checkOdometerDue() {
+  const last = state.settings.lastOdometerReading;
+  if (!last) {
+    // Never entered a reading — don't nag a brand-new install with zero drives yet.
+    if (state.trips.length === 0) return;
+    state.odometerPrompt = { value: "" };
+    return;
+  }
+  const due = odometerDueDate();
+  if (due && Date.now() >= due.getTime()) {
+    state.odometerPrompt = { value: "" };
+  }
 }
 
 let tickerId = null;
@@ -701,6 +1093,73 @@ function weekMinutes() {
   const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
   return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + tripMinutes(t), 0);
 }
+
+// --- Fuel cost -------------------------------------------------------------
+// "Accurate" mode: average spend per unit distance, derived from logged
+// fill-ups against the distance driven over the same period (earliest
+// fill-up date through now). Returns null if there isn't enough data yet.
+function accurateFuelCostPerKm() {
+  if (!state.fuelFillups.length) return null;
+  const dates = state.fuelFillups.map(f => f.date).sort();
+  const from = dates[0];
+  const totalSpend = state.fuelFillups.reduce((s, f) => s + (Number(f.price) || 0), 0);
+  const distanceKm = state.trips.filter(t => t.date >= from).reduce((s, t) => s + t.distance, 0);
+  if (!distanceKm) return null;
+  // fuel price entries are already in the user's chosen unit's currency-per-volume;
+  // distance is tracked internally in km, so convert spend/km -> spend/display-unit at display time.
+  return totalSpend / distanceKm;
+}
+function estimatedFuelCostPerKm() {
+  const rate = parseFloat(state.settings.fuelRate);
+  const price = parseFloat(state.settings.fuelPrice);
+  if (!rate || !price || isNaN(rate) || isNaN(price)) return null;
+  if (state.settings.unit === "mi") {
+    // MPG (miles per gallon) -> cost per mile, then converted to cost per km for internal storage.
+    const costPerMile = price / rate;
+    return costPerMile * 0.621371;
+  }
+  // L/100km -> cost per km
+  return (rate / 100) * price;
+}
+function fuelCostPerKm() {
+  return state.settings.fuelMode === "accurate" ? accurateFuelCostPerKm() : estimatedFuelCostPerKm();
+}
+function formatFuelCostPerUnit() {
+  const perKm = fuelCostPerKm();
+  if (perKm == null) return "—";
+  const perDisplayUnit = state.settings.unit === "mi" ? perKm / 0.621371 : perKm;
+  return perDisplayUnit.toFixed(2);
+}
+function tripFuelCost(t) {
+  const perKm = fuelCostPerKm();
+  if (perKm == null) return null;
+  return t.distance * perKm;
+}
+function suggestRouteTag() {
+  if (!state.settings || !state.settings.learnRoutes) return null;
+  if (state.active) return null;
+  const start = (state.startPointInput || "").trim().toLowerCase();
+  const end = (state.preTripEndLocation || "").trim().toLowerCase();
+  if (!start || !end) return null;
+  const now = new Date();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const matches = state.trips.filter(t => {
+    if ((t.startPoint || "").trim().toLowerCase() !== start) return false;
+    if ((t.endPoint || "").trim().toLowerCase() !== end) return false;
+    const parts = (t.startTime || "").split(":").map(Number);
+    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return false;
+    const tMinutes = parts[0] * 60 + parts[1];
+    const diff = Math.min(Math.abs(tMinutes - nowMinutes), 1440 - Math.abs(tMinutes - nowMinutes));
+    return diff <= 90;
+  });
+  if (matches.length < 2) return null;
+  const counts = {};
+  matches.forEach(t => { counts[t.tag] = (counts[t.tag] || 0) + 1; });
+  const [topTag, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  if (topTag === state.settings.driveType) return null;
+  return { tag: topTag, count: topCount, total: matches.length };
+}
+
 function filteredTrips() {
   return state.trips.filter(t => {
     if (state.filterTag !== "all" && t.tag !== state.filterTag) return false;
@@ -724,8 +1183,8 @@ function renderApp() {
       </div>
       <div class="stats-row">
         <div class="stat-block">
-          <p class="odo-label">Total distance</p>
-          ${odometer(totalMiles())}
+          <p class="odo-label">Total distance (${unitLabel()})</p>
+          ${odometer(kmToDisplay(totalMiles()))}
         </div>
         <div class="stat-block">
           <p class="odo-label">Total time</p>
@@ -746,6 +1205,11 @@ function renderApp() {
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
     ${state.logEstimateForm ? renderLogEstimateModal() : ""}
+    ${state.splittingTrip ? renderSplitTripModal() : ""}
+    ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
+    ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
+    ${state.reportForm ? renderReportModal() : ""}
+    ${state.addDrives ? renderAddDrivesModal() : ""}
     <datalist id="recentLocations">
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
     </datalist>
@@ -760,7 +1224,7 @@ function renderLogTab() {
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
         <p class="field-label" style="margin:0 0 2px;">This week</p>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${weekTotal().toFixed(1)} km</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDistance(weekTotal())}</p>
       </div>
       <div style="text-align:right;">
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatDuration(weekMinutes())}</p>
@@ -798,14 +1262,22 @@ function renderLogTab() {
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
         </button>
         ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;flex-shrink:0;margin-left:auto;">~${state.preTripDistance} km · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;flex-shrink:0;margin-left:auto;">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
       </div>
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
     <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Leave blank to skip or enter to estimate drive.</p>
 
+    ${(() => { const sug = suggestRouteTag(); return sug ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
+      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${sug.tag}</b> for this route</span>
+      <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
+    </div>` : ""; })()}
+
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
-  </div>` : `
+  </div>
+  <button id="openAddDrivesBtn" class="btn btn-ghost" style="margin-bottom:16px;">${icons.download} Add Drives from Timeline</button>
+  ` : `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <span class="tag ${a.tag}">${a.tag}</span>
@@ -829,7 +1301,7 @@ function renderLogTab() {
     </div>
     ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
 
-    <label class="field-label">Distance (km)</label>
+    <label class="field-label">Distance (${unitLabel()})</label>
     <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
     <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
 
@@ -843,16 +1315,20 @@ function renderHistoryTab() {
   const sel = state.historySelectMode;
   const selectedCount = state.selectedTripIds.length;
   const allVisibleSelected = rows.length > 0 && rows.every(t => state.selectedTripIds.includes(t.id));
+  const showFuelCol = fuelCostPerKm() != null;
   return `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">
         ${icons.filter} Filters
       </div>
-      <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
+      <div style="display:flex;gap:6px;">
+        <button id="openReportBtn" class="chip">${icons.download} Report</button>
+        <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
+      </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-      ${["all","work","normal"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
+      ${["all","work","normal","supervised"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
     </div>
     <div class="row-2" style="margin-bottom:10px;">
       <input type="date" id="filterFrom" class="input" value="${state.filterFrom}" style="font-size:12px;" />
@@ -878,7 +1354,7 @@ function renderHistoryTab() {
       <table>
         <thead><tr>
           ${sel ? `<th></th>` : ""}
-          <th>Date</th><th>Time</th><th style="text-align:right;">Km</th><th style="text-align:right;">Min</th><th>Route</th><th>Type</th>
+          <th>Date</th><th>Time</th><th style="text-align:right;">${unitLabel()}</th><th style="text-align:right;">Min</th><th>Route</th><th>Type</th>${showFuelCol ? `<th style="text-align:right;">Fuel</th>` : ""}
           ${sel ? `<th></th>` : ""}
         </tr></thead>
         <tbody>
@@ -889,10 +1365,11 @@ function renderHistoryTab() {
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td>${formatDateForDisplay(t.date)}</td>
                 <td style="color:var(--muted)">${t.startTime}–${t.endTime}</td>
-                <td class="mono" style="text-align:right;">${t.distance.toFixed(1)}</td>
+                <td class="mono" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
                 <td class="mono" style="text-align:right;">${tripMinutes(t)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
                 <td><span class="tag ${t.tag}">${t.tag}</span></td>
+                ${showFuelCol ? `<td class="mono" style="text-align:right;">${tripFuelCost(t) != null ? tripFuelCost(t).toFixed(2) : "—"}</td>` : ""}
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
         </tbody>
@@ -947,6 +1424,77 @@ function renderSettingsTab() {
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
       : "Normal — For everyday driving."
     }</p>
+    <div class="switch-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div>
+        <p class="settings-title" style="margin:0;">Learn my common routes</p>
+        <p class="settings-desc">Notices repeated start/end + time-of-day patterns and suggests a tag on matching new drives. Never applied automatically.</p>
+      </div>
+      <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin-bottom:10px;">Units</p>
+    <div class="toggle-row">
+      <button class="toggle normal ${state.settings.unit === "km" ? "on" : ""}" data-unit="km">Kilometres</button>
+      <button class="toggle normal ${state.settings.unit === "mi" ? "on" : ""}" data-unit="mi">Miles</button>
+    </div>
+    <p class="settings-desc" style="margin-top:10px;">Applies to every distance shown across the app. Defaulted from your device's region.</p>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin-bottom:10px;">${icons.clock} Odometer Reminders</p>
+    <label class="field-label">Reminder frequency</label>
+    <select id="odometerFrequencySelect" class="input" style="margin-bottom:10px;">
+      <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+      <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+      <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
+      <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
+    </select>
+    ${state.settings.lastOdometerReading ? `
+      <p class="settings-desc" style="margin:0;">Last reading: <b class="mono" style="color:var(--text);">${escAttr(String(state.settings.lastOdometerReading.value))} ${unitLabel()}</b> on ${formatDateForDisplay(state.settings.lastOdometerReading.date)}.</p>
+    ` : `<p class="settings-desc" style="margin:0;">No reading recorded yet — you'll be asked next time you open the app.</p>`}
+    <button id="enterOdometerNowBtn" class="btn btn-ghost" style="margin-top:10px;">Enter a reading now</button>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">Fuel Cost Tracking</p>
+    </div>
+    <label class="field-label">Costing mode</label>
+    <div class="toggle-row" style="margin-bottom:14px;">
+      <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
+      <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
+    </div>
+    ${state.settings.fuelMode === "estimated" ? `
+      <label class="field-label">Consumption rate (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+      <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" style="margin-bottom:12px;" />
+      <label class="field-label">Fuel price (per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+      <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" style="margin-bottom:6px;" />
+      <p class="settings-desc" style="margin:6px 0 0;">Per-drive costs are labelled "Estimated fuel cost" throughout the app since this doesn't account for real-time price drift or driving conditions.</p>
+    ` : `
+      <p class="settings-desc" style="margin-bottom:12px;">Real average cost per ${unitLabel()} is computed from your logged fill-ups against distance driven over the same period.</p>
+      <div class="settings-actions" style="margin-bottom:12px;">
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a fill-up</button>
+      </div>
+      ${state.fuelFillups.length ? `
+        <div class="table-scroll" style="max-height:220px;">
+          <table>
+            <thead><tr><th>Date</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
+            <tbody>
+              ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
+                <tr>
+                  <td>${formatDateForDisplay(f.date)}</td>
+                  <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
+                  <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
+                  <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+        <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
+      ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
+    `}
   </div>
 
   <div class="card">
@@ -1009,7 +1557,7 @@ function renderConditionsModal() {
     <div class="modal-card">
       <h2>Driving conditions</h2>
 
-      <label class="field-label">Time of day</label>
+      <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
       <select id="condTimeOfDay" class="input" style="margin-bottom:14px;">
         <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
         <option value="night" ${f.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
@@ -1066,17 +1614,13 @@ function renderEditTripModal() {
       </div>
 
       <label class="field-label">Date</label>
-      <input id="editDate" type="date" class="input" value="${t.date}" style="margin-bottom:14px;" />
+      <input id="editDate" type="date" class="input date-compact" value="${t.date}" style="margin-bottom:14px;" />
 
-      <div class="row-2" style="margin-bottom:14px;">
-        <div>
-          <label class="field-label">Start time</label>
-          <input id="editStartTime" type="time" class="input" value="${t.startTime}" />
-        </div>
-        <div>
-          <label class="field-label">End time</label>
-          <input id="editEndTime" type="time" class="input" value="${t.endTime}" />
-        </div>
+      <label class="field-label">Start / end time (24hr)</label>
+      <div class="field-row" style="margin-bottom:14px;">
+        <input id="editStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.startTime || "")}" />
+        <span class="settings-desc">–</span>
+        <input id="editEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.endTime || "")}" />
       </div>
 
       <label class="field-label">Start Location</label>
@@ -1085,19 +1629,60 @@ function renderEditTripModal() {
       <label class="field-label">End Location</label>
       <input id="editEndPoint" class="input" value="${escAttr(t.endPoint)}" style="margin-bottom:14px;" />
 
-      <label class="field-label">Distance (km)</label>
+      <label class="field-label">Purpose / notes (optional)</label>
+      <input id="editPurpose" class="input" value="${escAttr(t.purpose || "")}" placeholder="e.g. Client visit" style="margin-bottom:14px;" />
+
+      <label class="field-label">Distance (${unitLabel()})</label>
       <input id="editDistance" class="input" inputmode="decimal" value="${t.distance}" style="margin-bottom:14px;" />
 
       <label class="field-label">Type</label>
-      <div class="toggle-row" style="margin-bottom:20px;">
-        <button class="toggle normal ${t.tag !== "work" ? "on" : ""}" data-edittag="normal">Normal</button>
+      <div class="toggle-row" style="margin-bottom:${t.tag === "supervised" ? "14" : "20"}px;">
+        <button class="toggle normal ${t.tag === "normal" ? "on" : ""}" data-edittag="normal">Normal</button>
         <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Work</button>
+        <button class="toggle supervised ${t.tag === "supervised" ? "on" : ""}" data-edittag="supervised">Supervised</button>
       </div>
 
-      <div class="row-2">
+      ${t.tag === "supervised" ? `
+      <div class="card" style="padding:14px;margin-bottom:20px;">
+        <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
+        <select id="editTimeOfDay" class="input" style="margin-bottom:12px;">
+          <option value="day" ${t.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
+          <option value="night" ${t.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
+        </select>
+        <label class="field-label">Road type</label>
+        <select id="editRoadType" class="input" style="margin-bottom:12px;">
+          ${ROAD_TYPES.map(r => `<option value="${r.v}" ${t.roadType === r.v ? "selected" : ""}>${r.l}</option>`).join("")}
+        </select>
+        <label class="field-label">Weather</label>
+        <select id="editWeather" class="input" style="margin-bottom:12px;">
+          ${WEATHER_TYPES.map(w => `<option value="${w.v}" ${t.weather === w.v ? "selected" : ""}>${w.l}</option>`).join("")}
+        </select>
+        <label class="field-label">Traffic density</label>
+        <select id="editTraffic" class="input" style="margin-bottom:12px;">
+          ${TRAFFIC_LEVELS.map(tr => `<option value="${tr.v}" ${t.traffic === tr.v ? "selected" : ""}>${tr.l}</option>`).join("")}
+        </select>
+        <label class="field-label">Supervisor</label>
+        <select id="editSupervisor" class="input" style="margin-bottom:${state.editAddingSupervisor ? "10" : "0"}px;">
+          <option value="" ${!t.supervisorId ? "selected" : ""}>None</option>
+          ${state.supervisors.map(s => `<option value="${s.id}" ${t.supervisorId === s.id ? "selected" : ""}>${s.name} (${s.licence})</option>`).join("")}
+          <option value="__new__">+ Add new supervisor</option>
+        </select>
+        ${state.editAddingSupervisor ? `
+          <div class="card" style="padding:12px;margin-top:10px;">
+            <label class="field-label">Full name</label>
+            <input id="newEditSupervisorName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newEditSupervisorName)}" placeholder="e.g. Jane Smith" />
+            <label class="field-label">Licence no.</label>
+            <input id="newEditSupervisorLicence" class="input" style="margin-bottom:12px;" value="${escAttr(state.newEditSupervisorLicence)}" placeholder="e.g. 123456789" />
+            <button id="saveEditSupervisorBtn" class="btn btn-ghost">Add supervisor</button>
+          </div>
+        ` : ""}
+      </div>` : ""}
+
+      <div class="row-2" style="margin-bottom:10px;">
         <button id="deleteEditingTripBtn" class="btn btn-ghost" style="color:var(--work);border-color:rgba(224,100,44,.4);">${icons.trash} Delete</button>
         <button id="saveEditTripBtn" class="btn btn-amber">Save changes</button>
       </div>
+      <button id="openSplitTripBtn" class="btn btn-ghost">${icons.route} Split into two drives</button>
     </div>
   </div>`;
 }
@@ -1143,13 +1728,13 @@ function renderLogEstimateModal() {
   <div class="modal-backdrop">
     <div class="modal-card">
       <h2>Log this estimate</h2>
-      <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} km, ~${state.preTripDuration} min) without starting a live trip.</p>
+      <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} ${unitLabel()}, ~${state.preTripDuration} min) without starting a live trip.</p>
 
       <label class="field-label">Date</label>
-      <input id="logEstimateDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
+      <input id="logEstimateDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
 
-      <label class="field-label">Start time</label>
-      <input id="logEstimateStartTime" type="time" class="input" value="${f.startTime}" style="margin-bottom:20px;" />
+      <label class="field-label">Start time (24hr)</label>
+      <input id="logEstimateStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
 
       <div class="row-2">
         <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
@@ -1157,6 +1742,295 @@ function renderLogEstimateModal() {
       </div>
     </div>
   </div>`;
+}
+
+function renderSplitTripModal() {
+  const s = state.splittingTrip;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Split this drive</h2>
+      <p class="settings-desc" style="margin:0 0 16px;">Splits one logged drive into two separate trips at the time below (e.g. for an unlogged stop in between). Distance is divided proportionally by time — adjust afterwards in Edit if needed.</p>
+
+      <label class="field-label">Split at (24hr, between ${s.startTime}–${s.endTime})</label>
+      <input id="splitTimeInput" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(s.splitTime || "")}" style="margin-bottom:14px;" />
+
+      <label class="field-label">Location at split point (optional)</label>
+      <input id="splitMidPointInput" class="input" placeholder="e.g. Fuel stop" value="${escAttr(s.midPoint)}" style="margin-bottom:6px;" />
+      <p class="settings-desc" style="margin:0 0 18px;">Used as the end of the first leg and start of the second.</p>
+      ${s.error ? `<p class="err" style="margin:0 0 12px;">${s.error}</p>` : ""}
+
+      <div class="row-2">
+        <button id="cancelSplitTripBtn" class="btn btn-ghost">Cancel</button>
+        <button id="confirmSplitTripBtn" class="btn btn-amber">Split</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderOdometerPromptModal() {
+  const p = state.odometerPrompt;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>${icons.clock} Odometer check-in</h2>
+      <p class="settings-desc" style="margin:0 0 16px;">
+        Time to reconcile your car's actual odometer against the drives logged here. Enter the current reading — this also helps catch missed or under-logged trips.
+      </p>
+      <label class="field-label">Current odometer (${unitLabel()})</label>
+      <input id="odometerReadingInput" class="input" inputmode="decimal" placeholder="0" value="${escAttr(p.value)}" style="margin-bottom:6px;" />
+      ${p.error ? `<p class="err" style="margin:0 0 12px;">${p.error}</p>` : ""}
+      <div class="row-2" style="margin-top:12px;">
+        <button id="skipOdometerBtn" class="btn btn-ghost">Not now</button>
+        <button id="saveOdometerBtn" class="btn btn-amber">Save reading</button>
+      </div>
+      <p class="note" style="margin-top:12px;">You'll be asked again next time you open the app until a reading is saved.</p>
+    </div>
+  </div>`;
+}
+
+function renderFuelFillupModal() {
+  const f = state.fuelFillupForm;
+  const volLabel = state.settings.unit === "mi" ? "Gallons" : "Litres";
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>${icons.locate} Log a fill-up</h2>
+      <label class="field-label">Date</label>
+      <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
+      <label class="field-label">${volLabel}</label>
+      <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
+      <label class="field-label">Total price paid</label>
+      <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
+      ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
+      <div class="row-2" style="margin-top:14px;">
+        <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
+        <button id="confirmFillupBtn" class="btn btn-amber">Save fill-up</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+const REPORT_FIELD_DEFS = [
+  { v: "date", l: "Date" }, { v: "startTime", l: "Start time" }, { v: "endTime", l: "End time" },
+  { v: "startPoint", l: "Start location" }, { v: "endPoint", l: "End location" },
+  { v: "distance", l: "Distance" }, { v: "duration", l: "Duration" },
+  { v: "purpose", l: "Purpose / notes" }, { v: "fuelCost", l: "Fuel cost" },
+  { v: "timeOfDay", l: "Day/Night" }, { v: "roadType", l: "Road type" },
+  { v: "weather", l: "Weather" }, { v: "traffic", l: "Traffic density" },
+  { v: "supervisorName", l: "Supervisor name" },
+];
+const REPORT_DEFAULTS = {
+  normal: ["date", "startPoint", "endPoint", "distance", "duration"],
+  work: ["date", "startPoint", "endPoint", "distance", "duration", "purpose", "fuelCost"],
+  supervised: ["date", "startTime", "endTime", "duration", "distance", "timeOfDay", "supervisorName"],
+};
+function renderReportModal() {
+  const r = state.reportForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">${icons.download} Export report</h2>
+        <button id="closeReportBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+
+      <label class="field-label">Report type</label>
+      <select id="reportType" class="input" style="margin-bottom:14px;">
+        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Normal (personal)</option>
+        <option value="work" ${r.type === "work" ? "selected" : ""}>Work</option>
+        <option value="supervised" ${r.type === "supervised" ? "selected" : ""}>Supervised</option>
+        <option value="custom" ${r.type === "custom" ? "selected" : ""}>Custom combination</option>
+      </select>
+
+      ${r.type === "custom" ? `
+      <label class="field-label">Include categories</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
+        ${["normal","work","supervised"].map(c => `<button type="button" class="chip ${r.categories.includes(c) ? "active" : ""}" data-reportcat="${c}">${c}</button>`).join("")}
+      </div>` : ""}
+
+      <div class="row-2" style="margin-bottom:14px;">
+        <div>
+          <label class="field-label">From</label>
+          <input id="reportFrom" type="date" class="input" value="${r.from}" />
+        </div>
+        <div>
+          <label class="field-label">To</label>
+          <input id="reportTo" type="date" class="input" value="${r.to}" />
+        </div>
+      </div>
+
+      <label class="field-label">Fields</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+        ${REPORT_FIELD_DEFS.map(fd => `<button type="button" class="chip ${r.fields.includes(fd.v) ? "active" : ""}" data-reportfield="${fd.v}">${fd.l}</button>`).join("")}
+      </div>
+      <p class="settings-desc" style="margin:0 0 18px;">Defaults are pre-selected for the report type — tap any field to add or remove it.</p>
+
+      ${r.error ? `<p class="err" style="margin:0 0 12px;">${r.error}</p>` : ""}
+
+      <button id="generateReportBtn" class="btn btn-amber">${state.reportGenerating ? "Generating…" : "Generate PDF"}</button>
+    </div>
+  </div>`;
+}
+
+function renderAddDrivesModal() {
+  const a = state.addDrives;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card" style="max-width:480px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">Add Drives from Timeline</h2>
+        <button id="closeAddDrivesBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+
+      ${a.step === 1 ? `
+        <p class="settings-desc" style="margin:0 0 16px;">First we need your Timeline data. Google Maps stores this on your phone — export it, then bring the file back here.</p>
+        <div class="card" style="padding:14px;margin-bottom:16px;">
+          <p style="margin:0 0 8px;font-size:13px;"><b>1.</b> Open Google Maps → your profile icon → Your Timeline</p>
+          <p style="margin:0 0 8px;font-size:13px;"><b>2.</b> ⋯ menu → Location and privacy settings → Export Timeline data</p>
+          <p style="margin:0;font-size:13px;"><b>3.</b> Come back here and choose the exported file below</p>
+        </div>
+        <button id="openMapsBtn" class="btn drive-btn" style="margin-bottom:12px;">${icons.pin} Open Google Maps</button>
+        <label class="field-label">Choose file</label>
+        <input id="timelineFileInput" type="file" accept="application/json,.json" class="input" style="padding:8px;" />
+        ${a.error ? `<p class="err" style="margin-top:10px;">${a.error}</p>` : ""}
+        ${a.processing ? `<p class="settings-desc" style="margin-top:10px;">Reading file…</p>` : ""}
+      ` : ""}
+
+      ${a.step === 2 ? `
+        <p class="settings-desc" style="margin:0 0 16px;">Loaded <b style="color:var(--text)">${escAttr(a.fileName)}</b> — ${a.points.length.toLocaleString()} location points. Pick the date range you want to process (the export covers your whole history, so narrowing this down keeps things fast).</p>
+        <div class="row-2" style="margin-bottom:16px;">
+          <div>
+            <label class="field-label">From</label>
+            <input id="importFrom" type="date" class="input" value="${a.dateFrom}" />
+          </div>
+          <div>
+            <label class="field-label">To</label>
+            <input id="importTo" type="date" class="input" value="${a.dateTo}" />
+          </div>
+        </div>
+        ${a.error ? `<p class="err" style="margin:0 0 12px;">${a.error}</p>` : ""}
+        <div class="row-2">
+          <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
+          <button id="runImportBtn" class="btn btn-amber" ${a.processing ? "disabled" : ""}>${a.processing ? "Finding drives…" : "Find drives"}</button>
+        </div>
+      ` : ""}
+
+      ${a.step === 3 ? `
+        ${a.candidates.length === 0 ? `
+          <p class="settings-desc" style="margin:0 0 16px;">No candidate drives found in that date range. Try widening the dates.</p>
+          <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
+        ` : `
+          <p class="settings-desc" style="margin:0 0 14px;">Found ${a.candidates.length} candidate drive${a.candidates.length === 1 ? "" : "s"}. Review and untick anything that isn't really a drive, then confirm.</p>
+          <div class="table-scroll" style="max-height:320px;margin-bottom:14px;">
+            ${a.candidates.map(c => `
+              <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(42,47,56,.6);">
+                <input type="checkbox" class="candidateCheckbox" data-id="${c.id}" ${c.selected ? "checked" : ""} style="margin-top:3px;width:16px;height:16px;accent-color:var(--amber);flex-shrink:0;" />
+                <div style="min-width:0;flex:1;">
+                  <p style="margin:0;font-size:13px;font-weight:600;">${formatDateForDisplay(new Date(c.startMs).toISOString().slice(0,10))} · ${new Date(c.startMs).toTimeString().slice(0,5)}–${new Date(c.endMs).toTimeString().slice(0,5)}</p>
+                  <p class="settings-desc" style="margin:2px 0 0;">${kmToDisplay(c.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(Math.round((c.endMs - c.startMs)/60000))}</p>
+                </div>
+              </div>`).join("")}
+          </div>
+          ${a.error ? `<p class="err" style="margin:0 0 12px;">${a.error}</p>` : ""}
+          <div class="row-2">
+            <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
+            <button id="confirmImportBtn" class="btn btn-amber">Add ${a.candidates.filter(c => c.selected).length} drive${a.candidates.filter(c => c.selected).length === 1 ? "" : "s"}</button>
+          </div>
+        `}
+      ` : ""}
+    </div>
+  </div>`;
+}
+
+function reportFieldValue(t, field) {
+  switch (field) {
+    case "date": return formatDateForDisplay(t.date);
+    case "startTime": return t.startTime || "";
+    case "endTime": return t.endTime || "";
+    case "startPoint": return t.startPoint || "";
+    case "endPoint": return t.endPoint || "";
+    case "distance": return `${kmToDisplay(t.distance).toFixed(1)} ${unitLabel()}`;
+    case "duration": return formatDuration(tripMinutes(t));
+    case "purpose": return t.purpose || "";
+    case "fuelCost": { const c = tripFuelCost(t); return c != null ? c.toFixed(2) : ""; }
+    case "timeOfDay": return t.timeOfDay ? (t.timeOfDay === "day" ? "Daytime" : "Nighttime") : "";
+    case "roadType": return t.roadType ? labelFor(ROAD_TYPES, t.roadType) : "";
+    case "weather": return t.weather ? labelFor(WEATHER_TYPES, t.weather) : "";
+    case "traffic": return t.traffic ? labelFor(TRAFFIC_LEVELS, t.traffic) : "";
+    case "supervisorName": return t.supervisorName || "";
+    default: return "";
+  }
+}
+
+async function generateReportPDF() {
+  const r = state.reportForm;
+  if (!r.from || !r.to) { r.error = "Choose a date range."; render(); return; }
+  const categories = r.type === "custom" ? r.categories : [r.type];
+  if (!categories.length) { r.error = "Choose at least one category."; render(); return; }
+  const fields = r.fields.length ? r.fields : (REPORT_DEFAULTS[r.type] || REPORT_DEFAULTS.normal);
+
+  // Everything downstream works only off this pre-filtered subset — trips
+  // outside the chosen categories/date range never enter the PDF-building
+  // code, so "Work only" etc. fully excludes other data, not just hides it.
+  const subset = state.trips.filter(t => categories.includes(t.tag) && t.date >= r.from && t.date <= r.to);
+  const tableRows = subset.map(t => fields.map(f => reportFieldValue(t, f)));
+  const fieldLabels = fields.map(f => (REPORT_FIELD_DEFS.find(d => d.v === f) || {}).l || f);
+
+  state.reportGenerating = true; r.error = ""; render();
+  try {
+    const jsPDFCtor = await loadJsPDF();
+    const doc = new jsPDFCtor();
+    const marginX = 14;
+    let y = 18;
+    doc.setFontSize(16); doc.setFont(undefined, "bold");
+    doc.text("Drive Log", marginX, y);
+    doc.setFontSize(10); doc.setFont(undefined, "normal");
+    y += 7;
+    doc.text(`${state.profile ? state.profile.name : ""}`, marginX, y);
+    y += 5;
+    doc.text(`${r.type === "custom" ? categories.join(" + ") : r.type} report · ${formatDateForDisplay(r.from)} – ${formatDateForDisplay(r.to)}`, marginX, y);
+    y += 9;
+
+    const totalDistance = subset.reduce((s, t) => s + t.distance, 0);
+    const byCat = { normal: 0, work: 0, supervised: 0 };
+    subset.forEach(t => { byCat[t.tag] = (byCat[t.tag] || 0) + 1; });
+    doc.setFont(undefined, "bold"); doc.text("Summary", marginX, y); doc.setFont(undefined, "normal");
+    y += 6;
+    doc.text(`Total distance: ${kmToDisplay(totalDistance).toFixed(1)} ${unitLabel()}`, marginX, y); y += 5;
+    doc.text(`Total drives: ${subset.length}  (Normal ${byCat.normal || 0} · Work ${byCat.work || 0} · Supervised ${byCat.supervised || 0})`, marginX, y);
+    y += 10;
+
+    doc.setFont(undefined, "bold"); doc.text("Trips", marginX, y); doc.setFont(undefined, "normal");
+    y += 7;
+
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const colWidth = (pageWidth - marginX * 2) / fields.length;
+    doc.setFontSize(8); doc.setFont(undefined, "bold");
+    fieldLabels.forEach((lbl, i) => doc.text(String(lbl), marginX + i * colWidth, y));
+    doc.setFont(undefined, "normal");
+    y += 4;
+    doc.line(marginX, y, pageWidth - marginX, y);
+    y += 4;
+
+    tableRows.forEach(row => {
+      if (y > doc.internal.pageSize.getHeight() - 16) { doc.addPage(); y = 18; }
+      row.forEach((cell, i) => {
+        const text = String(cell).slice(0, 22);
+        doc.text(text, marginX + i * colWidth, y);
+      });
+      y += 5;
+    });
+
+    if (tableRows.length === 0) { doc.text("No trips in this range.", marginX, y); }
+
+    doc.save(`drive-log-${r.type}-${r.from}-to-${r.to}.pdf`);
+    state.reportForm = null;
+  } catch (e) {
+    r.error = e.message || "Couldn't generate the PDF.";
+  }
+  state.reportGenerating = false;
+  render();
 }
 
 async function syncUnsyncedTrips() {
@@ -1270,17 +2144,32 @@ function attachAppHandlers() {
         render();
       };
 
+      const applySuggestBtn = document.getElementById("applyRouteSuggestionBtn");
+      if (applySuggestBtn) applySuggestBtn.onclick = async () => {
+        state.settings.driveType = applySuggestBtn.dataset.suggesttag;
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+
+      const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
+      if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
+        state.addDrives = { step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false, candidates: [], error: "" };
+        render();
+      };
+
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
         const trip = {
-          tag: state.settings.driveType === "work" ? "work" : "normal",
+          tag: state.settings.driveType === "work" ? "work" : state.settings.driveType === "supervised" ? "supervised" : "normal",
           startPoint: state.startPointInput.trim() || "Unspecified",
           startTime: nowTimeStr(),
           date: todayStr(),
           startedAt: Date.now(),
         };
+        if (state.startCoords) { trip.startLat = state.startCoords.lat; trip.startLng = state.startCoords.lng; }
         state.active = trip;
         state.startPointInput = "";
+        state.startCoords = null;
         state.preTripEndLocation = "";
         state.preTripDistance = null;
         state.preTripDuration = null;
@@ -1338,13 +2227,17 @@ function attachAppHandlers() {
         }
         state.distanceError = "";
         const a = state.active;
+        const endTimeNow = nowTimeStr();
         const trip = {
-          id: uid(), date: a.date, startTime: a.startTime, endTime: nowTimeStr(),
-          distance: distVal, startPoint: a.startPoint,
+          id: uid(), date: a.date, startTime: a.startTime, endTime: endTimeNow,
+          distance: displayToKm(distVal), startPoint: a.startPoint,
           endPoint: state.endPoint.trim() || "Unspecified", tag: a.tag,
         };
+        if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
+        if (state.endCoords) { trip.endLat = state.endCoords.lat; trip.endLng = state.endCoords.lng; }
         state.active = null;
         state.endPoint = ""; state.distance = "";
+        state.endCoords = null;
         state.estimatedDuration = null; state.estimateError = "";
         state.startPointInput = "";
         await storageDelete(ACTIVE_KEY);
@@ -1353,7 +2246,8 @@ function attachAppHandlers() {
 
         if (state.settings.driveType === "supervised") {
           state.pendingTrip = trip;
-          state.conditionsForm = { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+          const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
+          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
           state.addingSupervisor = false;
           state.newSupervisorName = ""; state.newSupervisorLicence = "";
           render();
@@ -1380,6 +2274,65 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
+
+    const learnRoutesSwitch = document.getElementById("learnRoutesSwitch");
+    if (learnRoutesSwitch) learnRoutesSwitch.onclick = async () => {
+      state.settings.learnRoutes = !state.settings.learnRoutes;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    document.querySelectorAll("[data-unit]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.unit = btn.dataset.unit;
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
+
+    const odometerFreqSelect = document.getElementById("odometerFrequencySelect");
+    if (odometerFreqSelect) odometerFreqSelect.onchange = async (e) => {
+      state.settings.odometerFrequency = e.target.value;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+    const enterOdometerNowBtn = document.getElementById("enterOdometerNowBtn");
+    if (enterOdometerNowBtn) enterOdometerNowBtn.onclick = () => {
+      state.odometerPrompt = { value: state.settings.lastOdometerReading ? String(state.settings.lastOdometerReading.value) : "" };
+      render();
+    };
+
+    document.querySelectorAll("[data-fuelmode]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.fuelMode = btn.dataset.fuelmode;
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
+    const fuelRateInput = document.getElementById("fuelRateInput");
+    if (fuelRateInput) fuelRateInput.onchange = async (e) => {
+      state.settings.fuelRate = e.target.value.replace(/[^0-9.]/g, "");
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+    const fuelPriceInput = document.getElementById("fuelPriceInput");
+    if (fuelPriceInput) fuelPriceInput.onchange = async (e) => {
+      state.settings.fuelPrice = e.target.value.replace(/[^0-9.]/g, "");
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+    const logFillupBtn = document.getElementById("logFillupBtn");
+    if (logFillupBtn) logFillupBtn.onclick = () => {
+      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      render();
+    };
+    document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
+      btn.onclick = async () => {
+        state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
+        await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
+        render();
+      };
+    });
 
     const savedHomeInput = document.getElementById("savedHomeInput");
     if (savedHomeInput) savedHomeInput.onchange = async (e) => {
@@ -1479,6 +2432,16 @@ function attachAppHandlers() {
       render();
     };
 
+    const openReportBtn = document.getElementById("openReportBtn");
+    if (openReportBtn) openReportBtn.onclick = () => {
+      state.reportForm = {
+        type: "normal", categories: ["normal"],
+        from: state.filterFrom || "", to: state.filterTo || "",
+        fields: REPORT_DEFAULTS.normal.slice(), error: "",
+      };
+      render();
+    };
+
     const selectAllBox = document.getElementById("selectAllVisible");
     if (selectAllBox) selectAllBox.onchange = (e) => {
       const visibleIds = filteredTrips().map(t => t.id);
@@ -1505,7 +2468,20 @@ function attachAppHandlers() {
     document.querySelectorAll(".editTripBtn").forEach(btn => {
       btn.onclick = () => {
         const trip = state.trips.find(t => t.id === btn.dataset.tripid);
-        if (trip) { state.editingTrip = { ...trip }; render(); }
+        if (trip) {
+          state.editingTrip = {
+            ...trip,
+            distance: kmToDisplay(trip.distance).toFixed(2),
+            timeOfDay: trip.timeOfDay || defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng),
+            roadType: trip.roadType || "sealed",
+            weather: trip.weather || "dry",
+            traffic: trip.traffic || "medium",
+            supervisorId: (state.supervisors.find(s => s.name === trip.supervisorName && s.licence === trip.supervisorLicence) || {}).id || "",
+            purpose: trip.purpose || "",
+          };
+          state.editAddingSupervisor = false;
+          render();
+        }
       };
     });
 
@@ -1606,15 +2582,54 @@ function attachAppHandlers() {
   if (state.editingTrip) {
     const et = state.editingTrip;
     document.getElementById("editDate").onchange = (e) => { et.date = e.target.value; };
-    document.getElementById("editStartTime").onchange = (e) => { et.startTime = e.target.value; };
-    document.getElementById("editEndTime").onchange = (e) => { et.endTime = e.target.value; };
+    attachTimeInput(document.getElementById("editStartTime"), (v) => { et.startTime = v; });
+    attachTimeInput(document.getElementById("editEndTime"), (v) => { et.endTime = v; });
     document.getElementById("editStartPoint").oninput = (e) => { et.startPoint = e.target.value; };
     document.getElementById("editEndPoint").oninput = (e) => { et.endPoint = e.target.value; };
+    document.getElementById("editPurpose").oninput = (e) => { et.purpose = e.target.value; };
     document.getElementById("editDistance").oninput = (e) => { et.distance = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = et.distance; };
 
     document.querySelectorAll("[data-edittag]").forEach(btn => {
       btn.onclick = () => { et.tag = btn.dataset.edittag; render(); };
     });
+
+    const editTod = document.getElementById("editTimeOfDay");
+    if (editTod) editTod.onchange = (e) => { et.timeOfDay = e.target.value; };
+    const editRoad = document.getElementById("editRoadType");
+    if (editRoad) editRoad.onchange = (e) => { et.roadType = e.target.value; };
+    const editWeather = document.getElementById("editWeather");
+    if (editWeather) editWeather.onchange = (e) => { et.weather = e.target.value; };
+    const editTraffic = document.getElementById("editTraffic");
+    if (editTraffic) editTraffic.onchange = (e) => { et.traffic = e.target.value; };
+
+    const editSup = document.getElementById("editSupervisor");
+    if (editSup) editSup.onchange = (e) => {
+      if (e.target.value === "__new__") {
+        state.editAddingSupervisor = true;
+        et.supervisorId = "";
+      } else {
+        state.editAddingSupervisor = false;
+        et.supervisorId = e.target.value;
+      }
+      render();
+    };
+    const newEditSupName = document.getElementById("newEditSupervisorName");
+    if (newEditSupName) newEditSupName.oninput = (e) => { state.newEditSupervisorName = e.target.value; };
+    const newEditSupLic = document.getElementById("newEditSupervisorLicence");
+    if (newEditSupLic) newEditSupLic.oninput = (e) => { state.newEditSupervisorLicence = e.target.value; };
+    const saveEditSupBtn = document.getElementById("saveEditSupervisorBtn");
+    if (saveEditSupBtn) saveEditSupBtn.onclick = async () => {
+      const name = state.newEditSupervisorName.trim();
+      const licence = state.newEditSupervisorLicence.trim();
+      if (!name || !licence) return;
+      const sup = { id: uid(), name, licence };
+      state.supervisors = [...state.supervisors, sup];
+      await storageSet(SUPERVISORS_KEY, state.supervisors);
+      et.supervisorId = sup.id;
+      state.editAddingSupervisor = false;
+      state.newEditSupervisorName = ""; state.newEditSupervisorLicence = "";
+      render();
+    };
 
     const closeBtn = document.getElementById("closeEditTripBtn");
     if (closeBtn) closeBtn.onclick = () => { state.editingTrip = null; render(); };
@@ -1628,14 +2643,32 @@ function attachAppHandlers() {
       render();
     };
 
+    const splitBtn = document.getElementById("openSplitTripBtn");
+    if (splitBtn) splitBtn.onclick = () => {
+      const t = state.trips.find(x => x.id === et.id);
+      if (!t) return;
+      state.splittingTrip = { id: t.id, date: t.date, startTime: t.startTime, endTime: t.endTime, splitTime: t.startTime, midPoint: "" };
+      render();
+    };
+
     const saveBtn = document.getElementById("saveEditTripBtn");
     if (saveBtn) saveBtn.onclick = async () => {
       const dist = parseFloat(et.distance);
       if (!et.startPoint.trim() || !et.endPoint.trim() || isNaN(dist)) return;
+      if (et.startTime) et.startTime = clampTimeValue(et.startTime);
+      if (et.endTime) et.endTime = clampTimeValue(et.endTime);
+      const sup = state.supervisors.find(s => s.id === et.supervisorId);
       state.trips = state.trips.map(t => t.id === et.id ? {
         ...t, date: et.date, startTime: et.startTime, endTime: et.endTime,
         startPoint: et.startPoint.trim(), endPoint: et.endPoint.trim(),
-        distance: dist, tag: et.tag,
+        purpose: (et.purpose || "").trim(),
+        distance: displayToKm(dist), tag: et.tag,
+        timeOfDay: et.tag === "supervised" ? et.timeOfDay : t.timeOfDay,
+        roadType: et.tag === "supervised" ? et.roadType : t.roadType,
+        weather: et.tag === "supervised" ? et.weather : t.weather,
+        traffic: et.tag === "supervised" ? et.traffic : t.traffic,
+        supervisorName: et.tag === "supervised" ? (sup ? sup.name : "") : t.supervisorName,
+        supervisorLicence: et.tag === "supervised" ? (sup ? sup.licence : "") : t.supervisorLicence,
       } : t);
       await storageSet(TRIPS_KEY, state.trips);
       state.editingTrip = null;
@@ -1662,8 +2695,7 @@ function attachAppHandlers() {
     const f = state.logEstimateForm;
     const led = document.getElementById("logEstimateDate");
     if (led) led.onchange = (e) => { f.date = e.target.value; };
-    const lest = document.getElementById("logEstimateStartTime");
-    if (lest) lest.onchange = (e) => { f.startTime = e.target.value; };
+    attachTimeInput(document.getElementById("logEstimateStartTime"), (v) => { f.startTime = v; });
 
     const cancelLogBtn = document.getElementById("cancelLogEstimateBtn");
     if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; render(); };
@@ -1671,6 +2703,7 @@ function attachAppHandlers() {
     const confirmLogBtn = document.getElementById("confirmLogEstimateBtn");
     if (confirmLogBtn) confirmLogBtn.onclick = async () => {
       if (!f.date || !f.startTime) return;
+      f.startTime = clampTimeValue(f.startTime);
       const startDate = new Date(`1970/01/01 ${f.startTime}`);
       const endDate = new Date(startDate.getTime() + (state.preTripDuration || 0) * 60000);
       const endTimeStr = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
@@ -1679,10 +2712,10 @@ function attachAppHandlers() {
         date: f.date,
         startTime: f.startTime,
         endTime: endTimeStr,
-        distance: parseFloat(state.preTripDistance) || 0,
+        distance: displayToKm(parseFloat(state.preTripDistance) || 0),
         startPoint: state.startPointInput.trim() || "Unspecified",
         endPoint: state.preTripEndLocation.trim() || "Unspecified",
-        tag: state.settings.driveType === "work" ? "work" : "normal",
+        tag: state.settings.driveType === "work" ? "work" : state.settings.driveType === "supervised" ? "supervised" : "normal",
       };
       state.logEstimateForm = null;
       state.startPointInput = "";
@@ -1694,7 +2727,8 @@ function attachAppHandlers() {
 
       if (state.settings.driveType === "supervised") {
         state.pendingTrip = trip;
-        state.conditionsForm = { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+        const dn = defaultDayNightFor(trip.date, trip.startTime);
+        state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
         state.addingSupervisor = false;
         state.newSupervisorName = ""; state.newSupervisorLicence = "";
         render();
@@ -1702,6 +2736,243 @@ function attachAppHandlers() {
         await finalizeTrip(trip);
         render();
       }
+    };
+  }
+
+  if (state.splittingTrip) {
+    const s = state.splittingTrip;
+    attachTimeInput(document.getElementById("splitTimeInput"), (v) => { s.splitTime = v; });
+    const splitMidInput = document.getElementById("splitMidPointInput");
+    if (splitMidInput) splitMidInput.oninput = (e) => { s.midPoint = e.target.value; };
+
+    const cancelSplitBtn = document.getElementById("cancelSplitTripBtn");
+    if (cancelSplitBtn) cancelSplitBtn.onclick = () => { state.splittingTrip = null; render(); };
+
+    const confirmSplitBtn = document.getElementById("confirmSplitTripBtn");
+    if (confirmSplitBtn) confirmSplitBtn.onclick = async () => {
+      const original = state.trips.find(t => t.id === s.id);
+      if (!original) { state.splittingTrip = null; render(); return; }
+      s.splitTime = clampTimeValue(s.splitTime || "");
+      const startMin = (() => { const [h, m] = s.startTime.split(":").map(Number); return h * 60 + m; })();
+      let endMin = (() => { const [h, m] = s.endTime.split(":").map(Number); return h * 60 + m; })();
+      if (endMin <= startMin) endMin += 24 * 60;
+      const [sh, sm] = s.splitTime.split(":").map(Number);
+      let splitMin = sh * 60 + sm;
+      if (splitMin < startMin) splitMin += 24 * 60;
+      if (splitMin <= startMin || splitMin >= endMin) {
+        s.error = "Pick a split time between the drive's start and end.";
+        render();
+        return;
+      }
+      const totalMin = endMin - startMin;
+      const ratio = (splitMin - startMin) / totalMin;
+      const midPoint = s.midPoint.trim() || "Split point";
+      const leg1 = {
+        ...original, id: uid(), endTime: s.splitTime, endPoint: midPoint,
+        distance: original.distance * ratio,
+      };
+      const leg2 = {
+        ...original, id: uid(), startTime: s.splitTime, startPoint: midPoint,
+        distance: original.distance * (1 - ratio),
+      };
+      delete leg1.startLat; delete leg1.startLng; // coordinates no longer correspond exactly to the split legs
+      delete leg2.endLat; delete leg2.endLng;
+      state.trips = state.trips.flatMap(t => t.id === s.id ? [leg1, leg2] : [t]);
+      await storageSet(TRIPS_KEY, state.trips);
+      state.splittingTrip = null;
+      state.editingTrip = null;
+      render();
+    };
+  }
+
+  if (state.odometerPrompt) {
+    const p = state.odometerPrompt;
+    const readingInput = document.getElementById("odometerReadingInput");
+    if (readingInput) readingInput.oninput = (e) => { p.value = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = p.value; };
+
+    const skipBtn = document.getElementById("skipOdometerBtn");
+    if (skipBtn) skipBtn.onclick = () => { state.odometerPrompt = null; render(); };
+
+    const saveBtn = document.getElementById("saveOdometerBtn");
+    if (saveBtn) saveBtn.onclick = async () => {
+      const val = parseFloat(p.value);
+      if (!p.value || isNaN(val) || val < 0) { p.error = "Enter a valid odometer reading."; render(); return; }
+      state.settings.lastOdometerReading = { value: val, date: todayStr() };
+      await storageSet(SETTINGS_KEY, state.settings);
+      state.odometerPrompt = null;
+      render();
+    };
+  }
+
+  if (state.fuelFillupForm) {
+    const f = state.fuelFillupForm;
+    const dateInput = document.getElementById("fillupDate");
+    if (dateInput) dateInput.onchange = (e) => { f.date = e.target.value; };
+    const amountInput = document.getElementById("fillupAmount");
+    if (amountInput) amountInput.oninput = (e) => { f.amount = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.amount; };
+    const priceInput = document.getElementById("fillupPrice");
+    if (priceInput) priceInput.oninput = (e) => { f.price = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.price; };
+
+    const cancelBtn = document.getElementById("cancelFillupBtn");
+    if (cancelBtn) cancelBtn.onclick = () => { state.fuelFillupForm = null; render(); };
+
+    const confirmBtn = document.getElementById("confirmFillupBtn");
+    if (confirmBtn) confirmBtn.onclick = async () => {
+      const amount = parseFloat(f.amount), price = parseFloat(f.price);
+      if (!f.date || !amount || isNaN(amount) || amount <= 0 || !price || isNaN(price) || price <= 0) {
+        f.error = "Enter a valid amount and price.";
+        render();
+        return;
+      }
+      state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, amount, price }];
+      await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
+      state.fuelFillupForm = null;
+      render();
+    };
+  }
+
+  if (state.reportForm) {
+    const r = state.reportForm;
+    const typeSelect = document.getElementById("reportType");
+    if (typeSelect) typeSelect.onchange = (e) => {
+      r.type = e.target.value;
+      if (r.type !== "custom") r.fields = (REPORT_DEFAULTS[r.type] || REPORT_DEFAULTS.normal).slice();
+      else if (!r.categories.length) r.categories = ["normal"];
+      render();
+    };
+    document.querySelectorAll("[data-reportcat]").forEach(btn => {
+      btn.onclick = () => {
+        const cat = btn.dataset.reportcat;
+        r.categories = r.categories.includes(cat) ? r.categories.filter(c => c !== cat) : [...r.categories, cat];
+        render();
+      };
+    });
+    document.querySelectorAll("[data-reportfield]").forEach(btn => {
+      btn.onclick = () => {
+        const field = btn.dataset.reportfield;
+        r.fields = r.fields.includes(field) ? r.fields.filter(f => f !== field) : [...r.fields, field];
+        render();
+      };
+    });
+    const fromInput = document.getElementById("reportFrom");
+    if (fromInput) fromInput.onchange = (e) => { r.from = e.target.value; };
+    const toInput = document.getElementById("reportTo");
+    if (toInput) toInput.onchange = (e) => { r.to = e.target.value; };
+
+    const closeBtn = document.getElementById("closeReportBtn");
+    if (closeBtn) closeBtn.onclick = () => { state.reportForm = null; render(); };
+
+    const generateBtn = document.getElementById("generateReportBtn");
+    if (generateBtn) generateBtn.onclick = () => generateReportPDF();
+  }
+
+  if (state.addDrives) {
+    const a = state.addDrives;
+
+    const closeBtn = document.getElementById("closeAddDrivesBtn");
+    if (closeBtn) closeBtn.onclick = () => { state.addDrives = null; render(); };
+
+    const backBtn = document.getElementById("backAddDrivesBtn");
+    if (backBtn) backBtn.onclick = () => {
+      a.step = a.step === 3 ? 2 : 1;
+      a.error = "";
+      render();
+    };
+
+    const openMapsBtn = document.getElementById("openMapsBtn");
+    if (openMapsBtn) openMapsBtn.onclick = () => {
+      window.open("https://www.google.com/maps", "_blank");
+    };
+
+    const fileInput = document.getElementById("timelineFileInput");
+    if (fileInput) fileInput.onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      a.error = ""; a.processing = true; render();
+      try {
+        const text = await file.text();
+        const json = JSON.parse(text);
+        const points = parseTimelinePoints(json);
+        if (!points.length) throw new Error("Couldn't find any location points in that file — make sure it's the Timeline export.");
+        a.points = points;
+        a.fileName = file.name;
+        const minDate = new Date(points[0].t).toISOString().slice(0, 10);
+        const maxDate = new Date(points[points.length - 1].t).toISOString().slice(0, 10);
+        a.dateFrom = minDate;
+        a.dateTo = maxDate;
+        a.step = 2;
+      } catch (err) {
+        a.error = err.message || "Couldn't read that file — make sure it's a Timeline export (.json).";
+      }
+      a.processing = false;
+      render();
+    };
+
+    const fromInput = document.getElementById("importFrom");
+    if (fromInput) fromInput.onchange = (e) => { a.dateFrom = e.target.value; };
+    const toInput = document.getElementById("importTo");
+    if (toInput) toInput.onchange = (e) => { a.dateTo = e.target.value; };
+
+    const runImportBtn = document.getElementById("runImportBtn");
+    if (runImportBtn) runImportBtn.onclick = async () => {
+      if (!a.dateFrom || !a.dateTo) { a.error = "Choose a date range."; render(); return; }
+      a.processing = true; a.error = ""; render();
+      await new Promise(resolve => setTimeout(resolve, 10)); // let the "processing" state paint before the (synchronous) crunch below
+      try {
+        const fromMs = new Date(`${a.dateFrom}T00:00:00`).getTime();
+        const toMs = new Date(`${a.dateTo}T23:59:59`).getTime();
+        const inRange = a.points.filter(p => p.t >= fromMs && p.t <= toMs);
+        a.candidates = detectDrivingSegments(inRange);
+        a.step = 3;
+      } catch (err) {
+        a.error = err.message || "Couldn't process that date range.";
+      }
+      a.processing = false;
+      render();
+    };
+
+    document.querySelectorAll(".candidateCheckbox").forEach(cb => {
+      cb.onchange = (e) => {
+        const c = a.candidates.find(x => x.id === cb.dataset.id);
+        if (c) c.selected = e.target.checked;
+      };
+    });
+
+    const confirmImportBtn = document.getElementById("confirmImportBtn");
+    if (confirmImportBtn) confirmImportBtn.onclick = async () => {
+      const chosen = a.candidates.filter(c => c.selected);
+      if (!chosen.length) { a.error = "Select at least one drive to add."; render(); return; }
+      confirmImportBtn.disabled = true;
+      confirmImportBtn.textContent = "Adding…";
+      const newTrips = [];
+      for (const c of chosen) {
+        const startDate = new Date(c.startMs), endDate = new Date(c.endMs);
+        const pad = (n) => String(n).padStart(2, "0");
+        let startAddr = `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`;
+        let endAddr = `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`;
+        if (mapsConfigured()) {
+          try { startAddr = await reverseGeocode(c.startLat, c.startLng); } catch (e) {}
+          try { endAddr = await reverseGeocode(c.endLat, c.endLng); } catch (e) {}
+        }
+        newTrips.push({
+          id: uid(),
+          date: `${startDate.getFullYear()}-${pad(startDate.getMonth() + 1)}-${pad(startDate.getDate())}`,
+          startTime: `${pad(startDate.getHours())}:${pad(startDate.getMinutes())}`,
+          endTime: `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}`,
+          distance: c.distanceKm,
+          startPoint: startAddr,
+          endPoint: endAddr,
+          startLat: c.startLat, startLng: c.startLng, endLat: c.endLat, endLng: c.endLng,
+          tag: "normal",
+          synced: false,
+          importedFromTimeline: true,
+        });
+      }
+      state.trips = [...newTrips, ...state.trips].sort((x, y) => (x.date + x.startTime < y.date + y.startTime ? 1 : -1));
+      await storageSet(TRIPS_KEY, state.trips);
+      state.addDrives = null;
+      if (state.sheetLink) syncUnsyncedTrips();
+      render();
     };
   }
 }
