@@ -1621,15 +1621,15 @@ function renderSettingsTab() {
     ${state.settings.fuelMode === "estimated" ? `
       <div class="row-2" style="margin-bottom:6px;">
         <div>
-          <label class="field-label">Consumption (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+          <label class="field-label">Fuel Consumption (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
           <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
         </div>
         <div>
-          <label class="field-label">Fuel price (per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+          <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
           <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
         </div>
       </div>
-      <p class="settings-desc" style="margin:6px 0 0;">Uses your consumption and fuel price to estimate each drive's cost.</p>
+      <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
