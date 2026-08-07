@@ -99,7 +99,7 @@
            text-align:left;padding:8px 10px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;}
   tbody td{padding:8px 10px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .route-cell{max-width:140px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
+  .route-cell{max-width:140px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -281,7 +281,7 @@ function sunriseSunsetUTC(date, lat, lng) {
 // Returns "day" or "night" for a given local Date + coordinates, falling back
 // to a simple 6am-6pm heuristic if we don't have coordinates to work with.
 function tripDateTime(dateStr, timeStr) {
-  const d = new Date(`${dateStr}T${timeStr || "12:00"}:00`);
+  const d = new Date(`${dateStr}T${formatTime24(timeStr) || "12:00"}:00`);
   return isNaN(d) ? new Date() : d;
 }
 function defaultDayNightFor(dateStr, timeStr, lat, lng) {
@@ -651,7 +651,7 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: false,
+    unit: null, learnRoutes: false, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "",
   },
@@ -858,6 +858,7 @@ function resolveSavedAddress(value) {
 }
 
 function renderSavedAddressChips(targetId) {
+  if (state.settings.showSavedAddresses === false) return "";
   const list = savedAddressList();
   if (!list.length) return "";
   return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${list.map(a =>
@@ -1032,6 +1033,7 @@ async function loadData() {
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
+  if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
   if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
@@ -1104,9 +1106,30 @@ function odometerTime(mins) {
 }
 
 function totalMiles() { return state.trips.reduce((s, t) => s + t.distance, 0); }
+// Normalizes any stored time string (24hr "HH:MM", or a legacy 12hr value
+// like "9:37 pm" / "09:37 PM") into a plain 24hr "HH:MM" string for display
+// and calculation. Returns "" for anything unparseable.
+function formatTime24(raw) {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  const ampmMatch = s.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+  if (ampmMatch) {
+    let h = parseInt(ampmMatch[1], 10);
+    const m = ampmMatch[2];
+    const isPm = /pm/i.test(ampmMatch[3]);
+    if (h === 12) h = isPm ? 12 : 0;
+    else if (isPm) h += 12;
+    return `${String(h).padStart(2, "0")}:${m}`;
+  }
+  const plainMatch = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (plainMatch) {
+    return `${plainMatch[1].padStart(2, "0")}:${plainMatch[2]}`;
+  }
+  return s;
+}
 function tripMinutes(t) {
-  const start = new Date(`1970/01/01 ${t.startTime}`);
-  let end = new Date(`1970/01/01 ${t.endTime}`);
+  const start = new Date(`1970/01/01 ${formatTime24(t.startTime)}`);
+  let end = new Date(`1970/01/01 ${formatTime24(t.endTime)}`);
   if (isNaN(start) || isNaN(end)) return 0;
   if (end < start) end = new Date(end.getTime() + 24 * 60 * 60 * 1000);
   return Math.round((end - start) / 60000);
@@ -1179,7 +1202,7 @@ function suggestRouteTag() {
   const matches = state.trips.filter(t => {
     if ((t.startPoint || "").trim().toLowerCase() !== start) return false;
     if ((t.endPoint || "").trim().toLowerCase() !== end) return false;
-    const parts = (t.startTime || "").split(":").map(Number);
+    const parts = formatTime24(t.startTime).split(":").map(Number);
     if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return false;
     const tMinutes = parts[0] * 60 + parts[1];
     const diff = Math.min(Math.abs(tMinutes - nowMinutes), 1440 - Math.abs(tMinutes - nowMinutes));
@@ -1316,7 +1339,7 @@ function renderLogTab() {
       <span class="tag ${a.tag}">${a.tag}</span>
       <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${a.startTime}</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${formatTime24(a.startTime)}</p>
 
     <label class="field-label">End Location</label>
     ${renderSavedAddressChips("endPointInput")}
@@ -1398,7 +1421,7 @@ function renderHistoryTab() {
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td>${formatDateForDisplay(t.date)}</td>
-                <td style="color:var(--muted)">${t.startTime}–${t.endTime}</td>
+                <td style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
                 <td class="mono" style="text-align:right;">${tripMinutes(t)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
@@ -1468,7 +1491,13 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin-bottom:10px;">${icons.pin} Saved Addresses</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
+      <p class="settings-title" style="margin:0;">${icons.pin} Saved Addresses</p>
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
+        <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
+      </div>
+    </div>
     <label class="field-label">Home</label>
     <input id="savedHomeInput" class="input" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" style="margin-bottom:14px;" />
     <label class="field-label">Work</label>
@@ -1493,7 +1522,7 @@ function renderSettingsTab() {
         <input id="newSavedOtherAddress" class="input" style="margin-bottom:12px;" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
         <button id="saveSavedOtherBtn" class="btn btn-ghost">Add address</button>
       </div>
-    ` : `<button id="addSavedOtherBtn" class="btn btn-ghost" style="margin-top:10px;">+ Add Address</button>`}
+    ` : ""}
   </div>
 
   <div class="card">
@@ -1648,9 +1677,9 @@ function renderEditTripModal() {
 
       <label class="field-label">Start / end time (24hr)</label>
       <div class="field-row" style="margin-bottom:14px;">
-        <input id="editStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.startTime || "")}" />
+        <input id="editStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.startTime))}" />
         <span class="settings-desc">–</span>
-        <input id="editEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.endTime || "")}" />
+        <input id="editEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.endTime))}" />
       </div>
 
       <label class="field-label">Start Location</label>
@@ -1976,8 +2005,8 @@ function renderAddDrivesModal() {
 function reportFieldValue(t, field) {
   switch (field) {
     case "date": return formatDateForDisplay(t.date);
-    case "startTime": return t.startTime || "";
-    case "endTime": return t.endTime || "";
+    case "startTime": return formatTime24(t.startTime) || "";
+    case "endTime": return formatTime24(t.endTime) || "";
     case "startPoint": return t.startPoint || "";
     case "endPoint": return t.endPoint || "";
     case "distance": return `${kmToDisplay(t.distance).toFixed(1)} ${unitLabel()}`;
@@ -2302,6 +2331,13 @@ function attachAppHandlers() {
     const learnRoutesSwitch = document.getElementById("learnRoutesSwitch");
     if (learnRoutesSwitch) learnRoutesSwitch.onclick = async () => {
       state.settings.learnRoutes = !state.settings.learnRoutes;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    const showSavedAddressesSwitch = document.getElementById("showSavedAddressesSwitch");
+    if (showSavedAddressesSwitch) showSavedAddressesSwitch.onclick = async () => {
+      state.settings.showSavedAddresses = state.settings.showSavedAddresses === false;
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
