@@ -195,9 +195,15 @@ function debounce(fn, delay) {
 
 function getDeviceRegionCode() {
   try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (timezone.startsWith("Australia/")) return "au";
     const locale = navigator.language || (navigator.languages && navigator.languages[0]) || "";
+    if (typeof Intl.Locale === "function") {
+      const region = new Intl.Locale(locale).region;
+      if (region) return region.toLowerCase();
+    }
     const parts = locale.split("-");
-    if (parts.length > 1) return parts[parts.length - 1].toLowerCase();
+    if (parts.length > 1 && parts[parts.length - 1].length === 2) return parts[parts.length - 1].toLowerCase();
   } catch (e) {}
   return null;
 }
@@ -483,7 +489,22 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
     if (!mapsConfigured()) return;
     const libraryPromise = getPlacesLibrary();
     const query = inputEl.value.trim();
-    if (!libraryPromise || query.length < 3) { hide(); return; }
+    if (query.length < 3) { hide(); return; }
+    const savedMatches = savedAddressList().filter(address => {
+      const needle = query.toLowerCase();
+      return address.name.toLowerCase().includes(needle) || address.address.toLowerCase().includes(needle);
+    });
+    if (savedMatches.length) {
+      dropdown.innerHTML = savedMatches.map(address =>
+        `<div class="places-suggestion" data-desc="${escAttr(address.address)}"><b>${escAttr(address.name)}</b><span style="color:var(--muted);"> — ${escAttr(address.address)}</span></div>`
+      ).join("");
+      dropdown.style.display = "block";
+      dropdown.querySelectorAll(".places-suggestion").forEach(el => {
+        el.onmousedown = (e) => { e.preventDefault(); onSelect(el.dataset.desc); hide(); };
+      });
+      return;
+    }
+    if (!libraryPromise) { hide(); return; }
     try {
       const { AutocompleteSuggestion, AutocompleteSessionToken } = await libraryPromise;
       const request = { input: query, sessionToken: new AutocompleteSessionToken() };
@@ -1195,14 +1216,14 @@ function renderApp() {
       </div>
       <div class="stats-row">
         <div class="stat-block">
-          <p class="odo-label">Total distance (${unitLabel()})</p>
+          <p class="odo-label">Total distance</p>
           ${odometer(kmToDisplay(totalMiles()))}
         </div>
         <div class="stat-block">
           <p class="odo-label">Total time</p>
           ${odometerTime(totalMinutes())}
         </div>
-        <button id="settingsBtn" class="icon-btn ${state.tab === "settings" ? "active" : ""}" title="Settings">${icons.gear}</button>
+        <button id="settingsBtn" class="icon-btn" title="Settings">${icons.gear}</button>
       </div>
     </div>
 
@@ -1526,7 +1547,7 @@ function renderSettingsTab() {
         </div>
         <button class="icon-btn deleteSavedOtherBtn" data-id="${o.id}" title="Remove">${icons.trash}</button>
       </div>
-    `).join("") : `<p class="settings-desc" style="margin:4px 0 0;">No other saved addresses yet.</p>`}
+    `).join("") : ""}
 
     ${state.addingSavedOther ? `
       <div class="card" style="padding:12px;margin-top:10px;">
@@ -1536,7 +1557,7 @@ function renderSettingsTab() {
         <input id="newSavedOtherAddress" class="input" style="margin-bottom:12px;" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
         <button id="saveSavedOtherBtn" class="btn btn-ghost">Add address</button>
       </div>
-    ` : `<button id="addSavedOtherBtn" class="btn btn-ghost" style="margin-top:10px;">+ Add address</button>`}
+    ` : `<button id="addSavedOtherBtn" class="btn btn-ghost" style="margin-top:10px;">+ Add Address</button>`}
   </div>
 
   <div class="card">
