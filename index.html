@@ -118,8 +118,11 @@
   .switch.on .knob{transform:translateX(20px);background:var(--bg);}
   .settings-title{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin:0 0 4px;}
   .settings-desc{color:var(--muted);font-size:12px;line-height:1.5;margin:2px 0 0;}
-  .settings-actions{display:flex;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  .settings-actions .btn{width:auto;padding:9px 14px;font-size:13px;flex-shrink:0;white-space:nowrap;}
+  .settings-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .settings-actions .btn{width:auto;padding:8px 10px;font-size:12px;flex:1 1 0;min-width:0;white-space:nowrap;}
+  .settings-inline-controls{display:flex;gap:8px;align-items:center;}
+  .settings-inline-controls .input{flex:1;min-width:0;}
+  .settings-inline-controls .btn{width:auto;flex-shrink:0;padding:9px 12px;font-size:13px;white-space:nowrap;}
 </style>
 </head>
 <body>
@@ -628,7 +631,7 @@ const state = {
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true,
     unit: null, learnRoutes: false,
-    odometerFrequency: "quarterly", lastOdometerReading: null,
+    odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "",
   },
   sheetLink: null,
@@ -826,6 +829,13 @@ function savedAddressList() {
   return list;
 }
 
+function resolveSavedAddress(value) {
+  const query = String(value || "").trim().toLowerCase();
+  if (!query) return value;
+  const match = savedAddressList().find(a => a.name.trim().toLowerCase() === query);
+  return match ? match.address : value;
+}
+
 function renderSavedAddressChips(targetId) {
   const list = savedAddressList();
   if (!list.length) return "";
@@ -860,8 +870,8 @@ async function estimateRoute(origin, destination) {
   const service = new DistanceMatrixService();
   return new Promise((resolve, reject) => {
     service.getDistanceMatrix({
-      origins: [origin],
-      destinations: [destination],
+      origins: [resolveSavedAddress(origin)],
+      destinations: [resolveSavedAddress(destination)],
       travelMode: google.maps.TravelMode.DRIVING,
       unitSystem: google.maps.UnitSystem.METRIC,
     }, (response, status) => {
@@ -1002,6 +1012,7 @@ async function loadData() {
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
+  if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
   if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
   if (!state.settings.fuelMode) state.settings.fuelMode = "estimated";
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
@@ -1030,6 +1041,7 @@ function odometerDueDate() {
   return due;
 }
 function checkOdometerDue() {
+  if (state.settings.odometerReminders === false) return;
   const last = state.settings.lastOdometerReading;
   if (!last) {
     // Never entered a reading — don't nag a brand-new install with zero drives yet.
@@ -1211,6 +1223,7 @@ function renderApp() {
     ${state.reportForm ? renderReportModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
     <datalist id="recentLocations">
+      ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
     </datalist>
   </div>`;
@@ -1424,12 +1437,12 @@ function renderSettingsTab() {
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
       : "Normal — For everyday driving."
     }</p>
-    <div class="switch-row" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-      <div>
-        <p class="settings-title" style="margin:0;">Learn my common routes</p>
-        <p class="settings-desc">Notices repeated start/end + time-of-day patterns and suggests a tag on matching new drives. Never applied automatically.</p>
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div class="switch-row" style="margin-bottom:4px;">
+        <p class="settings-title" style="margin:0;">Learn Routes (Beta)</p>
+        <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
       </div>
-      <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
+      <p class="settings-desc" style="margin:0;">Learns repeated routes to suggest a drive type.</p>
     </div>
   </div>
 
@@ -1439,27 +1452,27 @@ function renderSettingsTab() {
       <button class="toggle normal ${state.settings.unit === "km" ? "on" : ""}" data-unit="km">Kilometres</button>
       <button class="toggle normal ${state.settings.unit === "mi" ? "on" : ""}" data-unit="mi">Miles</button>
     </div>
-    <p class="settings-desc" style="margin-top:10px;">Applies to every distance shown across the app. Defaulted from your device's region.</p>
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin-bottom:10px;">${icons.clock} Odometer Reminders</p>
-    <label class="field-label">Reminder frequency</label>
-    <select id="odometerFrequencySelect" class="input" style="margin-bottom:10px;">
-      <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-      <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
-      <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
-      <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
-    </select>
-    ${state.settings.lastOdometerReading ? `
-      <p class="settings-desc" style="margin:0;">Last reading: <b class="mono" style="color:var(--text);">${escAttr(String(state.settings.lastOdometerReading.value))} ${unitLabel()}</b> on ${formatDateForDisplay(state.settings.lastOdometerReading.date)}.</p>
-    ` : `<p class="settings-desc" style="margin:0;">No reading recorded yet — you'll be asked next time you open the app.</p>`}
-    <button id="enterOdometerNowBtn" class="btn btn-ghost" style="margin-top:10px;">Enter a reading now</button>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
+      <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="settings-inline-controls">
+      <select id="odometerFrequencySelect" class="input" ${state.settings.odometerReminders === false ? "disabled" : ""}>
+        <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+        <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+        <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
+        <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
+      </select>
+      <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
+    </div>
   </div>
 
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">Fuel Cost Tracking</p>
+      <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
     </div>
     <label class="field-label">Costing mode</label>
     <div class="toggle-row" style="margin-bottom:14px;">
@@ -1471,9 +1484,9 @@ function renderSettingsTab() {
       <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" style="margin-bottom:12px;" />
       <label class="field-label">Fuel price (per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
       <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" style="margin-bottom:6px;" />
-      <p class="settings-desc" style="margin:6px 0 0;">Per-drive costs are labelled "Estimated fuel cost" throughout the app since this doesn't account for real-time price drift or driving conditions.</p>
+      <p class="settings-desc" style="margin:6px 0 0;">Uses your rate and fuel price to estimate each drive's cost.</p>
     ` : `
-      <p class="settings-desc" style="margin-bottom:12px;">Real average cost per ${unitLabel()} is computed from your logged fill-ups against distance driven over the same period.</p>
+      <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
         <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a fill-up</button>
       </div>
@@ -1527,13 +1540,11 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <div class="switch-row">
-      <div>
-        <p class="settings-title">${icons.lock} Security</p>
-        <p class="settings-desc">Ask for your PIN each time you open the app.</p>
-      </div>
+    <div class="switch-row" style="margin-bottom:4px;">
+      <p class="settings-title" style="margin:0;">${icons.lock} Security</p>
       <div id="requirePinSwitch" class="switch ${state.settings.requirePin !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
+    <p class="settings-desc" style="margin:0;">Ask for your PIN each time you open the app.</p>
   </div>
 
   <div class="card" style="border-color:rgba(224,100,44,.35);">
@@ -2293,6 +2304,12 @@ function attachAppHandlers() {
     const odometerFreqSelect = document.getElementById("odometerFrequencySelect");
     if (odometerFreqSelect) odometerFreqSelect.onchange = async (e) => {
       state.settings.odometerFrequency = e.target.value;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+    const odometerRemindersSwitch = document.getElementById("odometerRemindersSwitch");
+    if (odometerRemindersSwitch) odometerRemindersSwitch.onclick = async () => {
+      state.settings.odometerReminders = state.settings.odometerReminders === false;
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
