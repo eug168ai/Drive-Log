@@ -650,7 +650,7 @@ const state = {
   loginPin: "",
   loginEnterPin: "",
   settings: {
-    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true,
+    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: false,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "",
@@ -1024,12 +1024,12 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: true };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
   if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
-  if (state.settings.requirePin === undefined) state.settings.requirePin = true;
+  if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
@@ -1310,7 +1310,6 @@ function renderLogTab() {
 
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
   </div>
-  <button id="openAddDrivesBtn" class="btn btn-ghost" style="margin-bottom:16px;">${icons.download} Add Drives from Timeline</button>
   ` : `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1358,6 +1357,7 @@ function renderHistoryTab() {
       </div>
       <div style="display:flex;gap:6px;">
         <button id="openReportBtn" class="chip">${icons.download} Report</button>
+        ${state.sheetLink ? `<a href="${state.sheetLink.url}" target="_blank" class="chip" style="text-decoration:none;">${icons.drive} Open Sheets</a>` : ""}
         <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
       </div>
     </div>
@@ -1427,7 +1427,7 @@ function renderSettingsTab() {
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
-        <a href="${state.sheetLink.url}" target="_blank" class="btn btn-ghost" style="text-decoration:none;">Open Sheets</a>
+        <button id="openAddDrivesBtn" class="btn btn-ghost">${icons.download} Add Drives from Google Timeline</button>
       </div>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
@@ -1463,72 +1463,8 @@ function renderSettingsTab() {
         <p class="settings-title" style="margin:0;">Learn Routes (Beta)</p>
         <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
       </div>
-      <p class="settings-desc" style="margin:0;">Learns repeated routes to suggest a drive type.</p>
+      <p class="settings-desc" style="margin:0;">Learns repeated routes to suggest a Drive Type.</p>
     </div>
-  </div>
-
-  <div class="card">
-    <p class="settings-title" style="margin-bottom:10px;">Units</p>
-    <div class="toggle-row">
-      <button class="toggle normal ${state.settings.unit === "km" ? "on" : ""}" data-unit="km">Kilometres</button>
-      <button class="toggle normal ${state.settings.unit === "mi" ? "on" : ""}" data-unit="mi">Miles</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="switch-row" style="margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
-      <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="settings-inline-controls">
-      <select id="odometerFrequencySelect" class="input" ${state.settings.odometerReminders === false ? "disabled" : ""}>
-        <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-        <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
-        <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
-        <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
-      </select>
-      <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
-    </div>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
-    </div>
-    <label class="field-label">Costing mode</label>
-    <div class="toggle-row" style="margin-bottom:14px;">
-      <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
-      <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
-    </div>
-    ${state.settings.fuelMode === "estimated" ? `
-      <label class="field-label">Consumption rate (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
-      <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" style="margin-bottom:12px;" />
-      <label class="field-label">Fuel price (per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
-      <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" style="margin-bottom:6px;" />
-      <p class="settings-desc" style="margin:6px 0 0;">Uses your rate and fuel price to estimate each drive's cost.</p>
-    ` : `
-      <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
-      <div class="settings-actions" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a fill-up</button>
-      </div>
-      ${state.fuelFillups.length ? `
-        <div class="table-scroll" style="max-height:220px;">
-          <table>
-            <thead><tr><th>Date</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
-            <tbody>
-              ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
-                <tr>
-                  <td>${formatDateForDisplay(f.date)}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
-                  <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
-                </tr>`).join("")}
-            </tbody>
-          </table>
-        </div>
-        <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
-      ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
-    `}
   </div>
 
   <div class="card">
@@ -1561,9 +1497,71 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
+    <div class="switch-row" style="margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
+      <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="settings-inline-controls">
+      <select id="odometerFrequencySelect" class="input" ${state.settings.odometerReminders === false ? "disabled" : ""}>
+        <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+        <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+        <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
+        <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
+      </select>
+      <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
+    </div>
+    <label class="field-label">Costing mode</label>
+    <div class="toggle-row" style="margin-bottom:14px;">
+      <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
+      <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
+    </div>
+    ${state.settings.fuelMode === "estimated" ? `
+      <div class="row-2" style="margin-bottom:6px;">
+        <div>
+          <label class="field-label">Consumption rate (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+          <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
+        </div>
+        <div>
+          <label class="field-label">Fuel price (per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:6px 0 0;">Uses your consumption rate and fuel price to estimate each drive's cost.</p>
+    ` : `
+      <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
+      <div class="settings-actions" style="margin-bottom:12px;">
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a fill-up</button>
+      </div>
+      ${state.fuelFillups.length ? `
+        <div class="table-scroll" style="max-height:220px;">
+          <table>
+            <thead><tr><th>Date</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
+            <tbody>
+              ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
+                <tr>
+                  <td>${formatDateForDisplay(f.date)}</td>
+                  <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
+                  <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
+                  <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>
+        <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
+      ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
+    `}
+  </div>
+
+  <div class="card">
     <div class="switch-row" style="margin-bottom:4px;">
       <p class="settings-title" style="margin:0;">${icons.lock} Security</p>
-      <div id="requirePinSwitch" class="switch ${state.settings.requirePin !== false ? "on" : ""}"><div class="knob"></div></div>
+      <div id="requirePinSwitch" class="switch ${state.settings.requirePin === true ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <p class="settings-desc" style="margin:0;">Ask for your PIN each time you open the app.</p>
   </div>
@@ -1807,14 +1805,14 @@ function renderOdometerPromptModal() {
     <div class="modal-card">
       <h2>${icons.clock} Odometer check-in</h2>
       <p class="settings-desc" style="margin:0 0 16px;">
-        Time to reconcile your car's actual odometer against the drives logged here. Enter the current reading — this also helps catch missed or under-logged trips.
+        Enter your car's current odometer reading to reconcile it against your logged drives.
       </p>
       <label class="field-label">Current odometer (${unitLabel()})</label>
       <input id="odometerReadingInput" class="input" inputmode="decimal" placeholder="0" value="${escAttr(p.value)}" style="margin-bottom:6px;" />
       ${p.error ? `<p class="err" style="margin:0 0 12px;">${p.error}</p>` : ""}
       <div class="row-2" style="margin-top:12px;">
-        <button id="skipOdometerBtn" class="btn btn-ghost">Not now</button>
-        <button id="saveOdometerBtn" class="btn btn-amber">Save reading</button>
+        <button id="skipOdometerBtn" class="btn btn-ghost">Skip</button>
+        <button id="saveOdometerBtn" class="btn btn-amber">Save Reading</button>
       </div>
       <p class="note" style="margin-top:12px;">You'll be asked again next time you open the app until a reading is saved.</p>
     </div>
@@ -2183,12 +2181,6 @@ function attachAppHandlers() {
         render();
       };
 
-      const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
-      if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
-        state.addDrives = { step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false, candidates: [], error: "" };
-        render();
-      };
-
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
         const trip = {
@@ -2451,6 +2443,12 @@ function attachAppHandlers() {
     if (disconnectBtn) disconnectBtn.onclick = async () => {
       state.sheetLink = null;
       await storageDelete(SHEET_LINK_KEY);
+      render();
+    };
+
+    const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
+    if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
+      state.addDrives = { step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false, candidates: [], error: "" };
       render();
     };
   }
@@ -3019,7 +3017,7 @@ function attachAppHandlers() {
   loadGoogleMapsScript();
   state._existingProfile = await storageGet(PROFILE_KEY);
   const savedSettings = await storageGet(SETTINGS_KEY);
-  const requirePin = !savedSettings || savedSettings.requirePin !== false;
+  const requirePin = !!savedSettings && savedSettings.requirePin === true;
   state.loadingProfile = false;
   if (state._existingProfile && !requirePin) {
     state.profile = state._existingProfile;
