@@ -91,18 +91,18 @@
   .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
             background:rgba(242,169,59,.18);color:var(--amber);border:1px solid rgba(242,169,59,.35);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
-  .chip{padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
+  .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
-  table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+  table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
   thead th{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);
-           text-align:left;padding:8px 6px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:10px;}
-  tbody td{padding:8px 6px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+           text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
+  tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:56px;}
-  .col-time{width:76px;}
-  .col-num{width:32px;}
-  .col-type{width:60px;}
+  .col-date{width:38px;}
+  .col-time{width:60px;}
+  .col-num{width:26px;}
+  .col-type{width:72px;}
   .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -718,6 +718,14 @@ function formatDateForDisplay(dateStr) {
   const d = new Date(`${dateStr}T00:00:00`);
   if (isNaN(d)) return dateStr;
   return d.toLocaleDateString();
+}
+// Compact day/month-only date, used in the History table where column width
+// is at a premium and the Route column should get the space instead.
+function formatDateCompact(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d)) return dateStr;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 const nowTimeStr = () => {
   const d = new Date();
@@ -1392,15 +1400,13 @@ function renderHistoryTab() {
   const showFuelCol = fuelCostPerKm() != null;
   return `
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;">
-        ${icons.filter} Filters
-      </div>
-      <div style="display:flex;gap:6px;">
-        <button id="openReportBtn" class="chip">${icons.download} Report</button>
-        ${state.sheetLink ? `<a href="${state.sheetLink.url}" target="_blank" class="chip" style="text-decoration:none;">${icons.drive} Open Sheets</a>` : ""}
-        <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
-      </div>
+    <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
+      ${icons.filter} Filters
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
+      <button id="openReportBtn" class="chip">${icons.download} Report</button>
+      ${state.sheetLink ? `<a href="${state.sheetLink.url}" target="_blank" class="chip" style="text-decoration:none;">${icons.drive} Open Sheets</a>` : ""}
+      <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
       ${["all","work","normal","supervised"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
@@ -1438,7 +1444,7 @@ function renderHistoryTab() {
             : rows.map(t => `
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
-                <td>${formatDateForDisplay(t.date)}</td>
+                <td>${formatDateCompact(t.date)}</td>
                 <td style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
                 <td class="mono" style="text-align:right;">${tripMinutes(t)}</td>
@@ -1517,9 +1523,13 @@ function renderSettingsTab() {
       </div>
     </div>
     <label class="field-label">Home</label>
-    <input id="savedHomeInput" class="input" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" style="margin-bottom:14px;" />
+    <div class="input-icon" style="margin-bottom:14px;">
+      ${icons.pin}<input id="savedHomeInput" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" />
+    </div>
     <label class="field-label">Work</label>
-    <input id="savedWorkInput" class="input" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" style="margin-bottom:14px;" />
+    <div class="input-icon" style="margin-bottom:14px;">
+      ${icons.pin}<input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" />
+    </div>
 
     ${state.addingSavedOther ? `<label class="field-label">Other</label>` : ""}
     ${state.savedAddresses.other.length ? state.savedAddresses.other.map(o => `
@@ -1537,7 +1547,9 @@ function renderSettingsTab() {
         <label class="field-label">Name</label>
         <input id="newSavedOtherName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newSavedOtherName)}" placeholder="e.g. Mum's House" />
         <label class="field-label">Address</label>
-        <input id="newSavedOtherAddress" class="input" style="margin-bottom:12px;" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
+        <div class="input-icon" style="margin-bottom:12px;">
+          ${icons.pin}<input id="newSavedOtherAddress" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
+        </div>
         <button id="saveSavedOtherBtn" class="btn btn-ghost">Add Address</button>
       </div>
     ` : ""}
@@ -1575,7 +1587,7 @@ function renderSettingsTab() {
     ${state.settings.fuelMode === "estimated" ? `
       <div class="row-2" style="margin-bottom:6px;">
         <div>
-          <label class="field-label">Consumption rate (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+          <label class="field-label">Consumption (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
           <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
         </div>
         <div>
@@ -1583,7 +1595,7 @@ function renderSettingsTab() {
           <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
         </div>
       </div>
-      <p class="settings-desc" style="margin:6px 0 0;">Uses your consumption rate and fuel price to estimate each drive's cost.</p>
+      <p class="settings-desc" style="margin:6px 0 0;">Uses your consumption and fuel price to estimate each drive's cost.</p>
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
@@ -2431,17 +2443,33 @@ function attachAppHandlers() {
     });
 
     const savedHomeInput = document.getElementById("savedHomeInput");
-    if (savedHomeInput) savedHomeInput.onchange = async (e) => {
-      state.savedAddresses.home = e.target.value.trim();
-      await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
-      render();
-    };
+    if (savedHomeInput) {
+      savedHomeInput.onchange = async (e) => {
+        state.savedAddresses.home = e.target.value.trim();
+        await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      };
+      attachPlacesAutocomplete(savedHomeInput, async (desc) => {
+        savedHomeInput.value = desc;
+        state.savedAddresses.home = desc;
+        await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      });
+    }
     const savedWorkInput = document.getElementById("savedWorkInput");
-    if (savedWorkInput) savedWorkInput.onchange = async (e) => {
-      state.savedAddresses.work = e.target.value.trim();
-      await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
-      render();
-    };
+    if (savedWorkInput) {
+      savedWorkInput.onchange = async (e) => {
+        state.savedAddresses.work = e.target.value.trim();
+        await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      };
+      attachPlacesAutocomplete(savedWorkInput, async (desc) => {
+        savedWorkInput.value = desc;
+        state.savedAddresses.work = desc;
+        await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      });
+    }
 
     document.querySelectorAll(".deleteSavedOtherBtn").forEach(btn => {
       btn.onclick = async () => {
@@ -2461,7 +2489,13 @@ function attachAppHandlers() {
     const newSavedOtherNameInput = document.getElementById("newSavedOtherName");
     if (newSavedOtherNameInput) newSavedOtherNameInput.oninput = (e) => { state.newSavedOtherName = e.target.value; };
     const newSavedOtherAddressInput = document.getElementById("newSavedOtherAddress");
-    if (newSavedOtherAddressInput) newSavedOtherAddressInput.oninput = (e) => { state.newSavedOtherAddress = e.target.value; };
+    if (newSavedOtherAddressInput) {
+      newSavedOtherAddressInput.oninput = (e) => { state.newSavedOtherAddress = e.target.value; };
+      attachPlacesAutocomplete(newSavedOtherAddressInput, (desc) => {
+        newSavedOtherAddressInput.value = desc;
+        state.newSavedOtherAddress = desc;
+      });
+    }
 
     const saveSavedOtherBtn = document.getElementById("saveSavedOtherBtn");
     if (saveSavedOtherBtn) saveSavedOtherBtn.onclick = async () => {
