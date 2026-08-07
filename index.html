@@ -43,11 +43,11 @@
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
   /* Blend scrollbars into the dark theme instead of the bright default OS scrollbar. */
-  .modal-card, .table-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
-  .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar{width:8px;height:8px;}
-  .modal-card::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track{background:transparent;}
-  .modal-card::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
-  .modal-card::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover{background:var(--faint);}
+  .modal-card, .table-scroll, .route-cell{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+  .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar, .route-cell::-webkit-scrollbar{width:6px;height:6px;}
+  .modal-card::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track, .route-cell::-webkit-scrollbar-track{background:transparent;}
+  .modal-card::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb, .route-cell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+  .modal-card::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover, .route-cell::-webkit-scrollbar-thumb:hover{background:var(--faint);}
   .field-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
   .date-compact{width:150px;flex-shrink:0;}
   .time-compact{width:84px;flex-shrink:0;text-align:center;font-variant-numeric:tabular-nums;}
@@ -99,10 +99,9 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:38px;}
-  .col-time{width:60px;}
-  .col-num{width:26px;}
-  .col-type{width:72px;}
+  .col-date{width:42px;}
+  .col-time{width:92px;}
+  .col-num{width:40px;}
   .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -127,6 +126,18 @@
   .settings-inline-controls{display:flex;gap:8px;align-items:center;}
   .settings-inline-controls .input{flex:1 1 0;min-width:0;}
   .settings-inline-controls .btn{flex:1 1 0;width:auto;min-width:0;padding:9px 12px;font-size:13px;white-space:nowrap;}
+  /* Estimate Drive / Log this Drive: stack on narrow (phone) screens, single line on wider (computer) screens. */
+  .pretrip-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .pretrip-values{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted);}
+  .pretrip-log-btn{flex-basis:100%;}
+  @media (min-width:560px){
+    .pretrip-log-btn{flex-basis:auto;}
+  }
+  /* History action chips: icon-only on narrow (phone) screens so they always stay in line with the Filters label. */
+  .history-actions .chip{padding:5px 8px;}
+  @media (max-width:479px){
+    .history-actions .chip-label{display:none;}
+  }
 </style>
 </head>
 <body>
@@ -220,6 +231,30 @@ const MILES_LOCALES = ["us", "lr", "mm", "gb"]; // US, Liberia, Myanmar; UK comm
 function defaultUnitForLocale() {
   const region = getDeviceRegionCode();
   return region && MILES_LOCALES.includes(region) ? "mi" : "km";
+}
+
+// --- Currency (for fuel cost display) ------------------------------------
+const REGION_CURRENCY = {
+  au: "AUD", nz: "NZD", us: "USD", ca: "CAD", gb: "GBP", ie: "EUR",
+  de: "EUR", fr: "EUR", es: "EUR", it: "EUR", nl: "EUR", be: "EUR", at: "EUR",
+  pt: "EUR", fi: "EUR", gr: "EUR", lu: "EUR", si: "EUR", sk: "EUR", ee: "EUR", lv: "EUR", lt: "EUR",
+  in: "INR", sg: "SGD", my: "MYR", ph: "PHP", id: "IDR", th: "THB", vn: "VND",
+  jp: "JPY", cn: "CNY", hk: "HKD", kr: "KRW", tw: "TWD",
+  za: "ZAR", ae: "AED", sa: "SAR", il: "ILS",
+  br: "BRL", mx: "MXN", ar: "ARS", cl: "CLP",
+  ch: "CHF", se: "SEK", no: "NOK", dk: "DKK", pl: "PLN", cz: "CZK", hu: "HUF", tr: "TRY", ru: "RUB",
+};
+function currencyCodeForRegion() {
+  const region = getDeviceRegionCode();
+  return (region && REGION_CURRENCY[region]) || "USD";
+}
+function formatCurrency(amount) {
+  const code = currencyCodeForRegion();
+  try {
+    return new Intl.NumberFormat(navigator.language || "en-US", { style: "currency", currency: code }).format(amount);
+  } catch (e) {
+    return `${code} ${amount.toFixed(2)}`;
+  }
 }
 function currentUnit() { return (state.settings && state.settings.unit) || "km"; }
 function unitLabel() { return currentUnit() === "mi" ? "mi" : "km"; }
@@ -1301,17 +1336,18 @@ function renderLogTab() {
   <div class="card">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
-        <p class="field-label" style="margin:0 0 2px;">This week</p>
+        <p class="field-label">This week</p>
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(weekTotal()).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
       </div>
       <div style="text-align:right;">
+        <p class="field-label">&nbsp;</p>
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${(() => { const mins = weekMinutes(); const h = Math.floor(mins / 60); const m = mins % 60; return `${h}h<span style="margin-left:2px;">${m}m</span>`; })()}</p>
       </div>
     </div>
     ${(() => { const cost = weekFuelCost(); return cost != null ? `
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <span class="settings-desc" style="margin:0;">Est. fuel cost</span>
-      <span class="mono" style="font-size:14px;font-weight:600;">${cost.toFixed(2)}</span>
+      <span class="settings-desc" style="margin:0;">Estimated Fuel Cost</span>
+      <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
   </div>
 
@@ -1340,12 +1376,12 @@ function renderLogTab() {
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:6px;padding-bottom:2px;">
+      <div class="pretrip-row">
         <button id="preTripEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;" ${state.preTripEstimating ? "disabled" : ""}>
           ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
         </button>
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;flex-shrink:0;margin-left:auto;">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono pretrip-values">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip pretrip-log-btn" type="button" style="white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
       </div>
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
@@ -1397,16 +1433,17 @@ function renderHistoryTab() {
   const sel = state.historySelectMode;
   const selectedCount = state.selectedTripIds.length;
   const allVisibleSelected = rows.length > 0 && rows.every(t => state.selectedTripIds.includes(t.id));
-  const showFuelCol = fuelCostPerKm() != null;
   return `
   <div class="card">
-    <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px;">
-      ${icons.filter} Filters
-    </div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-      <button id="openReportBtn" class="chip">${icons.download} Report</button>
-      ${state.sheetLink ? `<a href="${state.sheetLink.url}" target="_blank" class="chip" style="text-decoration:none;">${icons.drive} Open Sheets</a>` : ""}
-      <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}">${sel ? "Done" : "Edit"}</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;margin-bottom:10px;">
+      <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;flex-shrink:0;">
+        ${icons.filter} Filters
+      </div>
+      <div class="history-actions" style="display:flex;gap:6px;flex-wrap:nowrap;">
+        <button id="openReportBtn" class="chip" title="Report">${icons.download} <span class="chip-label">Report</span></button>
+        ${state.sheetLink ? `<a href="https://docs.google.com/spreadsheets/d/${state.sheetLink.spreadsheetId}/export?format=xlsx" target="_blank" class="chip" style="text-decoration:none;" title="Export">${icons.drive} <span class="chip-label">Export</span></a>` : ""}
+        <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}" title="${sel ? "Done" : "Edit"}">${sel ? `<span class="chip-label">Done</span>` : `<span class="chip-label">Edit</span>`}</button>
+      </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
       ${["all","work","normal","supervised"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
@@ -1435,22 +1472,19 @@ function renderHistoryTab() {
       <table>
         <thead><tr>
           ${sel ? `<th style="width:28px;"></th>` : ""}
-          <th class="col-date">Date</th><th class="col-time">Time</th><th class="col-num" style="text-align:right;">${unitLabel()}</th><th class="col-num" style="text-align:right;">Min</th><th>Route</th><th class="col-type">Type</th>${showFuelCol ? `<th class="col-num" style="text-align:right;">Fuel</th>` : ""}
+          <th class="col-date">Date</th><th class="col-time">Time</th><th class="col-num" style="text-align:right;">${unitLabel()}</th><th>Route</th>
           ${sel ? `<th style="width:36px;"></th>` : ""}
         </tr></thead>
         <tbody>
           ${rows.length === 0
-            ? `<tr><td colspan="${sel ? 8 : 6}" class="empty">No trips logged yet.</td></tr>`
+            ? `<tr><td colspan="${sel ? 6 : 4}" class="empty">No trips logged yet.</td></tr>`
             : rows.map(t => `
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td>${formatDateCompact(t.date)}</td>
                 <td style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
-                <td class="mono" style="text-align:right;">${tripMinutes(t)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
-                <td><span class="tag ${t.tag}">${t.tag}</span></td>
-                ${showFuelCol ? `<td class="mono" style="text-align:right;">${tripFuelCost(t) != null ? tripFuelCost(t).toFixed(2) : "—"}</td>` : ""}
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
         </tbody>
@@ -1531,7 +1565,7 @@ function renderSettingsTab() {
       ${icons.pin}<input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" />
     </div>
 
-    ${state.addingSavedOther ? `<label class="field-label">Other</label>` : ""}
+    ${state.addingSavedOther || state.savedAddresses.other.length ? `<label class="field-label">Other</label>` : ""}
     ${state.savedAddresses.other.length ? state.savedAddresses.other.map(o => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;">
         <div style="min-width:0;">
@@ -2559,7 +2593,13 @@ function attachAppHandlers() {
     });
     document.getElementById("filterFrom").onchange = (e) => { state.filterFrom = e.target.value; render(); };
     document.getElementById("filterTo").onchange = (e) => { state.filterTo = e.target.value; render(); };
-    document.getElementById("filterSearch").oninput = (e) => { state.filterSearch = e.target.value; render(); };
+    document.getElementById("filterSearch").oninput = (e) => {
+      const pos = e.target.selectionStart;
+      state.filterSearch = e.target.value;
+      render();
+      const refreshed = document.getElementById("filterSearch");
+      if (refreshed) { refreshed.focus(); refreshed.setSelectionRange(pos, pos); }
+    };
 
     const toggleSelectBtn = document.getElementById("toggleSelectModeBtn");
     if (toggleSelectBtn) toggleSelectBtn.onclick = () => {
