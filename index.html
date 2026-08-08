@@ -99,10 +99,12 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:42px;}
-  .col-time{width:92px;}
-  .col-num{width:40px;}
-  .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;}
+  .col-date{width:54px;}
+  .col-time{width:92px;padding-right:2px;}
+  .col-num{width:40px;padding-left:2px;}
+  .time-cell{padding-right:2px;}
+  .num-cell{padding-left:2px;}
+  .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;scroll-behavior:smooth;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -701,7 +703,7 @@ const state = {
     unit: null, learnRoutes: false, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
-    syncReminderFrequency: "off", lastSyncAt: null,
+    syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
   },
   sheetLink: null,
   googleBusy: false,
@@ -755,6 +757,7 @@ const icons = {
   edit: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
   trash: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`,
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
+  check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -764,13 +767,14 @@ function formatDateForDisplay(dateStr) {
   if (isNaN(d)) return dateStr;
   return d.toLocaleDateString();
 }
-// Compact day/month-only date, used in the History table where column width
-// is at a premium and the Route column should get the space instead.
+// Compact date, used in the History table where column width is at a
+// premium and the Route column should get the space instead. Includes a
+// 2-digit year so entries from different years aren't ambiguous.
 function formatDateCompact(dateStr) {
   if (!dateStr) return "";
   const d = new Date(`${dateStr}T00:00:00`);
   if (isNaN(d)) return dateStr;
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getFullYear()).slice(-2)}`;
 }
 const nowTimeStr = () => {
   const d = new Date();
@@ -1113,7 +1117,8 @@ async function loadData() {
   if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
-  if (!state.settings.syncReminderFrequency) state.settings.syncReminderFrequency = "off";
+  if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
+  if (state.settings.syncRemindersEnabled === undefined) state.settings.syncRemindersEnabled = true;
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   if (state.sheetLink) await loadPersistedGoogleToken();
@@ -1168,7 +1173,7 @@ function syncReminderDueDate() {
 }
 function checkSyncReminderDue() {
   if (!state.sheetLink) return; // nothing to remind about if Google Sync isn't connected
-  if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") return;
+  if (!state.settings.syncRemindersEnabled) return;
   const unsyncedCount = state.trips.filter(t => !t.synced).length;
   if (unsyncedCount === 0) return; // already fully synced — nothing to nag about
   const due = syncReminderDueDate();
@@ -1494,7 +1499,8 @@ function renderHistoryTab() {
       <div class="history-actions" style="display:flex;gap:6px;flex-wrap:nowrap;">
         <button id="openReportBtn" class="chip" title="Report">${icons.download} <span class="chip-label">Report</span></button>
         ${state.sheetLink ? `<a href="https://docs.google.com/spreadsheets/d/${state.sheetLink.spreadsheetId}/export?format=xlsx" target="_blank" class="chip" style="text-decoration:none;" title="Export">${icons.drive} <span class="chip-label">Export</span></a>` : ""}
-        <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}" title="${sel ? "Done" : "Edit"}">${sel ? `<span class="chip-label">Done</span>` : `<span class="chip-label">Edit</span>`}</button>
+        <button id="openAddDrivesBtn" class="chip" title="Add Drives from Google Timeline">${icons.route} <span class="chip-label">Timeline</span></button>
+        <button id="toggleSelectModeBtn" class="chip ${sel ? "active" : ""}" title="${sel ? "Done" : "Edit"}">${sel ? `${icons.check} <span class="chip-label">Done</span>` : `${icons.edit} <span class="chip-label">Edit</span>`}</button>
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
@@ -1534,8 +1540,8 @@ function renderHistoryTab() {
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td>${formatDateCompact(t.date)}</td>
-                <td style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
-                <td class="mono" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
+                <td class="time-cell" style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
+                <td class="mono num-cell" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
                 <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
@@ -1556,25 +1562,26 @@ function renderSettingsTab() {
     ${!googleConfigured() ? `
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
-      <p class="settings-desc">Drives are saved on this device and stay there until you tap Sync Now.</p>
+      <p class="settings-desc">Drives stay on this device until you tap Sync Now.</p>
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
       </div>
-      <button id="openAddDrivesBtn" class="btn btn-ghost" style="margin-top:8px;">${icons.download} Add Drives from Timeline</button>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <p class="settings-title" style="margin:0 0 8px;">Sync Reminder</p>
-        <div class="settings-inline-controls">
-          <select id="syncReminderFrequencySelect" class="input">
-            <option value="off" ${(!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") ? "selected" : ""}>Off</option>
-            <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
-            <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-            <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
-          </select>
+        <div class="switch-row" style="margin-bottom:${state.settings.syncRemindersEnabled ? "8" : "0"}px;">
+          <p class="settings-title" style="margin:0;">Sync Reminder</p>
+          <div id="syncRemindersSwitch" class="switch ${state.settings.syncRemindersEnabled ? "on" : ""}"><div class="knob"></div></div>
         </div>
-        <p class="settings-desc" style="margin:8px 0 0;">Pops up a Sync Now reminder when the app opens, if it's been this long since your last sync.</p>
+        ${state.settings.syncRemindersEnabled ? `
+        <select id="syncReminderFrequencySelect" class="input" style="margin-bottom:8px;">
+          <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
+          <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+          <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+        </select>
+        <p class="settings-desc" style="margin:0;">Reminds you to sync when it's been this long since last time.</p>
+        ` : ""}
       </div>
     ` : `
       <p class="settings-desc">Connect once to save every drive straight to a Google Sheet.</p>
@@ -2041,13 +2048,13 @@ function renderReportModal() {
   <div class="modal-backdrop">
     <div class="modal-card">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <h2 style="margin:0;">${icons.download} Export report</h2>
+        <h2 style="margin:0;">${icons.download} Export Report</h2>
         <button id="closeReportBtn" class="icon-btn" title="Close">${icons.close}</button>
       </div>
 
       <label class="field-label">Report type</label>
       <select id="reportType" class="input" style="margin-bottom:14px;">
-        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Normal (personal)</option>
+        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Normal (Personal)</option>
         <option value="work" ${r.type === "work" ? "selected" : ""}>Work</option>
         <option value="supervised" ${r.type === "supervised" ? "selected" : ""}>Supervised</option>
         <option value="custom" ${r.type === "custom" ? "selected" : ""}>Custom combination</option>
@@ -2089,7 +2096,7 @@ function renderAddDrivesModal() {
   <div class="modal-backdrop">
     <div class="modal-card" style="max-width:480px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-        <h2 style="margin:0;">Add Drives from Timeline</h2>
+        <h2 style="margin:0;">Add Drives from Google Timeline</h2>
         <button id="closeAddDrivesBtn" class="icon-btn" title="Close">${icons.close}</button>
       </div>
 
@@ -2295,6 +2302,24 @@ async function finalizeTrip(trip) {
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
   // Drives stay local — sync happens only when the user taps "Sync Now" (or the periodic reminder).
+}
+
+// Auto-peek at the full start→end address on each History row: after a
+// short idle delay, smoothly scroll any truncated route cell to its end so
+// the whole address is visible, then scroll back to the start.
+function attachRouteAutoScroll() {
+  document.querySelectorAll(".route-cell").forEach(cell => {
+    const maxScroll = cell.scrollWidth - cell.clientWidth;
+    if (maxScroll <= 2) return; // nothing hidden — no need to scroll
+    setTimeout(() => {
+      if (!document.body.contains(cell)) return;
+      cell.scrollLeft = maxScroll;
+      setTimeout(() => {
+        if (!document.body.contains(cell)) return;
+        cell.scrollLeft = 0;
+      }, 2200);
+    }, 3000);
+  });
 }
 
 function attachAppHandlers() {
@@ -2552,6 +2577,13 @@ function attachAppHandlers() {
       render();
     };
 
+    const syncRemindersSwitch = document.getElementById("syncRemindersSwitch");
+    if (syncRemindersSwitch) syncRemindersSwitch.onclick = async () => {
+      state.settings.syncRemindersEnabled = !state.settings.syncRemindersEnabled;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
     const syncReminderFreqSelect = document.getElementById("syncReminderFrequencySelect");
     if (syncReminderFreqSelect) syncReminderFreqSelect.onchange = async (e) => {
       state.settings.syncReminderFrequency = e.target.value;
@@ -2697,7 +2729,9 @@ function attachAppHandlers() {
       await storageDelete(GOOGLE_TOKEN_KEY);
       render();
     };
+  }
 
+  if (state.tab === "history") {
     const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
     if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
       state.addDrives = {
@@ -2708,9 +2742,7 @@ function attachAppHandlers() {
       };
       render();
     };
-  }
 
-  if (state.tab === "history") {
     document.querySelectorAll("[data-filtertag]").forEach(btn => {
       btn.onclick = () => { state.filterTag = btn.dataset.filtertag; render(); };
     });
@@ -2783,6 +2815,8 @@ function attachAppHandlers() {
         }
       };
     });
+
+    attachRouteAutoScroll();
 
     const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
     if (deleteSelectedBtn) deleteSelectedBtn.onclick = () => {
