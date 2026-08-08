@@ -126,13 +126,9 @@
   .settings-inline-controls{display:flex;gap:8px;align-items:center;}
   .settings-inline-controls .input{flex:1 1 0;min-width:0;}
   .settings-inline-controls .btn{flex:1 1 0;width:auto;min-width:0;padding:9px 12px;font-size:13px;white-space:nowrap;}
-  /* Estimate Drive / Log this Drive: stack on narrow (phone) screens, single line on wider (computer) screens. */
+  /* Estimate Drive / Log this Drive: same chip size, wrap naturally on narrow screens. */
   .pretrip-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
   .pretrip-values{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted);}
-  .pretrip-log-btn{flex-basis:100%;}
-  @media (min-width:560px){
-    .pretrip-log-btn{flex-basis:auto;}
-  }
   /* History action chips: icon-only on narrow (phone) screens so they always stay in line with the Filters label. */
   .history-actions .chip{padding:5px 8px;}
   @media (max-width:479px){
@@ -154,6 +150,7 @@ const SUPERVISORS_KEY = "driving-log:supervisors";
 const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
 const FUEL_FILLUPS_KEY = "driving-log:fuel-fillups";
+const GOOGLE_TOKEN_KEY = "driving-log:google-token";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
@@ -251,7 +248,7 @@ function currencyCodeForRegion() {
 function formatCurrency(amount) {
   const code = currencyCodeForRegion();
   try {
-    return new Intl.NumberFormat(navigator.language || "en-US", { style: "currency", currency: code }).format(amount);
+    return new Intl.NumberFormat(navigator.language || "en-US", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).format(amount);
   } catch (e) {
     return `${code} ${amount.toFixed(2)}`;
   }
@@ -602,6 +599,7 @@ function getGoogleToken(promptMode) {
       if (resp && resp.access_token) {
         googleAccessToken = resp.access_token;
         googleTokenExpiresAt = Date.now() + (Number(resp.expires_in || 3300) * 1000);
+        storageSet(GOOGLE_TOKEN_KEY, { token: googleAccessToken, expiresAt: googleTokenExpiresAt });
         resolve(resp.access_token);
       } else {
         reject(resp);
@@ -610,6 +608,16 @@ function getGoogleToken(promptMode) {
     if (!client) { reject(new Error("Google sign-in library not loaded")); return; }
     client.requestAccessToken({ prompt: promptMode || "" });
   });
+}
+
+async function loadPersistedGoogleToken() {
+  try {
+    const saved = await storageGet(GOOGLE_TOKEN_KEY);
+    if (saved && saved.token && saved.expiresAt > Date.now() + 60000) {
+      googleAccessToken = saved.token;
+      googleTokenExpiresAt = saved.expiresAt;
+    }
+  } catch (e) {}
 }
 
 async function getFreshGoogleToken() {
@@ -693,6 +701,7 @@ const state = {
     unit: null, learnRoutes: false, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
+    syncReminderFrequency: "off", lastSyncAt: null,
   },
   sheetLink: null,
   googleBusy: false,
@@ -722,6 +731,7 @@ const state = {
   splittingTrip: null,
   routeSuggestion: null,
   odometerPrompt: null,
+  syncReminderPrompt: null,
   fuelFillups: [],
   fuelFillupForm: null,
   reportForm: null,
@@ -1103,7 +1113,10 @@ async function loadData() {
   if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
+  if (!state.settings.syncReminderFrequency) state.settings.syncReminderFrequency = "off";
+  if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
+  if (state.sheetLink) await loadPersistedGoogleToken();
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
   state.savedAddresses = (await storageGet(SAVED_ADDRESSES_KEY)) || { home: "", work: "", other: [] };
@@ -1114,6 +1127,7 @@ async function loadData() {
   }
   if (state.active) startTicker();
   checkOdometerDue();
+  if (!state.odometerPrompt) checkSyncReminderDue();
 }
 
 // --- Odometer reconciliation reminders -----------------------------------
@@ -1138,6 +1152,28 @@ function checkOdometerDue() {
   const due = odometerDueDate();
   if (due && Date.now() >= due.getTime()) {
     state.odometerPrompt = { value: "" };
+  }
+}
+
+// --- Google Sheets sync reminders -----------------------------------------
+const SYNC_REMINDER_FREQUENCY_DAYS = { weekly: 7, monthly: 30, quarterly: 91 };
+function syncReminderDueDate() {
+  const days = SYNC_REMINDER_FREQUENCY_DAYS[state.settings.syncReminderFrequency];
+  if (!days) return null;
+  const last = state.settings.lastSyncAt;
+  if (!last) return new Date(); // never synced yet — due immediately
+  const due = new Date(`${last}T00:00:00`);
+  due.setDate(due.getDate() + days);
+  return due;
+}
+function checkSyncReminderDue() {
+  if (!state.sheetLink) return; // nothing to remind about if Google Sync isn't connected
+  if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") return;
+  const unsyncedCount = state.trips.filter(t => !t.synced).length;
+  if (unsyncedCount === 0) return; // already fully synced — nothing to nag about
+  const due = syncReminderDueDate();
+  if (due && Date.now() >= due.getTime()) {
+    state.syncReminderPrompt = { unsyncedCount };
   }
 }
 
@@ -1334,6 +1370,7 @@ function renderApp() {
     ${state.logEstimateForm ? renderLogEstimateModal() : ""}
     ${state.splittingTrip ? renderSplitTripModal() : ""}
     ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
+    ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
     ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
     ${state.reportForm ? renderReportModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
@@ -1519,7 +1556,7 @@ function renderSettingsTab() {
     ${!googleConfigured() ? `
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
-      <p class="settings-desc">Every drive automatically syncs to your Google Sheet.</p>
+      <p class="settings-desc">Drives are saved on this device and stay there until you tap Sync Now.</p>
       <div class="settings-actions" style="margin-top:12px;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
@@ -1527,6 +1564,18 @@ function renderSettingsTab() {
       <button id="openAddDrivesBtn" class="btn btn-ghost" style="margin-top:8px;">${icons.download} Add Drives from Timeline</button>
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+        <p class="settings-title" style="margin:0 0 8px;">Sync Reminder</p>
+        <div class="settings-inline-controls">
+          <select id="syncReminderFrequencySelect" class="input">
+            <option value="off" ${(!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") ? "selected" : ""}>Off</option>
+            <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
+            <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+            <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+          </select>
+        </div>
+        <p class="settings-desc" style="margin:8px 0 0;">Pops up a Sync Now reminder when the app opens, if it's been this long since your last sync.</p>
+      </div>
     ` : `
       <p class="settings-desc">Connect once to save every drive straight to a Google Sheet.</p>
       <button id="connectSheetBtn" class="btn btn-amber" style="margin-top:10px;" ${state.googleBusy ? "disabled" : ""}>
@@ -1932,6 +1981,24 @@ function renderOdometerPromptModal() {
   </div>`;
 }
 
+function renderSyncReminderModal() {
+  const p = state.syncReminderPrompt;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>${icons.drive} Time to sync</h2>
+      <p class="settings-desc" style="margin:0 0 16px;">
+        You have ${p.unsyncedCount} drive${p.unsyncedCount === 1 ? "" : "s"} saved on this device that haven't been sent to Google Sheets yet.
+      </p>
+      ${state.googleError ? `<p class="err" style="margin:0 0 12px;">${state.googleError}</p>` : ""}
+      <div class="row-2" style="margin-top:12px;">
+        <button id="laterSyncReminderBtn" class="btn btn-ghost">Later</button>
+        <button id="syncNowReminderBtn" class="btn btn-amber" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderFuelFillupModal() {
   const f = state.fuelFillupForm;
   const volLabel = state.settings.unit === "mi" ? "Gallons" : "Litres";
@@ -2205,7 +2272,6 @@ async function generateReportPDF() {
 async function syncUnsyncedTrips() {
   if (!state.sheetLink) return;
   const unsynced = state.trips.filter(t => !t.synced);
-  if (unsynced.length === 0) return;
   let anyFailed = false;
   for (const t of unsynced) {
     try {
@@ -2215,8 +2281,11 @@ async function syncUnsyncedTrips() {
       anyFailed = true;
     }
   }
-  await storageSet(TRIPS_KEY, state.trips);
+  if (unsynced.length) await storageSet(TRIPS_KEY, state.trips);
   state.googleError = anyFailed ? "Some drives didn't sync to Sheets — open Settings to try again." : "";
+  // A sync pass (even one that finds nothing to send) counts as a check-in for the reminder timer.
+  state.settings.lastSyncAt = todayStr();
+  await storageSet(SETTINGS_KEY, state.settings);
   render();
 }
 
@@ -2225,9 +2294,7 @@ async function finalizeTrip(trip) {
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
-  if (state.sheetLink) {
-    syncUnsyncedTrips();
-  }
+  // Drives stay local — sync happens only when the user taps "Sync Now" (or the periodic reminder).
 }
 
 function attachAppHandlers() {
@@ -2485,6 +2552,13 @@ function attachAppHandlers() {
       render();
     };
 
+    const syncReminderFreqSelect = document.getElementById("syncReminderFrequencySelect");
+    if (syncReminderFreqSelect) syncReminderFreqSelect.onchange = async (e) => {
+      state.settings.syncReminderFrequency = e.target.value;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
     document.querySelectorAll("[data-fuelmode]").forEach(btn => {
       btn.onclick = async () => {
         state.settings.fuelMode = btn.dataset.fuelmode;
@@ -2617,7 +2691,10 @@ function attachAppHandlers() {
     const disconnectBtn = document.getElementById("disconnectSheetBtn");
     if (disconnectBtn) disconnectBtn.onclick = async () => {
       state.sheetLink = null;
+      googleAccessToken = null;
+      googleTokenExpiresAt = 0;
       await storageDelete(SHEET_LINK_KEY);
+      await storageDelete(GOOGLE_TOKEN_KEY);
       render();
     };
 
@@ -3026,6 +3103,20 @@ function attachAppHandlers() {
     };
   }
 
+  if (state.syncReminderPrompt) {
+    const laterBtn = document.getElementById("laterSyncReminderBtn");
+    if (laterBtn) laterBtn.onclick = () => { state.syncReminderPrompt = null; render(); };
+
+    const syncBtn = document.getElementById("syncNowReminderBtn");
+    if (syncBtn) syncBtn.onclick = async () => {
+      state.syncingNow = true; render();
+      await syncUnsyncedTrips();
+      state.syncingNow = false;
+      state.syncReminderPrompt = null;
+      render();
+    };
+  }
+
   if (state.fuelFillupForm) {
     const f = state.fuelFillupForm;
     const dateInput = document.getElementById("fillupDate");
@@ -3213,7 +3304,6 @@ function attachAppHandlers() {
       state.trips = [...newTrips, ...state.trips].sort((x, y) => (x.date + x.startTime < y.date + y.startTime ? 1 : -1));
       await storageSet(TRIPS_KEY, state.trips);
       state.addDrives = null;
-      if (state.sheetLink) syncUnsyncedTrips();
       render();
     };
   }
