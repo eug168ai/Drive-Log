@@ -100,10 +100,10 @@
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
   .col-date{width:58px;padding-left:8px;padding-right:0;}
-  .col-time{width:60px;padding-right:0;}
+  .col-time{width:68px;padding-right:0;}
   .col-num{width:40px;padding-left:0;padding-right:0;}
   .date-cell{padding-left:8px;padding-right:0;}
-  .time-cell{padding-right:0;padding-left:2px;}
+  .time-cell{padding-right:0;padding-left:4px;}
   .num-cell{padding-left:0;padding-right:0;}
   .route-cell{max-width:none;padding-left:8px;padding-right:0;}
   .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 8px);}
@@ -719,7 +719,8 @@ const state = {
   mapsAuthError: "",
   supervisors: [],
   recentLocations: [],
-  pendingLocMarqueeArm: null, // "startPointInput" | "endPointInput" — set right before a render() that follows a location selection, consumed once by attachAppHandlers
+  startLocArmed: false, // true once Start Location holds a real selection (not just typed text) — re-armed on every render, e.g. survives the Estimate Drive round-trip
+  endLocArmed: false,   // same, for whichever End Location field is currently visible
   pendingTrip: null,
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -896,11 +897,11 @@ async function useMyLocation(target) {
     if (target === "start") {
       state.startPointInput = address;
       state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.pendingLocMarqueeArm = "startPointInput";
+      state.startLocArmed = true;
     } else {
       state.endPoint = address;
       state.endCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.pendingLocMarqueeArm = "endPointInput";
+      state.endLocArmed = true;
     }
   } catch (e) {
     state.locateError = e.message || "Couldn't get your location.";
@@ -917,7 +918,7 @@ async function autoFillCurrentLocation() {
     if (!state.active && !state.startPointInput) {
       state.startPointInput = address;
       state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.pendingLocMarqueeArm = "startPointInput";
+      state.startLocArmed = true;
       render();
     }
   } catch (e) {
@@ -2352,7 +2353,7 @@ function attachRouteAutoScroll() {
     track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
     track.animate(
       [{ transform: "translateX(0px)" }, { transform: `translateX(-${targetDistance}px)` }],
-      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
+      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 5000 }
     );
   });
 }
@@ -2456,14 +2457,17 @@ function attachAppHandlers() {
       if (el) el.value = address;
       if (targetId === "startPointInput") {
         state.startPointInput = address;
+        state.startLocArmed = true;
       } else if (targetId === "preTripEndInput") {
         state.preTripEndLocation = address;
+        state.endLocArmed = true;
         const section = document.getElementById("preTripEstimateSection");
         const hint = document.getElementById("preTripEndHint");
         if (section) section.style.display = "";
         if (hint) hint.style.display = "none";
       } else if (targetId === "endPointInput") {
         state.endPoint = address;
+        state.endLocArmed = true;
         const estBtn = document.getElementById("estimateRouteBtn");
         if (estBtn) estBtn.disabled = false;
       }
@@ -2486,10 +2490,11 @@ function attachAppHandlers() {
 
       const spi = document.getElementById("startPointInput");
       if (spi) {
-        spi.oninput = (e) => { state.startPointInput = e.target.value; };
+        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; };
         attachPlacesAutocomplete(spi, (desc) => {
           spi.value = desc;
           state.startPointInput = desc;
+          state.startLocArmed = true;
           armLocationMarquee("startPointInput");
         });
       }
@@ -2500,6 +2505,7 @@ function attachAppHandlers() {
       if (peti) {
         peti.oninput = (e) => {
           state.preTripEndLocation = e.target.value;
+          state.endLocArmed = false;
           const hasText = !!state.preTripEndLocation.trim();
           const section = document.getElementById("preTripEstimateSection");
           const hint = document.getElementById("preTripEndHint");
@@ -2509,6 +2515,7 @@ function attachAppHandlers() {
         attachPlacesAutocomplete(peti, (desc) => {
           peti.value = desc;
           state.preTripEndLocation = desc;
+          state.endLocArmed = true;
           const section = document.getElementById("preTripEstimateSection");
           const hint = document.getElementById("preTripEndHint");
           if (section) section.style.display = "";
@@ -2564,10 +2571,8 @@ function attachAppHandlers() {
 
       setupLocationMarquee("startPointInput");
       setupLocationMarquee("preTripEndInput");
-      if (state.pendingLocMarqueeArm) {
-        armLocationMarquee(state.pendingLocMarqueeArm);
-        state.pendingLocMarqueeArm = null;
-      }
+      if (state.startLocArmed) armLocationMarquee("startPointInput");
+      if (state.endLocArmed) armLocationMarquee("preTripEndInput");
     } else {
       renderTimerOnly();
       attachActiveStartMarquee();
@@ -2575,12 +2580,14 @@ function attachAppHandlers() {
       if (epi) {
         epi.oninput = (e) => {
           state.endPoint = e.target.value;
+          state.endLocArmed = false;
           const estBtn = document.getElementById("estimateRouteBtn");
           if (estBtn) estBtn.disabled = !state.endPoint.trim();
         };
         attachPlacesAutocomplete(epi, (desc) => {
           epi.value = desc;
           state.endPoint = desc;
+          state.endLocArmed = true;
           const estBtn = document.getElementById("estimateRouteBtn");
           if (estBtn) estBtn.disabled = !state.endPoint.trim();
           armLocationMarquee("endPointInput");
@@ -2646,10 +2653,7 @@ function attachAppHandlers() {
       };
 
       setupLocationMarquee("endPointInput");
-      if (state.pendingLocMarqueeArm) {
-        armLocationMarquee(state.pendingLocMarqueeArm);
-        state.pendingLocMarqueeArm = null;
-      }
+      if (state.endLocArmed) armLocationMarquee("endPointInput");
     }
   }
 
