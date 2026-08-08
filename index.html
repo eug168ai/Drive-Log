@@ -711,6 +711,7 @@ const state = {
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
+    supervisedTotalHoursTarget: 75, supervisedNightHoursTarget: 15, supervisedCompletionNotified: false,
   },
   sheetLink: null,
   googleBusy: false,
@@ -764,6 +765,7 @@ const icons = {
   lock: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>`,
   drive: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3h8l6 10-4 7H6l-4-7z"/><path d="M8 3l4 7M16 3l-4 7M4 13h16"/></svg>`,
   gear: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+  steeringWheel: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.2"/><path d="M12 5v3.2"/><path d="M6.5 15.5 9.4 13.4"/><path d="M17.5 15.5 14.6 13.4"/></svg>`,
   locate: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M12 5a7 7 0 1 0 0 14 7 7 0 0 0 0-14z"/></svg>`,
   route: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.2 18 c 4-2 2-8 6-11"/></svg>`,
   edit: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
@@ -1135,6 +1137,9 @@ async function loadData() {
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   if (state.settings.syncRemindersEnabled === undefined) state.settings.syncRemindersEnabled = true;
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
+  if (!state.settings.supervisedTotalHoursTarget) state.settings.supervisedTotalHoursTarget = 75;
+  if (!state.settings.supervisedNightHoursTarget) state.settings.supervisedNightHoursTarget = 15;
+  if (state.settings.supervisedCompletionNotified === undefined) state.settings.supervisedCompletionNotified = false;
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   if (state.sheetLink) await loadPersistedGoogleToken();
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
@@ -1148,6 +1153,7 @@ async function loadData() {
   if (state.active) startTicker();
   checkOdometerDue();
   if (!state.odometerPrompt) checkSyncReminderDue();
+  checkSupervisedLicenceComplete();
 }
 
 // --- Odometer reconciliation reminders -----------------------------------
@@ -1276,6 +1282,38 @@ function weekFuelCost() {
   return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance * perKm, 0);
 }
 
+// --- Supervised (learner) licence hour tracking -----------------------------
+// Cumulative across all logged supervised drives (not just this week), since
+// licence hour requirements accrue over the life of the learner permit.
+function supervisedTotals() {
+  let hours = 0, nightHours = 0, distance = 0;
+  state.trips.forEach(t => {
+    if (t.tag !== "supervised") return;
+    const h = tripMinutes(t) / 60;
+    hours += h;
+    if (t.timeOfDay === "night") nightHours += h;
+    distance += t.distance;
+  });
+  return { hours, nightHours, distance };
+}
+// Fires the completion modal once, the first time both targets are met.
+// If a later edit/delete drops totals back below target, the flag resets
+// so the person gets notified again if they re-cross the line.
+function checkSupervisedLicenceComplete() {
+  const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+  const nightTarget = state.settings.supervisedNightHoursTarget || 15;
+  const { hours, nightHours } = supervisedTotals();
+  const met = hours >= totalTarget && nightHours >= nightTarget;
+  if (met && !state.settings.supervisedCompletionNotified) {
+    state.settings.supervisedCompletionNotified = true;
+    state.supervisedCompletionPrompt = { hours, nightHours, totalTarget, nightTarget };
+    storageSet(SETTINGS_KEY, state.settings);
+  } else if (!met && state.settings.supervisedCompletionNotified) {
+    state.settings.supervisedCompletionNotified = false;
+    storageSet(SETTINGS_KEY, state.settings);
+  }
+}
+
 // --- Fuel cost -------------------------------------------------------------
 // "Accurate" mode: average spend per unit distance, derived from logged
 // fill-ups against the distance driven over the same period (earliest
@@ -1376,7 +1414,7 @@ function renderApp() {
   <div class="wrap">
     <div class="header">
       <div class="brand">
-        ${icons.car}
+        <span style="display:inline-flex;width:13px;height:13px;color:#FFFFFF;flex-shrink:0;">${icons.steeringWheel.replace('class="icon"', 'style="width:13px;height:13px;"')}</span>
         <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
       </div>
       <div class="stats-row">
@@ -1388,7 +1426,7 @@ function renderApp() {
           <p class="odo-label">Total time</p>
           ${odometerTime(totalMinutes())}
         </div>
-        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;margin-bottom:3px;" title="Settings">${icons.gear}</button>
+        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;align-self:flex-start;margin-top:-14px;" title="Settings">${icons.gear}</button>
       </div>
     </div>
 
@@ -1406,6 +1444,7 @@ function renderApp() {
     ${state.splittingTrip ? renderSplitTripModal() : ""}
     ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
     ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
+    ${state.supervisedCompletionPrompt ? renderSupervisedCompletionModal() : ""}
     ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
     ${state.reportForm ? renderReportModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
@@ -1436,6 +1475,21 @@ function renderLogTab() {
       <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
       <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
+    ${(() => {
+      const sup = supervisedTotals();
+      if (sup.hours <= 0 && state.settings.driveType !== "supervised") return "";
+      return `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <label class="field-label" style="margin-bottom:4px;">Supervised Driving</label>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(sup.distance).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span class="mono" style="font-size:13px;font-weight:600;color:var(--muted);">${sup.nightHours.toFixed(1)}<span style="margin-left:2px;font-size:11px;">h night</span></span>
+          <span class="mono" style="font-size:22px;font-weight:600;">${sup.hours.toFixed(1)}<span style="margin-left:2px;">h</span></span>
+        </div>
+      </div>
+    </div>`;
+    })()}
   </div>
 
   ${!a ? `
@@ -1661,6 +1715,31 @@ function renderSettingsTab() {
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
       : "Normal — For everyday driving."
     }</p>
+    ${state.settings.driveType === "supervised" ? `
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <p class="settings-title" style="margin:0 0 10px;">Licence Requirements</p>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span class="settings-desc" style="margin:0;">Total hours</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="supHoursMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
+          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedTotalHoursTarget}" />
+          <button id="supHoursPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span class="settings-desc" style="margin:0;">Night hours</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button id="supNightMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
+          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedNightHoursTarget}" />
+          <button id="supNightPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+        </div>
+      </div>
+
+      <p class="settings-desc" style="margin:10px 0 0;">Notification on completion. The app will pop up with a completion message when these hour requirements are met.</p>
+    </div>
+    ` : ""}
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
       <div class="switch-row" style="margin-bottom:4px;">
         <p class="settings-title" style="margin:0;">Learn Routes (Beta)</p>
@@ -2057,6 +2136,20 @@ function renderSyncReminderModal() {
   </div>`;
 }
 
+function renderSupervisedCompletionModal() {
+  const p = state.supervisedCompletionPrompt;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>${icons.check} Licence Requirements Met</h2>
+      <p class="settings-desc" style="margin:0 0 16px;">
+        You've logged ${p.hours.toFixed(1)} supervised hours (target ${p.totalTarget}), including ${p.nightHours.toFixed(1)} night hours (target ${p.nightTarget}). Nice work — you've met your logbook targets.
+      </p>
+      <button id="closeSupervisedCompletionBtn" class="btn btn-amber" style="width:100%;">Got it</button>
+    </div>
+  </div>`;
+}
+
 function renderFuelFillupModal() {
   const f = state.fuelFillupForm;
   const volLabel = state.settings.unit === "mi" ? "Gallons" : "Litres";
@@ -2352,6 +2445,7 @@ async function finalizeTrip(trip) {
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
+  if (trip.tag === "supervised") checkSupervisedLicenceComplete();
   // Drives stay local — sync happens only when the user taps "Sync Now" (or the periodic reminder).
 }
 
@@ -2707,6 +2801,58 @@ function attachAppHandlers() {
     if (showDriveTypeSwitch) showDriveTypeSwitch.onclick = async () => {
       state.settings.showDriveTypeOnLog = !state.settings.showDriveTypeOnLog;
       await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    const supHoursInput = document.getElementById("supHoursTargetInput");
+    if (supHoursInput) supHoursInput.onchange = async (e) => {
+      const val = Math.max(1, Math.round(parseFloat(e.target.value)) || state.settings.supervisedTotalHoursTarget);
+      state.settings.supervisedTotalHoursTarget = val;
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
+    const supHoursMinusBtn = document.getElementById("supHoursMinusBtn");
+    if (supHoursMinusBtn) supHoursMinusBtn.onclick = async () => {
+      state.settings.supervisedTotalHoursTarget = Math.max(1, (state.settings.supervisedTotalHoursTarget || 75) - 1);
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
+    const supHoursPlusBtn = document.getElementById("supHoursPlusBtn");
+    if (supHoursPlusBtn) supHoursPlusBtn.onclick = async () => {
+      state.settings.supervisedTotalHoursTarget = (state.settings.supervisedTotalHoursTarget || 75) + 1;
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
+
+    const supNightInput = document.getElementById("supNightTargetInput");
+    if (supNightInput) supNightInput.onchange = async (e) => {
+      const val = Math.max(0, Math.round(parseFloat(e.target.value)) || state.settings.supervisedNightHoursTarget);
+      state.settings.supervisedNightHoursTarget = val;
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
+    const supNightMinusBtn = document.getElementById("supNightMinusBtn");
+    if (supNightMinusBtn) supNightMinusBtn.onclick = async () => {
+      state.settings.supervisedNightHoursTarget = Math.max(0, (state.settings.supervisedNightHoursTarget || 15) - 1);
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
+    const supNightPlusBtn = document.getElementById("supNightPlusBtn");
+    if (supNightPlusBtn) supNightPlusBtn.onclick = async () => {
+      state.settings.supervisedNightHoursTarget = (state.settings.supervisedNightHoursTarget || 15) + 1;
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
       render();
     };
 
@@ -3209,6 +3355,7 @@ function attachAppHandlers() {
         supervisorLicence: et.tag === "supervised" ? (sup ? sup.licence : "") : t.supervisorLicence,
       } : t);
       await storageSet(TRIPS_KEY, state.trips);
+      if (et.tag === "supervised") checkSupervisedLicenceComplete();
       state.editingTrip = null;
       render();
     };
@@ -3354,6 +3501,11 @@ function attachAppHandlers() {
       state.syncReminderPrompt = null;
       render();
     };
+  }
+
+  if (state.supervisedCompletionPrompt) {
+    const closeBtn = document.getElementById("closeSupervisedCompletionBtn");
+    if (closeBtn) closeBtn.onclick = () => { state.supervisedCompletionPrompt = null; render(); };
   }
 
   if (state.fuelFillupForm) {
