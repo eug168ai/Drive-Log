@@ -55,8 +55,7 @@
   .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px 18px;margin-bottom:16px;}
-  .settings-tab .card{padding-left:14px;padding-right:14px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px;margin-bottom:16px;}
   .field-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;}
   .input, select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
          padding:9px 10px;color:var(--text);font-size:14px;outline:none;}
@@ -111,7 +110,7 @@
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .loc-field-wrap{position:relative;flex:1;min-width:0;}
   .loc-field-wrap input{width:100%;}
-  .loc-overlay{position:absolute;inset:0;display:none;align-items:center;background:var(--bg);cursor:text;}
+  .loc-overlay{position:absolute;inset:0;display:none;align-items:center;background:var(--bg);cursor:text;font-size:14px;}
   .loc-overlay .route-clip{width:100%;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -2596,7 +2595,7 @@ function armLocationMarquee(inputId) {
 }
 
 // The active-trip "From X at HH:MM" line — the start point there is already
-// a confirmed, in-use address, so its preview just needs the same 5s pause.
+// a confirmed, in-use address, so its preview just needs the same 3s pause.
 function attachActiveStartMarquee() {
   const track = document.getElementById("activeStartPointTrack");
   const clip = track && track.closest(".route-clip");
