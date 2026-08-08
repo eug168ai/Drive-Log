@@ -99,15 +99,19 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:66px;padding-left:8px;padding-right:2px;}
-  .col-time{width:66px;padding-right:0;}
+  .col-date{width:58px;padding-left:8px;padding-right:0;}
+  .col-time{width:60px;padding-right:0;}
   .col-num{width:40px;padding-left:0;padding-right:0;}
-  .date-cell{padding-left:8px;padding-right:2px;}
-  .time-cell{padding-right:0;}
+  .date-cell{padding-left:8px;padding-right:0;}
+  .time-cell{padding-right:0;padding-left:2px;}
   .num-cell{padding-left:0;padding-right:0;}
-  .route-cell{max-width:none;padding-left:4px;padding-right:0;}
+  .route-cell{max-width:none;padding-left:8px;padding-right:0;}
   .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 8px);}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
+  .loc-field-wrap{position:relative;flex:1;min-width:0;}
+  .loc-field-wrap input{width:100%;}
+  .loc-overlay{position:absolute;inset:0;display:none;align-items:center;background:var(--bg);cursor:text;}
+  .loc-overlay .route-clip{width:100%;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -715,6 +719,7 @@ const state = {
   mapsAuthError: "",
   supervisors: [],
   recentLocations: [],
+  pendingLocMarqueeArm: null, // "startPointInput" | "endPointInput" — set right before a render() that follows a location selection, consumed once by attachAppHandlers
   pendingTrip: null,
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -891,9 +896,11 @@ async function useMyLocation(target) {
     if (target === "start") {
       state.startPointInput = address;
       state.startCoords = { lat: coords.latitude, lng: coords.longitude };
+      state.pendingLocMarqueeArm = "startPointInput";
     } else {
       state.endPoint = address;
       state.endCoords = { lat: coords.latitude, lng: coords.longitude };
+      state.pendingLocMarqueeArm = "endPointInput";
     }
   } catch (e) {
     state.locateError = e.message || "Couldn't get your location.";
@@ -910,6 +917,7 @@ async function autoFillCurrentLocation() {
     if (!state.active && !state.startPointInput) {
       state.startPointInput = address;
       state.startCoords = { lat: coords.latitude, lng: coords.longitude };
+      state.pendingLocMarqueeArm = "startPointInput";
       render();
     }
   } catch (e) {
@@ -1424,7 +1432,10 @@ function renderLogTab() {
     <label class="field-label">Start Location</label>
     ${renderSavedAddressChips("startPointInput")}
     <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
@@ -1432,7 +1443,10 @@ function renderLogTab() {
     <label class="field-label">End Location</label>
     ${renderSavedAddressChips("preTripEndInput")}
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
     </div>
 
     <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
@@ -1461,12 +1475,15 @@ function renderLogTab() {
       <span class="tag ${a.tag}">${a.tag}</span>
       <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
     </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b style="color:var(--text)">${a.startPoint}</b> at ${formatTime24(a.startTime)}</p>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
 
     <label class="field-label">End Location</label>
     ${renderSavedAddressChips("endPointInput")}
     <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
       <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
@@ -2340,6 +2357,92 @@ function attachRouteAutoScroll() {
   });
 }
 
+// Log page: Start/End Location fields show a scrolling preview of the full
+// address once a *real* selection has been made (autocomplete pick, saved
+// address chip, or "use my location") — not for arbitrary typed text — and
+// only after a 5-second pause, so it never interrupts someone mid-typing.
+// Manually editing the field, or focusing it again, cancels the preview.
+const LOC_MARQUEE_DELAY_MS = 5000;
+const LOC_MARQUEE_SPEED = 20;
+const locMarquees = {};
+
+function setupLocationMarquee(inputId) {
+  const input = document.getElementById(inputId);
+  const wrap = input && input.closest(".loc-field-wrap");
+  const overlay = wrap && wrap.querySelector(".loc-overlay");
+  const clip = overlay && overlay.querySelector(".route-clip");
+  const track = clip && clip.querySelector(".route-track");
+  if (!input || !overlay || !clip || !track) { locMarquees[inputId] = null; return; }
+
+  let timer = null;
+  let animation = null;
+
+  function cancel() {
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (animation) { animation.cancel(); animation = null; }
+    overlay.style.display = "none";
+  }
+
+  function arm() {
+    cancel();
+    const text = input.value;
+    if (!text || !text.trim()) return;
+    timer = setTimeout(() => {
+      timer = null;
+      if (document.activeElement === input) return; // mid-edit — don't cover the field
+      track.textContent = text;
+      overlay.style.display = "flex";
+      requestAnimationFrame(() => {
+        const singleWidth = track.scrollWidth;
+        if (singleWidth <= clip.clientWidth + 2) { overlay.style.display = "none"; return; }
+        const gapPx = 48;
+        track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+        const distance = singleWidth + gapPx;
+        const duration = Math.max(4, distance / LOC_MARQUEE_SPEED);
+        animation = track.animate(
+          [{ transform: "translateX(0px)" }, { transform: `translateX(-${distance}px)` }],
+          { duration: duration * 1000, iterations: Infinity, easing: "linear" }
+        );
+      });
+    }, LOC_MARQUEE_DELAY_MS);
+  }
+
+  input.addEventListener("focus", cancel);
+  input.addEventListener("input", cancel);
+  overlay.onclick = () => { cancel(); input.focus(); };
+
+  locMarquees[inputId] = { arm, cancel };
+}
+
+function armLocationMarquee(inputId) {
+  const m = locMarquees[inputId];
+  if (m) m.arm();
+}
+
+// The active-trip "From X at HH:MM" line — the start point there is already
+// a confirmed, in-use address, so its preview just needs the same 5s pause.
+function attachActiveStartMarquee() {
+  const track = document.getElementById("activeStartPointTrack");
+  const clip = track && track.closest(".route-clip");
+  if (!track || !clip) return;
+  const text = track.textContent;
+  if (!text) return;
+  setTimeout(() => {
+    requestAnimationFrame(() => {
+      const singleWidth = track.scrollWidth;
+      if (singleWidth <= clip.clientWidth + 2) return;
+      const gapPx = 48;
+      track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+      const distance = singleWidth + gapPx;
+      const duration = Math.max(4, distance / LOC_MARQUEE_SPEED);
+      track.animate(
+        [{ transform: "translateX(0px)" }, { transform: `translateX(-${distance}px)` }],
+        { duration: duration * 1000, iterations: Infinity, easing: "linear" }
+      );
+    });
+  }, LOC_MARQUEE_DELAY_MS);
+}
+
 function attachAppHandlers() {
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
@@ -2364,6 +2467,7 @@ function attachAppHandlers() {
         const estBtn = document.getElementById("estimateRouteBtn");
         if (estBtn) estBtn.disabled = false;
       }
+      armLocationMarquee(targetId);
     };
   });
 
@@ -2386,6 +2490,7 @@ function attachAppHandlers() {
         attachPlacesAutocomplete(spi, (desc) => {
           spi.value = desc;
           state.startPointInput = desc;
+          armLocationMarquee("startPointInput");
         });
       }
       const locStartBtn = document.getElementById("locateStartBtn");
@@ -2408,6 +2513,7 @@ function attachAppHandlers() {
           const hint = document.getElementById("preTripEndHint");
           if (section) section.style.display = "";
           if (hint) hint.style.display = "none";
+          armLocationMarquee("preTripEndInput");
         });
       }
       const preTripEstBtn = document.getElementById("preTripEstimateBtn");
@@ -2455,8 +2561,16 @@ function attachAppHandlers() {
         startTicker();
         render();
       };
+
+      setupLocationMarquee("startPointInput");
+      setupLocationMarquee("preTripEndInput");
+      if (state.pendingLocMarqueeArm) {
+        armLocationMarquee(state.pendingLocMarqueeArm);
+        state.pendingLocMarqueeArm = null;
+      }
     } else {
       renderTimerOnly();
+      attachActiveStartMarquee();
       const epi = document.getElementById("endPointInput");
       if (epi) {
         epi.oninput = (e) => {
@@ -2469,6 +2583,7 @@ function attachAppHandlers() {
           state.endPoint = desc;
           const estBtn = document.getElementById("estimateRouteBtn");
           if (estBtn) estBtn.disabled = !state.endPoint.trim();
+          armLocationMarquee("endPointInput");
         });
       }
       const locEndBtn = document.getElementById("locateEndBtn");
@@ -2529,6 +2644,12 @@ function attachAppHandlers() {
           render();
         }
       };
+
+      setupLocationMarquee("endPointInput");
+      if (state.pendingLocMarqueeArm) {
+        armLocationMarquee(state.pendingLocMarqueeArm);
+        state.pendingLocMarqueeArm = null;
+      }
     }
   }
 
