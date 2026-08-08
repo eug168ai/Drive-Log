@@ -56,6 +56,7 @@
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px;}
+  .settings-tab .card{padding-left:14px;padding-right:14px;}
   .field-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;}
   .input, select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
          padding:9px 10px;color:var(--text);font-size:14px;outline:none;}
@@ -1286,15 +1287,15 @@ function weekFuelCost() {
 // Cumulative across all logged supervised drives (not just this week), since
 // licence hour requirements accrue over the life of the learner permit.
 function supervisedTotals() {
-  let hours = 0, nightHours = 0, distance = 0;
+  let minutes = 0, nightMinutes = 0, distance = 0;
   state.trips.forEach(t => {
     if (t.tag !== "supervised") return;
-    const h = tripMinutes(t) / 60;
-    hours += h;
-    if (t.timeOfDay === "night") nightHours += h;
+    const m = tripMinutes(t);
+    minutes += m;
+    if (t.timeOfDay === "night") nightMinutes += m;
     distance += t.distance;
   });
-  return { hours, nightHours, distance };
+  return { minutes, nightMinutes, distance, hours: minutes / 60, nightHours: nightMinutes / 60 };
 }
 // Fires the completion modal once, the first time both targets are met.
 // If a later edit/delete drops totals back below target, the flag resets
@@ -1413,8 +1414,8 @@ function renderApp() {
   return `
   <div class="wrap">
     <div class="header">
-      <div class="brand">
-        <span style="display:inline-flex;width:13px;height:13px;color:#FFFFFF;flex-shrink:0;">${icons.steeringWheel.replace('class="icon"', 'style="width:13px;height:13px;"')}</span>
+      <div class="brand" style="align-items:flex-start;">
+        <span style="display:inline-flex;width:18px;height:18px;color:#FFFFFF;flex-shrink:0;">${icons.steeringWheel.replace('class="icon"', 'style="width:18px;height:18px;"')}</span>
         <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
       </div>
       <div class="stats-row">
@@ -1455,11 +1456,37 @@ function renderApp() {
   </div>`;
 }
 
+function formatHoursMinutes(totalMins) {
+  const h = Math.floor(totalMins / 60), m = totalMins % 60;
+  return `${h}<span style="margin-left:2px;">h</span><span style="margin-left:2px;">${m}</span><span style="margin-left:2px;">m</span>`;
+}
+
 function renderLogTab() {
   const a = state.active;
   return `
   ${state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : ""}
   <div class="card">
+    ${(() => {
+      const sup = supervisedTotals();
+      if (sup.minutes <= 0 && state.settings.driveType !== "supervised") return "";
+      const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+      const nightTarget = state.settings.supervisedNightHoursTarget || 15;
+      const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
+      return `
+    <div style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <label class="field-label" style="margin:0;">Supervised Driving</label>
+        ${completed ? `<span class="connected-pill">Completed</span>` : ""}
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(sup.distance).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
+        <div style="display:flex;align-items:baseline;gap:8px;">
+          <span class="mono" style="font-size:13px;font-weight:600;color:var(--muted);">${formatHoursMinutes(sup.nightMinutes)}</span>
+          <span class="mono" style="font-size:22px;font-weight:600;">${formatHoursMinutes(sup.minutes)}</span>
+        </div>
+      </div>
+    </div>`;
+    })()}
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
         <label class="field-label">This week</label>
@@ -1467,7 +1494,7 @@ function renderLogTab() {
       </div>
       <div style="text-align:right;">
         <label class="field-label">&nbsp;</label>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${(() => { const mins = weekMinutes(); const h = Math.floor(mins / 60); const m = mins % 60; return `${h}<span style="margin-left:2px;">h</span><span style="margin-left:2px;">${m}</span><span style="margin-left:2px;">m</span>`; })()}</p>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatHoursMinutes(weekMinutes())}</p>
       </div>
     </div>
     ${(() => { const cost = weekFuelCost(); return cost != null ? `
@@ -1475,21 +1502,6 @@ function renderLogTab() {
       <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
       <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
-    ${(() => {
-      const sup = supervisedTotals();
-      if (sup.hours <= 0 && state.settings.driveType !== "supervised") return "";
-      return `
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-      <label class="field-label" style="margin-bottom:4px;">Supervised Driving</label>
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(sup.distance).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
-        <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono" style="font-size:13px;font-weight:600;color:var(--muted);">${sup.nightHours.toFixed(1)}<span style="margin-left:2px;font-size:11px;">h night</span></span>
-          <span class="mono" style="font-size:22px;font-weight:600;">${sup.hours.toFixed(1)}<span style="margin-left:2px;">h</span></span>
-        </div>
-      </div>
-    </div>`;
-    })()}
   </div>
 
   ${!a ? `
@@ -1660,6 +1672,7 @@ function renderHistoryTab() {
 function renderSettingsTab() {
   const unsyncedCount = state.trips.filter(t => !t.synced).length;
   return `
+  <div class="settings-tab">
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
       <p class="settings-title" style="margin:0;">${icons.drive} Google Sync</p>
@@ -1676,17 +1689,18 @@ function renderSettingsTab() {
       ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <div class="switch-row" style="margin-bottom:${state.settings.syncRemindersEnabled ? "8" : "0"}px;">
-          <p class="settings-title" style="margin:0;">Sync Reminder</p>
-          <div id="syncRemindersSwitch" class="switch ${state.settings.syncRemindersEnabled ? "on" : ""}"><div class="knob"></div></div>
-        </div>
+        <p class="settings-title" style="margin:0 0 8px;">Sync Reminder</p>
         ${state.settings.syncRemindersEnabled ? `
-        <select id="syncReminderFrequencySelect" class="input" style="margin-bottom:8px;">
+        <select id="syncReminderFrequencySelect" class="input" style="margin-bottom:10px;">
           <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
           <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-          <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+          <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Quarterly</option>
         </select>
         ` : ""}
+        <div class="switch-row">
+          <span class="settings-desc" style="margin:0;">Remind me</span>
+          <div id="syncRemindersSwitch" class="switch ${state.settings.syncRemindersEnabled ? "on" : ""}"><div class="knob"></div></div>
+        </div>
       </div>
     ` : `
       <p class="settings-desc">Connect once to save every drive straight to a Google Sheet.</p>
@@ -1737,7 +1751,7 @@ function renderSettingsTab() {
         </div>
       </div>
 
-      <p class="settings-desc" style="margin:10px 0 0;">Notification on completion. The app will pop up with a completion message when these hour requirements are met.</p>
+      <p class="settings-desc" style="margin:10px 0 0;">We'll notify you once these hours are met.</p>
     </div>
     ` : ""}
     <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
@@ -1869,6 +1883,7 @@ function renderSettingsTab() {
     <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
     <p class="settings-desc">Permanently deletes all logged drives from this device. Google Sheet is not affected.</p>
     <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear All Drive History</button>
+  </div>
   </div>`;
 }
 
