@@ -99,13 +99,14 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:64px;}
+  .col-date{width:66px;padding-left:8px;padding-right:2px;}
   .col-time{width:66px;padding-right:0;}
-  .col-num{width:40px;padding-left:0;}
+  .col-num{width:40px;padding-left:0;padding-right:0;}
+  .date-cell{padding-left:8px;padding-right:2px;}
   .time-cell{padding-right:0;}
-  .num-cell{padding-left:0;}
-  .route-cell{max-width:none;padding-left:8px;padding-right:4px;}
-  .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 14px);}
+  .num-cell{padding-left:0;padding-right:0;}
+  .route-cell{max-width:none;padding-left:4px;padding-right:0;}
+  .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 8px);}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -1541,7 +1542,7 @@ function renderHistoryTab() {
             : rows.map(t => `
               <tr>
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
-                <td>${formatDateCompact(t.date)}</td>
+                <td class="date-cell">${formatDateCompact(t.date)}</td>
                 <td class="time-cell" style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono num-cell" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
                 <td class="route-cell"><div class="route-clip"><span class="route-track">${t.startPoint} → ${t.endPoint}</span></div></td>
@@ -2326,7 +2327,7 @@ function attachRouteAutoScroll() {
 
   const minGapPx = 56;
   const targetDistance = Math.max(...entries.map(e => e.singleWidth)) + minGapPx;
-  const speedPxPerSec = 40;
+  const speedPxPerSec = 20;
   const duration = Math.max(4, targetDistance / speedPxPerSec);
 
   entries.forEach(({ track, singleWidth, text }) => {
