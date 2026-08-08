@@ -43,11 +43,11 @@
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
   /* Blend scrollbars into the dark theme instead of the bright default OS scrollbar. */
-  .modal-card, .table-scroll, .route-cell{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
-  .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar, .route-cell::-webkit-scrollbar{width:6px;height:6px;}
-  .modal-card::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track, .route-cell::-webkit-scrollbar-track{background:transparent;}
-  .modal-card::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb, .route-cell::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
-  .modal-card::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover, .route-cell::-webkit-scrollbar-thumb:hover{background:var(--faint);}
+  .modal-card, .table-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+  .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar{width:6px;height:6px;}
+  .modal-card::-webkit-scrollbar-track, .table-scroll::-webkit-scrollbar-track{background:transparent;}
+  .modal-card::-webkit-scrollbar-thumb, .table-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+  .modal-card::-webkit-scrollbar-thumb:hover, .table-scroll::-webkit-scrollbar-thumb:hover{background:var(--faint);}
   .field-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
   .date-compact{width:150px;flex-shrink:0;}
   .time-compact{width:84px;flex-shrink:0;text-align:center;font-variant-numeric:tabular-nums;}
@@ -99,12 +99,18 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:54px;}
-  .col-time{width:92px;padding-right:2px;}
-  .col-num{width:40px;padding-left:2px;}
-  .time-cell{padding-right:2px;}
-  .num-cell{padding-left:2px;}
-  .route-cell{max-width:none;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;padding-bottom:3px;scroll-behavior:smooth;}
+  .col-date{width:66px;}
+  .col-time{width:78px;padding-right:0;}
+  .col-num{width:40px;padding-left:0;}
+  .time-cell{padding-right:0;}
+  .num-cell{padding-left:0;}
+  .route-cell{max-width:none;overflow:hidden;white-space:nowrap;position:relative;}
+  .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
+  .route-track.marquee{animation-name:route-marquee;animation-timing-function:linear;animation-iteration-count:infinite;animation-delay:3s;}
+  @keyframes route-marquee{
+    0% { transform:translateX(0); }
+    100% { transform:translateX(-50%); }
+  }
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -1542,7 +1548,7 @@ function renderHistoryTab() {
                 <td>${formatDateCompact(t.date)}</td>
                 <td class="time-cell" style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono num-cell" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
-                <td class="route-cell">${t.startPoint} → ${t.endPoint}</td>
+                <td class="route-cell"><span class="route-track">${t.startPoint} → ${t.endPoint}</span></td>
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
         </tbody>
@@ -1580,7 +1586,6 @@ function renderSettingsTab() {
           <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
           <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
         </select>
-        <p class="settings-desc" style="margin:0;">Reminds you to sync when it's been this long since last time.</p>
         ` : ""}
       </div>
     ` : `
@@ -2304,21 +2309,23 @@ async function finalizeTrip(trip) {
   // Drives stay local — sync happens only when the user taps "Sync Now" (or the periodic reminder).
 }
 
-// Auto-peek at the full start→end address on each History row: after a
-// short idle delay, smoothly scroll any truncated route cell to its end so
-// the whole address is visible, then scroll back to the start.
+// Auto-reveal the full start→end address on each History row: any route
+// cell whose text is truncated starts a continuous marquee scroll after a
+// short idle delay so the whole address eventually passes into view, looping
+// seamlessly (two copies of the text scrolling as one).
 function attachRouteAutoScroll() {
   document.querySelectorAll(".route-cell").forEach(cell => {
-    const maxScroll = cell.scrollWidth - cell.clientWidth;
-    if (maxScroll <= 2) return; // nothing hidden — no need to scroll
-    setTimeout(() => {
-      if (!document.body.contains(cell)) return;
-      cell.scrollLeft = maxScroll;
-      setTimeout(() => {
-        if (!document.body.contains(cell)) return;
-        cell.scrollLeft = 0;
-      }, 2200);
-    }, 3000);
+    const track = cell.querySelector(".route-track");
+    if (!track) return;
+    const singleWidth = track.scrollWidth;
+    if (singleWidth <= cell.clientWidth + 2) return; // fits already — no marquee needed
+    const text = track.textContent;
+    const gapPx = 48;
+    track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+    const speedPxPerSec = 40;
+    const duration = Math.max(4, (singleWidth + gapPx) / speedPxPerSec);
+    track.style.animationDuration = `${duration}s`;
+    track.classList.add("marquee");
   });
 }
 
