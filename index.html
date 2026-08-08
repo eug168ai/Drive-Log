@@ -728,6 +728,9 @@ const state = {
   newSupervisorLicence: "",
   confirmingClearHistory: false,
   historySelectMode: false,
+  historySortBy: "date",
+  historySortDir: "desc",
+  filterMinDistance: 0,
   selectedTripIds: [],
   confirmingDeleteSelected: false,
   logEstimateForm: null,
@@ -1211,11 +1214,11 @@ function renderTimerOnly() {
 }
 
 function odometer(value) {
-  const str = Math.round(Math.max(0, value)).toString().padStart(6, "0").slice(-6);
+  const str = Math.round(Math.max(0, value)).toString();
   return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
 }
 function odometerTime(mins) {
-  const h = String(Math.min(999, Math.floor(mins / 60))).padStart(3, "0");
+  const h = String(Math.min(999, Math.floor(mins / 60)));
   const m = String(mins % 60).padStart(2, "0");
   const str = `${h}:${m}`;
   return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
@@ -1345,12 +1348,27 @@ function filteredTrips() {
     if (state.filterTag !== "all" && t.tag !== state.filterTag) return false;
     if (state.filterFrom && t.date < state.filterFrom) return false;
     if (state.filterTo && t.date > state.filterTo) return false;
+    if (state.filterMinDistance && kmToDisplay(t.distance) < state.filterMinDistance) return false;
     if (state.filterSearch) {
       const q = state.filterSearch.toLowerCase();
       if (!t.startPoint.toLowerCase().includes(q) && !t.endPoint.toLowerCase().includes(q)) return false;
     }
     return true;
   });
+}
+
+function sortHistoryRows(rows) {
+  const dir = state.historySortDir === "asc" ? 1 : -1;
+  const sorted = rows.slice();
+  if (state.historySortBy === "distance") {
+    sorted.sort((a, b) => (a.distance - b.distance) * dir);
+  } else {
+    sorted.sort((a, b) => {
+      const ak = a.date + (a.startTime || ""), bk = b.date + (b.startTime || "");
+      return ak < bk ? -1 * dir : ak > bk ? 1 * dir : 0;
+    });
+  }
+  return sorted;
 }
 
 function renderApp() {
@@ -1370,7 +1388,7 @@ function renderApp() {
           <p class="odo-label">Total time</p>
           ${odometerTime(totalMinutes())}
         </div>
-        <button id="settingsBtn" class="icon-btn" title="Settings">${icons.gear}</button>
+        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;" title="Settings">${icons.gear}</button>
       </div>
     </div>
 
@@ -1510,10 +1528,13 @@ function renderLogTab() {
 }
 
 function renderHistoryTab() {
-  const rows = filteredTrips();
+  const rows = sortHistoryRows(filteredTrips());
   const sel = state.historySelectMode;
   const selectedCount = state.selectedTripIds.length;
   const allVisibleSelected = rows.length > 0 && rows.every(t => state.selectedTripIds.includes(t.id));
+  const sortArrow = (field) => state.historySortBy === field ? (state.historySortDir === "asc" ? " ▲" : " ▼") : "";
+  const distValues = state.trips.map(t => kmToDisplay(t.distance));
+  const distMaxBound = distValues.length ? Math.max(1, Math.ceil(Math.max(...distValues) * 10) / 10) : 0;
   return `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:nowrap;margin-bottom:10px;">
@@ -1534,6 +1555,13 @@ function renderHistoryTab() {
       <input type="date" id="filterFrom" class="input" value="${state.filterFrom}" style="font-size:12px;" />
       <input type="date" id="filterTo" class="input" value="${state.filterTo}" style="font-size:12px;" />
     </div>
+    ${distMaxBound > 0 ? `
+    <label class="field-label" style="margin-top:2px;">Min distance</label>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+      <span class="mono" style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0;">${Math.min(state.filterMinDistance, distMaxBound).toFixed(1)} ${unitLabel()}</span>
+      <input type="range" id="filterMinDistanceSlider" min="0" max="${distMaxBound}" step="0.1" value="${Math.min(state.filterMinDistance, distMaxBound)}" style="flex:1;accent-color:var(--amber);" />
+    </div>
+    ` : ""}
     <input id="filterSearch" class="input" placeholder="Search Start and End Location..." value="${state.filterSearch}" style="font-size:12px;" />
   </div>
 
@@ -1554,7 +1582,7 @@ function renderHistoryTab() {
       <table>
         <thead><tr>
           ${sel ? `<th style="width:28px;"></th>` : ""}
-          <th class="col-date">Date</th><th class="col-time">Time</th><th class="col-num" style="text-align:right;">${unitLabel()}</th><th>Route</th>
+          <th class="col-date" data-sort="date" style="cursor:pointer;">Date${sortArrow("date")}</th><th class="col-time">Time</th><th class="col-num" data-sort="distance" style="text-align:right;cursor:pointer;">${unitLabel()}${sortArrow("distance")}</th><th>Route</th>
           ${sel ? `<th style="width:36px;"></th>` : ""}
         </tr></thead>
         <tbody>
@@ -2900,6 +2928,31 @@ function attachAppHandlers() {
     });
     document.getElementById("filterFrom").onchange = (e) => { state.filterFrom = e.target.value; render(); };
     document.getElementById("filterTo").onchange = (e) => { state.filterTo = e.target.value; render(); };
+
+    const filterMinDistSlider = document.getElementById("filterMinDistanceSlider");
+    if (filterMinDistSlider) {
+      filterMinDistSlider.oninput = (e) => {
+        const v = parseFloat(e.target.value);
+        e.target.parentElement.querySelector("span").textContent = `${v.toFixed(1)} ${unitLabel()}`;
+      };
+      filterMinDistSlider.onchange = (e) => {
+        state.filterMinDistance = parseFloat(e.target.value);
+        render();
+      };
+    }
+
+    document.querySelectorAll("[data-sort]").forEach(th => {
+      th.onclick = () => {
+        const field = th.dataset.sort;
+        if (state.historySortBy === field) {
+          state.historySortDir = state.historySortDir === "asc" ? "desc" : "asc";
+        } else {
+          state.historySortBy = field;
+          state.historySortDir = "desc";
+        }
+        render();
+      };
+    });
     document.getElementById("filterSearch").oninput = (e) => {
       const pos = e.target.selectionStart;
       state.filterSearch = e.target.value;
