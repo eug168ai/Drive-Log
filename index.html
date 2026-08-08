@@ -97,11 +97,11 @@
   table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
   thead th{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
-  tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  tbody td{padding:6px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
   .col-date{width:58px;padding-left:8px;padding-right:0;}
   .col-time{width:68px;padding-right:0;}
-  .col-num{width:40px;padding-left:0;padding-right:0;}
+  .col-num{width:37px;padding-left:0;padding-right:0;}
   .date-cell{padding-left:8px;padding-right:0;}
   .time-cell{padding-right:0;padding-left:4px;}
   .num-cell{padding-left:0;padding-right:0;}
@@ -1503,6 +1503,9 @@ function renderLogTab() {
 
     <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
   </div>`}
+  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
+  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
+  ` : ""}
   `;
 }
 
@@ -1702,7 +1705,7 @@ function renderSettingsTab() {
       <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     ${state.settings.fuelTrackingEnabled === false ? `
-    <p class="settings-desc" style="margin:0;">Turn this on to estimate or track how much your drives cost in fuel.</p>
+    <p class="settings-desc" style="margin:0;">Estimate or track fuel cost per drive.</p>
     ` : `
     <label class="field-label">Costing mode</label>
     <div class="toggle-row" style="margin-bottom:14px;">
@@ -1724,7 +1727,7 @@ function renderSettingsTab() {
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a fill-up</button>
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
       </div>
       ${state.fuelFillups.length ? `
         <div class="table-scroll" style="max-height:220px;">
@@ -2032,7 +2035,7 @@ function renderFuelFillupModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>${icons.locate} Log a fill-up</h2>
+      <h2>${icons.locate} Log a Fill-Up</h2>
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
       <label class="field-label">${volLabel}</label>
@@ -2345,7 +2348,7 @@ function attachRouteAutoScroll() {
 
   const minGapPx = 56;
   const targetDistance = Math.max(...entries.map(e => e.singleWidth)) + minGapPx;
-  const speedPxPerSec = 20;
+  const speedPxPerSec = 26;
   const duration = Math.max(4, targetDistance / speedPxPerSec);
 
   entries.forEach(({ track, singleWidth, text }) => {
@@ -2353,7 +2356,7 @@ function attachRouteAutoScroll() {
     track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
     track.animate(
       [{ transform: "translateX(0px)" }, { transform: `translateX(-${targetDistance}px)` }],
-      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 5000 }
+      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
     );
   });
 }
@@ -2361,10 +2364,10 @@ function attachRouteAutoScroll() {
 // Log page: Start/End Location fields show a scrolling preview of the full
 // address once a *real* selection has been made (autocomplete pick, saved
 // address chip, or "use my location") — not for arbitrary typed text — and
-// only after a 5-second pause, so it never interrupts someone mid-typing.
+// only after a 3-second pause, so it never interrupts someone mid-typing.
 // Manually editing the field, or focusing it again, cancels the preview.
-const LOC_MARQUEE_DELAY_MS = 5000;
-const LOC_MARQUEE_SPEED = 20;
+const LOC_MARQUEE_DELAY_MS = 3000;
+const LOC_MARQUEE_SPEED = 26;
 const locMarquees = {};
 
 function setupLocationMarquee(inputId) {
@@ -2479,6 +2482,12 @@ function attachAppHandlers() {
   if (settingsBtn) settingsBtn.onclick = () => { state.tab = "settings"; render(); };
 
   if (state.tab === "log") {
+    const logFillupBtnLog = document.getElementById("logFillupBtnLog");
+    if (logFillupBtnLog) logFillupBtnLog.onclick = () => {
+      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      render();
+    };
+
     if (!state.active) {
       document.querySelectorAll("[data-drivetype]").forEach(btn => {
         btn.onclick = async () => {
