@@ -18,7 +18,7 @@
   }
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px;}
-  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;flex-wrap:wrap;gap:10px;}
+  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
   .stats-row{display:flex;align-items:flex-end;gap:8px;}
   .stat-block{display:flex;flex-direction:column;align-items:center;}
   .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px;
@@ -95,7 +95,7 @@
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
   table{width:100%;border-collapse:collapse;font-size:11px;table-layout:fixed;}
-  thead th{position:sticky;top:0;background:var(--surface);border-bottom:1px solid var(--border);
+  thead th{position:sticky;top:0;z-index:2;background:var(--surface);border-bottom:1px solid var(--border);
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:6px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
@@ -105,7 +105,7 @@
   .date-cell{padding-left:8px;padding-right:0;}
   .time-cell{padding-right:0;padding-left:4px;}
   .num-cell{padding-left:0;padding-right:0;}
-  .route-cell{max-width:none;padding-left:8px;padding-right:0;}
+  .route-cell{max-width:none;padding-left:8px;padding-right:0;position:relative;z-index:0;}
   .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 8px);}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .loc-field-wrap{position:relative;flex:1;min-width:0;}
@@ -1214,7 +1214,7 @@ function renderTimerOnly() {
 }
 
 function odometer(value) {
-  const str = Math.round(Math.max(0, value)).toString();
+  const str = Math.round(Math.max(0, value)).toString().padStart(6, "0").slice(-6);
   return `<div class="odo">${str.split("").map(d => `<span>${d}</span>`).join("")}</div>`;
 }
 function odometerTime(mins) {
@@ -1388,7 +1388,7 @@ function renderApp() {
           <p class="odo-label">Total time</p>
           ${odometerTime(totalMinutes())}
         </div>
-        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;" title="Settings">${icons.gear}</button>
+        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;margin-bottom:3px;" title="Settings">${icons.gear}</button>
       </div>
     </div>
 
