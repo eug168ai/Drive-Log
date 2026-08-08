@@ -443,7 +443,7 @@ const TIMELINE_GAP_BREAK_MS = 2.5 * 60 * 1000;
 const TIMELINE_STITCH_GAP_MS = 5 * 60 * 1000;
 const TIMELINE_MIN_SPEED_KMH = 12;
 const TIMELINE_MAX_SPEED_KMH = 160;
-const TIMELINE_MIN_SEGMENT_MS = 90 * 1000;
+const TIMELINE_MIN_SEGMENT_MS = 3 * 60 * 1000;
 
 function detectDrivingSegments(points) {
   if (points.length < 2) return [];
@@ -825,7 +825,7 @@ function getGeocodingLibrary() {
   return geocodingLibraryPromise;
 }
 
-async function reverseGeocode(lat, lng) {
+async function reverseGeocode(lat, lng, fullAddress) {
   const libraryPromise = getGeocodingLibrary();
   if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
   const { Geocoder } = await libraryPromise;
@@ -839,6 +839,7 @@ async function reverseGeocode(lat, lng) {
   }
   const results = response && response.results;
   if (!results || !results.length) throw new Error("Couldn't find an address for your location.");
+  if (fullAddress) return results[0].formatted_address;
   const comps = results[0].address_components;
   const get = (type) => (comps.find(c => c.types.includes(type)) || {}).long_name;
   const streetNumber = get("street_number");
@@ -853,9 +854,9 @@ async function geocodeCandidateAddresses(a) {
   for (const c of a.candidates) {
     if (c.startAddr && c.endAddr) continue;
     if (state.addDrives !== a) return; // modal closed or moved on — abandon
-    try { c.startAddr = await reverseGeocode(c.startLat, c.startLng); }
+    try { c.startAddr = await reverseGeocode(c.startLat, c.startLng, true); }
     catch (e) { c.startAddr = `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`; }
-    try { c.endAddr = await reverseGeocode(c.endLat, c.endLng); }
+    try { c.endAddr = await reverseGeocode(c.endLat, c.endLng, true); }
     catch (e) { c.endAddr = `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`; }
     if (state.addDrives === a) render();
   }
@@ -2032,16 +2033,15 @@ function renderAddDrivesModal() {
           <p class="settings-title" style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">From the Maps app (most phones)</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>1.</b> Open Google Maps → your profile icon → Your Timeline</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>2.</b> ⋯ menu → Location and privacy settings → Export Timeline data</p>
-          <p style="margin:0;font-size:13px;"><b>3.</b> Come back here and choose the exported file below</p>
+          <p style="margin:0;font-size:13px;"><b>3.</b> Return here and choose the exported file below</p>
         </div>
 
         <div class="card" style="padding:14px;margin-bottom:16px;">
-          <p class="settings-title" style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">From phone Settings (Samsung & others)</p>
+          <p class="settings-title" style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">From phone Settings<br>(Samsung & others)</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>1.</b> Settings → Location → Location Services → Timeline</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>2.</b> Tap Export (or "Tap to manage") → Export Timeline data</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>3.</b> If you have more than one Google account on the device, sign in to the account you want to export first</p>
-          <p style="margin:0;font-size:13px;"><b>4.</b> Come back here and choose the exported file below</p>
-          <p class="settings-desc" style="margin:8px 0 0;">If the Export option isn't there, try rebooting your phone or toggling Timeline off then on — it's a known glitch on some devices.</p>
+          <p style="margin:0;font-size:13px;"><b>4.</b> Return here and choose the exported file below</p>
         </div>
 
         <button id="openMapsBtn" class="btn drive-btn" style="margin-bottom:12px;">${icons.pin} Open Google Maps</button>
@@ -2075,23 +2075,16 @@ function renderAddDrivesModal() {
           <p class="settings-desc" style="margin:0 0 16px;">No candidate drives found in that date range. Try widening the dates.</p>
           <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
         ` : (() => {
-          const visible = a.candidates.filter(c => {
-            const d = kmToDisplay(c.distanceKm);
-            return d >= a.distMin && d <= a.distMax;
-          });
+          const visible = a.candidates.filter(c => kmToDisplay(c.distanceKm) >= a.distMin);
           const selectedCount = a.candidates.filter(c => c.selected).length;
           return `
-          <p class="settings-desc" style="margin:0 0 14px;">Found ${a.candidates.length} candidate drive${a.candidates.length === 1 ? "" : "s"}. Review and untick anything that isn't really a drive, then confirm.</p>
+          <p class="settings-desc" style="margin:0 0 14px;">Found ${a.candidates.length} possible drive${a.candidates.length === 1 ? "" : "s"} — untick any that aren't real, then confirm.</p>
 
           ${a.distCeil > a.distFloor ? `
-          <label class="field-label">Distance range</label>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+          <label class="field-label">Minimum distance</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
             <span class="mono" style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0;">${a.distMin.toFixed(1)} ${unitLabel()}</span>
             <input type="range" id="distMinSlider" min="${a.distFloor}" max="${a.distCeil}" step="0.1" value="${a.distMin}" style="flex:1;accent-color:var(--amber);" />
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
-            <span class="mono" style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0;">${a.distMax.toFixed(1)} ${unitLabel()}</span>
-            <input type="range" id="distMaxSlider" min="${a.distFloor}" max="${a.distCeil}" step="0.1" value="${a.distMax}" style="flex:1;accent-color:var(--amber);" />
           </div>
           ` : ""}
 
@@ -2633,7 +2626,7 @@ function attachAppHandlers() {
       state.addDrives = {
         step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false,
         candidates: [], error: "",
-        distFloor: 0, distCeil: 0, distMin: 0, distMax: 0,
+        distFloor: 0, distCeil: 0, distMin: 0,
         geocoding: false,
       };
       render();
@@ -3156,8 +3149,8 @@ function attachAppHandlers() {
           const dists = a.candidates.map(c => kmToDisplay(c.distanceKm));
           a.distFloor = Math.floor(Math.min(...dists) * 10) / 10;
           a.distCeil = Math.max(a.distFloor + 0.1, Math.ceil(Math.max(...dists) * 10) / 10);
-          a.distMin = a.distFloor;
-          a.distMax = a.distCeil;
+          const defaultMin = kmToDisplay(3); // default threshold: hide drives under ~3km
+          a.distMin = Math.max(a.distFloor, Math.min(defaultMin, a.distCeil));
         }
         a.step = 3;
       } catch (err) {
@@ -3176,28 +3169,13 @@ function attachAppHandlers() {
     });
 
     const distMinSlider = document.getElementById("distMinSlider");
-    const distMaxSlider = document.getElementById("distMaxSlider");
-    if (distMinSlider && distMaxSlider) {
+    if (distMinSlider) {
       distMinSlider.oninput = (e) => {
-        let v = parseFloat(e.target.value);
-        if (v > a.distMax) v = a.distMax;
-        e.target.value = v;
+        const v = parseFloat(e.target.value);
         e.target.parentElement.querySelector("span").textContent = `${v.toFixed(1)} ${unitLabel()}`;
       };
       distMinSlider.onchange = (e) => {
-        let v = parseFloat(e.target.value);
-        a.distMin = Math.min(v, a.distMax);
-        render();
-      };
-      distMaxSlider.oninput = (e) => {
-        let v = parseFloat(e.target.value);
-        if (v < a.distMin) v = a.distMin;
-        e.target.value = v;
-        e.target.parentElement.querySelector("span").textContent = `${v.toFixed(1)} ${unitLabel()}`;
-      };
-      distMaxSlider.onchange = (e) => {
-        let v = parseFloat(e.target.value);
-        a.distMax = Math.max(v, a.distMin);
+        a.distMin = parseFloat(e.target.value);
         render();
       };
     }
@@ -3215,8 +3193,8 @@ function attachAppHandlers() {
         let startAddr = c.startAddr || `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`;
         let endAddr = c.endAddr || `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`;
         if (mapsConfigured() && (!c.startAddr || !c.endAddr)) {
-          try { startAddr = await reverseGeocode(c.startLat, c.startLng); } catch (e) {}
-          try { endAddr = await reverseGeocode(c.endLat, c.endLng); } catch (e) {}
+          try { startAddr = await reverseGeocode(c.startLat, c.startLng, true); } catch (e) {}
+          try { endAddr = await reverseGeocode(c.endLat, c.endLng, true); } catch (e) {}
         }
         newTrips.push({
           id: uid(),
