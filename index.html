@@ -99,12 +99,13 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:52px;}
+  .col-date{width:64px;}
   .col-time{width:66px;padding-right:0;}
   .col-num{width:40px;padding-left:0;}
   .time-cell{padding-right:0;}
   .num-cell{padding-left:0;}
-  .route-cell{max-width:none;overflow:hidden;white-space:nowrap;position:relative;padding-left:8px;padding-right:16px;}
+  .route-cell{max-width:none;padding-left:8px;padding-right:4px;}
+  .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 14px);}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -1543,7 +1544,7 @@ function renderHistoryTab() {
                 <td>${formatDateCompact(t.date)}</td>
                 <td class="time-cell" style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
                 <td class="mono num-cell" style="text-align:right;">${kmToDisplay(t.distance).toFixed(1)}</td>
-                <td class="route-cell"><span class="route-track">${t.startPoint} → ${t.endPoint}</span></td>
+                <td class="route-cell"><div class="route-clip"><span class="route-track">${t.startPoint} → ${t.endPoint}</span></div></td>
                 ${sel ? `<td><button class="icon-btn editTripBtn" data-tripid="${t.id}" title="Edit">${icons.edit}</button></td>` : ""}
               </tr>`).join("")}
         </tbody>
@@ -2306,23 +2307,33 @@ async function finalizeTrip(trip) {
 
 // Auto-reveal the full start→end address on each History row: any route
 // cell whose text is truncated starts a continuous marquee scroll after a
-// short idle delay so the whole address eventually passes into view, looping
-// seamlessly (two copies of the text scrolling as one, advanced by the exact
-// pixel distance between copies so the loop point never visibly jumps).
+// short idle delay so the whole address eventually passes into view. All
+// rows share one loop distance/duration (shorter addresses just get more
+// trailing gap padding) so every row starts and loops in lockstep, and the
+// loop advances by the exact pixel distance between the two text copies so
+// it never visibly jumps.
 function attachRouteAutoScroll() {
+  const entries = [];
   document.querySelectorAll(".route-cell").forEach(cell => {
-    const track = cell.querySelector(".route-track");
-    if (!track) return;
+    const clip = cell.querySelector(".route-clip");
+    const track = clip && clip.querySelector(".route-track");
+    if (!clip || !track) return;
     const singleWidth = track.scrollWidth;
-    if (singleWidth <= cell.clientWidth + 2) return; // fits already — no marquee needed
-    const text = track.textContent;
-    const gapPx = 48;
+    if (singleWidth <= clip.clientWidth + 2) return; // fits already — no marquee needed
+    entries.push({ track, singleWidth, text: track.textContent });
+  });
+  if (!entries.length) return;
+
+  const minGapPx = 56;
+  const targetDistance = Math.max(...entries.map(e => e.singleWidth)) + minGapPx;
+  const speedPxPerSec = 40;
+  const duration = Math.max(4, targetDistance / speedPxPerSec);
+
+  entries.forEach(({ track, singleWidth, text }) => {
+    const gapPx = targetDistance - singleWidth; // shorter text gets a bigger trailing gap, so every row shares the same loop distance
     track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
-    const distance = singleWidth + gapPx; // exact pixel offset where copy #2 lines up with copy #1's start
-    const speedPxPerSec = 40;
-    const duration = Math.max(4, distance / speedPxPerSec);
     track.animate(
-      [{ transform: "translateX(0px)" }, { transform: `translateX(-${distance}px)` }],
+      [{ transform: "translateX(0px)" }, { transform: `translateX(-${targetDistance}px)` }],
       { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
     );
   });
