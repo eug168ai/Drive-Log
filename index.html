@@ -99,18 +99,13 @@
            text-align:left;padding:8px 4px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;font-size:9px;}
   tbody td{padding:8px 4px;border-bottom:1px solid rgba(42,47,56,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .table-scroll{max-height:420px;overflow-y:auto;}
-  .col-date{width:66px;}
-  .col-time{width:78px;padding-right:0;}
+  .col-date{width:52px;}
+  .col-time{width:66px;padding-right:0;}
   .col-num{width:40px;padding-left:0;}
   .time-cell{padding-right:0;}
   .num-cell{padding-left:0;}
-  .route-cell{max-width:none;overflow:hidden;white-space:nowrap;position:relative;}
+  .route-cell{max-width:none;overflow:hidden;white-space:nowrap;position:relative;padding-left:8px;padding-right:16px;}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
-  .route-track.marquee{animation-name:route-marquee;animation-timing-function:linear;animation-iteration-count:infinite;animation-delay:3s;}
-  @keyframes route-marquee{
-    0% { transform:translateX(0); }
-    100% { transform:translateX(-50%); }
-  }
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
   .login-box{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:24px;}
@@ -1399,17 +1394,17 @@ function renderLogTab() {
   <div class="card">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
       <div>
-        <p class="field-label">This week</p>
+        <label class="field-label">This week</label>
         <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(weekTotal()).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
       </div>
       <div style="text-align:right;">
-        <p class="field-label">&nbsp;</p>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${(() => { const mins = weekMinutes(); const h = Math.floor(mins / 60); const m = mins % 60; return `${h}h<span style="margin-left:2px;">${m}m</span>`; })()}</p>
+        <label class="field-label">&nbsp;</label>
+        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${(() => { const mins = weekMinutes(); const h = Math.floor(mins / 60); const m = mins % 60; return `${h}<span style="margin-left:2px;">h</span><span style="margin-left:2px;">${m}</span><span style="margin-left:2px;">m</span>`; })()}</p>
       </div>
     </div>
     ${(() => { const cost = weekFuelCost(); return cost != null ? `
     <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <span class="settings-desc" style="margin:0;">Estimated Fuel Cost</span>
+      <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
       <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
   </div>
@@ -1448,7 +1443,7 @@ function renderLogTab() {
       </div>
       ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
     </div>
-    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Leave blank to skip or enter to estimate drive.</p>
+    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Blank to skip or enter to estimate drive.</p>
 
     ${(() => { const sug = suggestRouteTag(); return sug ? `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
@@ -1998,9 +1993,9 @@ function renderSyncReminderModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>${icons.drive} Time to sync</h2>
+      <h2>${icons.drive} Time to Sync</h2>
       <p class="settings-desc" style="margin:0 0 16px;">
-        You have ${p.unsyncedCount} drive${p.unsyncedCount === 1 ? "" : "s"} saved on this device that haven't been sent to Google Sheets yet.
+        ${p.unsyncedCount} drive${p.unsyncedCount === 1 ? "" : "s"} waiting to sync.
       </p>
       ${state.googleError ? `<p class="err" style="margin:0 0 12px;">${state.googleError}</p>` : ""}
       <div class="row-2" style="margin-top:12px;">
@@ -2312,7 +2307,8 @@ async function finalizeTrip(trip) {
 // Auto-reveal the full start→end address on each History row: any route
 // cell whose text is truncated starts a continuous marquee scroll after a
 // short idle delay so the whole address eventually passes into view, looping
-// seamlessly (two copies of the text scrolling as one).
+// seamlessly (two copies of the text scrolling as one, advanced by the exact
+// pixel distance between copies so the loop point never visibly jumps).
 function attachRouteAutoScroll() {
   document.querySelectorAll(".route-cell").forEach(cell => {
     const track = cell.querySelector(".route-track");
@@ -2322,10 +2318,13 @@ function attachRouteAutoScroll() {
     const text = track.textContent;
     const gapPx = 48;
     track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+    const distance = singleWidth + gapPx; // exact pixel offset where copy #2 lines up with copy #1's start
     const speedPxPerSec = 40;
-    const duration = Math.max(4, (singleWidth + gapPx) / speedPxPerSec);
-    track.style.animationDuration = `${duration}s`;
-    track.classList.add("marquee");
+    const duration = Math.max(4, distance / speedPxPerSec);
+    track.animate(
+      [{ transform: "translateX(0px)" }, { transform: `translateX(-${distance}px)` }],
+      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
+    );
   });
 }
 
