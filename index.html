@@ -848,6 +848,20 @@ async function reverseGeocode(lat, lng) {
   return [street, suburb].filter(Boolean).join(", ") || results[0].formatted_address;
 }
 
+async function geocodeCandidateAddresses(a) {
+  a.geocoding = true;
+  for (const c of a.candidates) {
+    if (c.startAddr && c.endAddr) continue;
+    if (state.addDrives !== a) return; // modal closed or moved on — abandon
+    try { c.startAddr = await reverseGeocode(c.startLat, c.startLng); }
+    catch (e) { c.startAddr = `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`; }
+    try { c.endAddr = await reverseGeocode(c.endLat, c.endLng); }
+    catch (e) { c.endAddr = `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`; }
+    if (state.addDrives === a) render();
+  }
+  if (state.addDrives === a) { a.geocoding = false; render(); }
+}
+
 async function useMyLocation(target) {
   if (!mapsConfigured()) { state.locateError = "Location lookup isn't set up for this app yet."; render(); return; }
   state.locateError = "";
@@ -2012,12 +2026,24 @@ function renderAddDrivesModal() {
       </div>
 
       ${a.step === 1 ? `
-        <p class="settings-desc" style="margin:0 0 16px;">First we need your Timeline data. Google Maps stores this on your phone — export it, then bring the file back here.</p>
-        <div class="card" style="padding:14px;margin-bottom:16px;">
+        <p class="settings-desc" style="margin:0 0 14px;">First we need your Timeline data. Google Maps stores this on your phone — export it, then bring the file back here. The steps differ a bit by device, so use whichever matches your phone.</p>
+
+        <div class="card" style="padding:14px;margin-bottom:10px;">
+          <p class="settings-title" style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">From the Maps app (most phones)</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>1.</b> Open Google Maps → your profile icon → Your Timeline</p>
           <p style="margin:0 0 8px;font-size:13px;"><b>2.</b> ⋯ menu → Location and privacy settings → Export Timeline data</p>
           <p style="margin:0;font-size:13px;"><b>3.</b> Come back here and choose the exported file below</p>
         </div>
+
+        <div class="card" style="padding:14px;margin-bottom:16px;">
+          <p class="settings-title" style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);">From phone Settings (Samsung & others)</p>
+          <p style="margin:0 0 8px;font-size:13px;"><b>1.</b> Settings → Location → Location Services → Timeline</p>
+          <p style="margin:0 0 8px;font-size:13px;"><b>2.</b> Tap Export (or "Tap to manage") → Export Timeline data</p>
+          <p style="margin:0 0 8px;font-size:13px;"><b>3.</b> If you have more than one Google account on the device, sign in to the account you want to export first</p>
+          <p style="margin:0;font-size:13px;"><b>4.</b> Come back here and choose the exported file below</p>
+          <p class="settings-desc" style="margin:8px 0 0;">If the Export option isn't there, try rebooting your phone or toggling Timeline off then on — it's a known glitch on some devices.</p>
+        </div>
+
         <button id="openMapsBtn" class="btn drive-btn" style="margin-bottom:12px;">${icons.pin} Open Google Maps</button>
         <label class="field-label">Choose file</label>
         <input id="timelineFileInput" type="file" accept="application/json,.json" class="input" style="padding:8px;" />
@@ -2048,24 +2074,46 @@ function renderAddDrivesModal() {
         ${a.candidates.length === 0 ? `
           <p class="settings-desc" style="margin:0 0 16px;">No candidate drives found in that date range. Try widening the dates.</p>
           <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
-        ` : `
+        ` : (() => {
+          const visible = a.candidates.filter(c => {
+            const d = kmToDisplay(c.distanceKm);
+            return d >= a.distMin && d <= a.distMax;
+          });
+          const selectedCount = a.candidates.filter(c => c.selected).length;
+          return `
           <p class="settings-desc" style="margin:0 0 14px;">Found ${a.candidates.length} candidate drive${a.candidates.length === 1 ? "" : "s"}. Review and untick anything that isn't really a drive, then confirm.</p>
+
+          ${a.distCeil > a.distFloor ? `
+          <label class="field-label">Distance range</label>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span class="mono" style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0;">${a.distMin.toFixed(1)} ${unitLabel()}</span>
+            <input type="range" id="distMinSlider" min="${a.distFloor}" max="${a.distCeil}" step="0.1" value="${a.distMin}" style="flex:1;accent-color:var(--amber);" />
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+            <span class="mono" style="font-size:12px;color:var(--muted);width:56px;flex-shrink:0;">${a.distMax.toFixed(1)} ${unitLabel()}</span>
+            <input type="range" id="distMaxSlider" min="${a.distFloor}" max="${a.distCeil}" step="0.1" value="${a.distMax}" style="flex:1;accent-color:var(--amber);" />
+          </div>
+          ` : ""}
+
+          ${a.geocoding ? `<p class="settings-desc" style="margin:0 0 8px;">Looking up locations…</p>` : ""}
+
           <div class="table-scroll" style="max-height:320px;margin-bottom:14px;">
-            ${a.candidates.map(c => `
+            ${visible.length === 0 ? `<p class="empty">No candidates in that distance range.</p>` : visible.map(c => `
               <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 4px;border-bottom:1px solid rgba(42,47,56,.6);">
                 <input type="checkbox" class="candidateCheckbox" data-id="${c.id}" ${c.selected ? "checked" : ""} style="margin-top:3px;width:16px;height:16px;accent-color:var(--amber);flex-shrink:0;" />
                 <div style="min-width:0;flex:1;">
                   <p style="margin:0;font-size:13px;font-weight:600;">${formatDateForDisplay(new Date(c.startMs).toISOString().slice(0,10))} · ${new Date(c.startMs).toTimeString().slice(0,5)}–${new Date(c.endMs).toTimeString().slice(0,5)}</p>
                   <p class="settings-desc" style="margin:2px 0 0;">${kmToDisplay(c.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(Math.round((c.endMs - c.startMs)/60000))}</p>
+                  <p class="settings-desc" style="margin:2px 0 0;">${c.startAddr || (mapsConfigured() ? "Loading location…" : `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`)} → ${c.endAddr || (mapsConfigured() ? "Loading location…" : `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`)}</p>
                 </div>
               </div>`).join("")}
           </div>
           ${a.error ? `<p class="err" style="margin:0 0 12px;">${a.error}</p>` : ""}
           <div class="row-2">
             <button id="backAddDrivesBtn" class="btn btn-ghost">Back</button>
-            <button id="confirmImportBtn" class="btn btn-amber">Add ${a.candidates.filter(c => c.selected).length} drive${a.candidates.filter(c => c.selected).length === 1 ? "" : "s"}</button>
+            <button id="confirmImportBtn" class="btn btn-amber">Add ${selectedCount} drive${selectedCount === 1 ? "" : "s"}</button>
           </div>
-        `}
+        `; })()}
       ` : ""}
     </div>
   </div>`;
@@ -2582,7 +2630,12 @@ function attachAppHandlers() {
 
     const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
     if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
-      state.addDrives = { step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false, candidates: [], error: "" };
+      state.addDrives = {
+        step: 1, fileName: "", points: [], dateFrom: "", dateTo: "", processing: false,
+        candidates: [], error: "",
+        distFloor: 0, distCeil: 0, distMin: 0, distMax: 0,
+        geocoding: false,
+      };
       render();
     };
   }
@@ -3099,12 +3152,20 @@ function attachAppHandlers() {
         const toMs = new Date(`${a.dateTo}T23:59:59`).getTime();
         const inRange = a.points.filter(p => p.t >= fromMs && p.t <= toMs);
         a.candidates = detectDrivingSegments(inRange);
+        if (a.candidates.length) {
+          const dists = a.candidates.map(c => kmToDisplay(c.distanceKm));
+          a.distFloor = Math.floor(Math.min(...dists) * 10) / 10;
+          a.distCeil = Math.max(a.distFloor + 0.1, Math.ceil(Math.max(...dists) * 10) / 10);
+          a.distMin = a.distFloor;
+          a.distMax = a.distCeil;
+        }
         a.step = 3;
       } catch (err) {
         a.error = err.message || "Couldn't process that date range.";
       }
       a.processing = false;
       render();
+      if (a.step === 3 && a.candidates.length && mapsConfigured()) geocodeCandidateAddresses(a);
     };
 
     document.querySelectorAll(".candidateCheckbox").forEach(cb => {
@@ -3113,6 +3174,33 @@ function attachAppHandlers() {
         if (c) c.selected = e.target.checked;
       };
     });
+
+    const distMinSlider = document.getElementById("distMinSlider");
+    const distMaxSlider = document.getElementById("distMaxSlider");
+    if (distMinSlider && distMaxSlider) {
+      distMinSlider.oninput = (e) => {
+        let v = parseFloat(e.target.value);
+        if (v > a.distMax) v = a.distMax;
+        e.target.value = v;
+        e.target.parentElement.querySelector("span").textContent = `${v.toFixed(1)} ${unitLabel()}`;
+      };
+      distMinSlider.onchange = (e) => {
+        let v = parseFloat(e.target.value);
+        a.distMin = Math.min(v, a.distMax);
+        render();
+      };
+      distMaxSlider.oninput = (e) => {
+        let v = parseFloat(e.target.value);
+        if (v < a.distMin) v = a.distMin;
+        e.target.value = v;
+        e.target.parentElement.querySelector("span").textContent = `${v.toFixed(1)} ${unitLabel()}`;
+      };
+      distMaxSlider.onchange = (e) => {
+        let v = parseFloat(e.target.value);
+        a.distMax = Math.max(v, a.distMin);
+        render();
+      };
+    }
 
     const confirmImportBtn = document.getElementById("confirmImportBtn");
     if (confirmImportBtn) confirmImportBtn.onclick = async () => {
@@ -3124,9 +3212,9 @@ function attachAppHandlers() {
       for (const c of chosen) {
         const startDate = new Date(c.startMs), endDate = new Date(c.endMs);
         const pad = (n) => String(n).padStart(2, "0");
-        let startAddr = `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`;
-        let endAddr = `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`;
-        if (mapsConfigured()) {
+        let startAddr = c.startAddr || `${c.startLat.toFixed(4)}, ${c.startLng.toFixed(4)}`;
+        let endAddr = c.endAddr || `${c.endLat.toFixed(4)}, ${c.endLng.toFixed(4)}`;
+        if (mapsConfigured() && (!c.startAddr || !c.endAddr)) {
           try { startAddr = await reverseGeocode(c.startLat, c.startLng); } catch (e) {}
           try { endAddr = await reverseGeocode(c.endLat, c.endLng); } catch (e) {}
         }
