@@ -806,7 +806,7 @@ const icons = {
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
   search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
-  fuelPump: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="10" height="17" rx="1"/><path d="M3 10h10"/><path d="M7 7h2"/><path d="M13 8h2l3 3v6a1.5 1.5 0 0 0 3 0v-5l-2-2"/></svg>`,
+  fuelPump: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -942,16 +942,18 @@ const CAR_FUEL_DATA = [
   { region: "eu", make: "Fiat", model: "500 Hybrid", l100km: 4.7 },
   { region: "eu", make: "Opel/Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
 ];
-// Best-effort region guess from the device's own locale setting, so the lookup
-// modal opens with a sensible default instead of forcing a manual pick every time.
+// Best-effort region guess so the lookup modal opens with a sensible default
+// instead of forcing a manual pick every time. Built on getDeviceRegionCode(),
+// which checks the device's actual timezone before falling back to browser
+// locale — language alone is unreliable (a phone set to "English" often
+// reports en-US regardless of which country it's actually in).
 const EU_LOCALE_COUNTRIES = ["DE","FR","ES","IT","NL","BE","AT","PT","IE","PL","SE","DK","FI","GR","CZ","HU","RO","SK","BG","HR","SI","LT","LV","EE","LU","MT","CY"];
 function detectRegion() {
-  const locale = (navigator.languages && navigator.languages[0]) || navigator.language || "";
-  const country = (locale.split("-")[1] || "").toUpperCase();
-  if (country === "US") return "us";
-  if (country === "GB") return "uk";
-  if (country === "AU") return "au";
-  if (EU_LOCALE_COUNTRIES.includes(country)) return "eu";
+  const code = (getDeviceRegionCode() || "").toUpperCase();
+  if (code === "US") return "us";
+  if (code === "GB") return "uk";
+  if (code === "AU") return "au";
+  if (EU_LOCALE_COUNTRIES.includes(code)) return "eu";
   return "";
 }
 // mpg is always US gallons for the "us" region (matches fueleconomy.gov) and
@@ -2064,7 +2066,7 @@ function renderSettingsTab() {
 
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
+      <p class="settings-title" style="margin:0;">${icons.fuelPump} Fuel Cost Tracking (Beta)</p>
       <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     ${state.settings.fuelTrackingEnabled === false ? `
