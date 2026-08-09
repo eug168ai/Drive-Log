@@ -121,6 +121,7 @@
   .timer{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:18px;font-weight:600;}
   .hidden{display:none !important;}
   .icon{width:15px;height:15px;flex-shrink:0;}
+  .icon-fuel{width:.72em;height:.72em;}
   .switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
   .switch{position:relative;width:44px;height:24px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);
           border-radius:999px;cursor:pointer;transition:background .15s,border-color .15s;}
@@ -806,7 +807,7 @@ const icons = {
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
   search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
-  fuelPump: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
+  fuelPump: `<svg class="icon icon-fuel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -830,107 +831,107 @@ const CAR_FUEL_DATA = [
   // separate models on the AU market — their real lineup is listed in full rather
   // than padded with invented trims. Newer entrants only list years they've
   // actually been on sale here.
-  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", years: "2015–2026", l100km: 7.9 },
-  { region: "au", make: "Toyota", model: "HiLux 2.7L Petrol 4x2", years: "2015–2026", l100km: 8.9 },
-  { region: "au", make: "Toyota", model: "Corolla Hybrid", years: "2019–2026", l100km: 4.2 },
-  { region: "au", make: "Toyota", model: "Corolla 2.0L Petrol", years: "2011–2026", l100km: 6.0 },
-  { region: "au", make: "Toyota", model: "Corolla Cross Hybrid", years: "2022–2026", l100km: 4.3 },
-  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", years: "2019–2026", l100km: 4.8 },
-  { region: "au", make: "Toyota", model: "RAV4 2.0L Petrol", years: "2013–2019", l100km: 7.3 },
-  { region: "au", make: "Toyota", model: "Camry Hybrid", years: "2011–2026", l100km: 4.5 },
-  { region: "au", make: "Toyota", model: "Kluger Hybrid AWD", years: "2021–2026", l100km: 5.6 },
-  { region: "au", make: "Toyota", model: "LandCruiser Prado 2.8L Diesel", years: "2011–2026", l100km: 7.9 },
-  { region: "au", make: "Toyota", model: "LandCruiser 300 Series Diesel", years: "2021–2026", l100km: 8.9 },
-  { region: "au", make: "Toyota", model: "Yaris Cross Hybrid", years: "2020–2026", l100km: 3.8 },
-  { region: "au", make: "Toyota", model: "C-HR Hybrid", years: "2017–2026", l100km: 4.3 },
-  { region: "au", make: "Toyota", model: "Fortuner 2.8L Diesel", years: "2015–2026", l100km: 7.6 },
-  { region: "au", make: "Toyota", model: "Prius Hybrid", years: "2011–2026", l100km: 3.4 },
-  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", years: "2022–2026", l100km: 7.4 },
-  { region: "au", make: "Ford", model: "Ranger 3.2L Diesel", years: "2011–2022", l100km: 8.9 },
-  { region: "au", make: "Ford", model: "Everest 2.0L Bi-Turbo Diesel", years: "2022–2026", l100km: 7.4 },
-  { region: "au", make: "Ford", model: "Territory 4-cyl Petrol", years: "2011–2016", l100km: 10.4 },
-  { region: "au", make: "Ford", model: "Focus 1.5T Petrol", years: "2011–2018", l100km: 6.7 },
-  { region: "au", make: "Ford", model: "Escape 2.0T Petrol", years: "2020–2026", l100km: 8.6 },
-  { region: "au", make: "Ford", model: "Mustang 2.3L EcoBoost", years: "2015–2026", l100km: 9.5 },
-  { region: "au", make: "Ford", model: "Mustang 5.0L V8 GT", years: "2015–2026", l100km: 12.6 },
-  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", years: "2012–2026", l100km: 7.4 },
-  { region: "au", make: "Mazda", model: "CX-3 2.0L Petrol", years: "2015–2026", l100km: 6.1 },
-  { region: "au", make: "Mazda", model: "CX-30 2.0L Petrol", years: "2020–2026", l100km: 6.5 },
-  { region: "au", make: "Mazda", model: "CX-9 2.5L Turbo Petrol", years: "2016–2026", l100km: 9.0 },
-  { region: "au", make: "Mazda", model: "CX-60 3.3L Diesel", years: "2023–2026", l100km: 5.6 },
-  { region: "au", make: "Mazda", model: "Mazda2 1.5L Petrol", years: "2011–2026", l100km: 5.5 },
-  { region: "au", make: "Mazda", model: "Mazda3 2.0L Petrol", years: "2011–2026", l100km: 6.2 },
-  { region: "au", make: "Mazda", model: "Mazda6 2.5L Petrol", years: "2011–2026", l100km: 7.6 },
-  { region: "au", make: "Mazda", model: "BT-50 3.0L Diesel", years: "2020–2026", l100km: 7.9 },
-  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", years: "2011–2026", l100km: 7.6 },
-  { region: "au", make: "Kia", model: "Cerato 2.0L Petrol", years: "2013–2026", l100km: 7.4 },
-  { region: "au", make: "Kia", model: "Seltos 2.0L Petrol", years: "2019–2026", l100km: 7.2 },
-  { region: "au", make: "Kia", model: "Sorento 2.2L Diesel", years: "2011–2026", l100km: 6.1 },
-  { region: "au", make: "Kia", model: "Carnival 3.5L V6 Petrol", years: "2011–2026", l100km: 10.9 },
-  { region: "au", make: "Kia", model: "Picanto 1.2L Petrol", years: "2011–2026", l100km: 5.5 },
-  { region: "au", make: "Kia", model: "Stonic 1.4L Petrol", years: "2021–2026", l100km: 6.2 },
-  { region: "au", make: "Kia", model: "Niro Hybrid", years: "2017–2026", l100km: 4.4 },
-  { region: "au", make: "Kia", model: "Rio 1.4L Petrol", years: "2011–2022", l100km: 6.0 },
-  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", years: "2015–2026", l100km: 7.7 },
-  { region: "au", make: "Mitsubishi", model: "Outlander PHEV", years: "2013–2026", l100km: 1.9 },
-  { region: "au", make: "Mitsubishi", model: "Outlander 2.5L Petrol", years: "2011–2026", l100km: 8.1 },
-  { region: "au", make: "Mitsubishi", model: "ASX 2.0L Petrol", years: "2011–2026", l100km: 7.6 },
-  { region: "au", make: "Mitsubishi", model: "Eclipse Cross 1.5T Petrol", years: "2018–2026", l100km: 7.9 },
-  { region: "au", make: "Mitsubishi", model: "Pajero Sport 2.4L Diesel", years: "2015–2026", l100km: 8.0 },
-  { region: "au", make: "Mitsubishi", model: "Mirage 1.2L Petrol", years: "2011–2024", l100km: 4.9 },
-  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", years: "2011–2026", l100km: 7.4 },
-  { region: "au", make: "Hyundai", model: "Tucson 2.0L Petrol", years: "2015–2026", l100km: 8.1 },
-  { region: "au", make: "Hyundai", model: "Kona 2.0L Petrol", years: "2017–2026", l100km: 7.2 },
-  { region: "au", make: "Hyundai", model: "Santa Fe 2.2L Diesel", years: "2011–2026", l100km: 6.3 },
-  { region: "au", make: "Hyundai", model: "Venue 1.6L Petrol", years: "2019–2026", l100km: 6.9 },
-  { region: "au", make: "Hyundai", model: "i20 1.2L Petrol", years: "2011–2020", l100km: 5.9 },
-  { region: "au", make: "Hyundai", model: "Palisade 3.8L V6 Petrol", years: "2020–2026", l100km: 10.7 },
-  { region: "au", make: "Hyundai", model: "Staria 2.2L Diesel", years: "2021–2026", l100km: 7.5 },
-  { region: "au", make: "Hyundai", model: "Ioniq Hybrid", years: "2016–2026", l100km: 3.9 },
-  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", years: "2011–2026", l100km: 8.3 },
-  { region: "au", make: "Isuzu", model: "MU-X 3.0L Diesel", years: "2013–2026", l100km: 8.3 },
-  { region: "au", make: "MG", model: "MG3 1.5L Petrol", years: "2011–2026", l100km: 6.7 },
-  { region: "au", make: "MG", model: "ZS 1.5L Petrol", years: "2017–2026", l100km: 6.7 },
-  { region: "au", make: "MG", model: "HS 1.5T Petrol", years: "2019–2026", l100km: 7.7 },
-  { region: "au", make: "MG", model: "MG5 1.5L Petrol", years: "2021–2026", l100km: 6.9 },
-  { region: "au", make: "MG", model: "GS 2.0T Petrol", years: "2017–2019", l100km: 8.5 },
-  { region: "au", make: "GWM", model: "Haval Jolion 1.5T Petrol", years: "2021–2026", l100km: 7.4 },
-  { region: "au", make: "GWM", model: "Haval H6 1.5T Petrol", years: "2021–2026", l100km: 7.9 },
-  { region: "au", make: "GWM", model: "Haval H9 2.0T Petrol", years: "2015–2026", l100km: 10.4 },
-  { region: "au", make: "GWM", model: "Cannon Ute 2.0L Diesel", years: "2020–2026", l100km: 8.5 },
-  { region: "au", make: "GWM", model: "Tank 300 2.0T Petrol", years: "2023–2026", l100km: 9.8 },
-  { region: "au", make: "Nissan", model: "X-Trail 2.5L Petrol", years: "2013–2026", l100km: 8.1 },
-  { region: "au", make: "Nissan", model: "Navara 2.3L Diesel", years: "2015–2026", l100km: 7.0 },
-  { region: "au", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", years: "2021–2026", l100km: 6.2 },
-  { region: "au", make: "Nissan", model: "Juke 1.0T Petrol", years: "2020–2026", l100km: 5.8 },
-  { region: "au", make: "Nissan", model: "Patrol 5.6L V8 Petrol", years: "2011–2026", l100km: 14.4 },
-  { region: "au", make: "Nissan", model: "Pathfinder 3.5L V6 Petrol", years: "2013–2026", l100km: 9.9 },
-  { region: "au", make: "Subaru", model: "Forester 2.5L Petrol", years: "2013–2026", l100km: 7.4 },
-  { region: "au", make: "Subaru", model: "Outback 2.5L Petrol", years: "2014–2026", l100km: 7.3 },
-  { region: "au", make: "Subaru", model: "Crosstrek 2.0L Petrol", years: "2011–2026", l100km: 7.0 },
-  { region: "au", make: "Subaru", model: "Impreza 2.0L Petrol", years: "2011–2026", l100km: 7.2 },
-  { region: "au", make: "Subaru", model: "WRX 2.4L Turbo Petrol", years: "2011–2026", l100km: 9.9 },
-  { region: "au", make: "Subaru", model: "BRZ 2.4L Petrol", years: "2012–2026", l100km: 8.7 },
-  { region: "au", make: "Subaru", model: "Levorg 1.8T Petrol", years: "2015–2021", l100km: 8.2 },
-  { region: "au", make: "Volkswagen", model: "Golf 1.5 TSI", years: "2011–2026", l100km: 5.7 },
-  { region: "au", make: "Volkswagen", model: "Tiguan 1.5 TSI", years: "2016–2026", l100km: 6.7 },
-  { region: "au", make: "Volkswagen", model: "Amarok 2.0L Diesel", years: "2011–2026", l100km: 7.8 },
-  { region: "au", make: "Volkswagen", model: "Polo 1.0 TSI", years: "2011–2026", l100km: 5.0 },
-  { region: "au", make: "Volkswagen", model: "T-Roc 1.4T Petrol", years: "2020–2026", l100km: 6.4 },
-  { region: "au", make: "Volkswagen", model: "Touareg 3.0 V6 Diesel", years: "2011–2026", l100km: 7.0 },
-  { region: "au", make: "Volkswagen", model: "Passat 2.0 TDI", years: "2011–2026", l100km: 5.4 },
-  { region: "au", make: "BYD", model: "Shark 6 PHEV Ute", years: "2024–2026", l100km: 2.9 },
-  { region: "au", make: "Suzuki", model: "Vitara 1.6L Petrol", years: "2015–2026", l100km: 6.5 },
-  { region: "au", make: "Suzuki", model: "Swift 1.2L Petrol", years: "2011–2026", l100km: 5.5 },
-  { region: "au", make: "Suzuki", model: "Jimny 1.5L Petrol", years: "2018–2026", l100km: 6.9 },
-  { region: "au", make: "Suzuki", model: "S-Cross 1.4T Petrol", years: "2013–2026", l100km: 6.2 },
-  { region: "au", make: "Suzuki", model: "Baleno 1.4L Petrol", years: "2016–2026", l100km: 5.8 },
-  { region: "au", make: "Suzuki", model: "Ignis 1.2L Petrol", years: "2017–2026", l100km: 5.6 },
-  { region: "au", make: "Honda", model: "CR-V 1.5T Petrol", years: "2017–2026", l100km: 7.6 },
-  { region: "au", make: "Honda", model: "Civic 1.5T Petrol", years: "2016–2026", l100km: 6.4 },
-  { region: "au", make: "Honda", model: "HR-V e:HEV Hybrid", years: "2021–2026", l100km: 4.3 },
-  { region: "au", make: "Honda", model: "Accord 1.5T Petrol", years: "2011–2020", l100km: 7.3 },
-  { region: "au", make: "Honda", model: "Jazz 1.5L Hybrid", years: "2020–2026", l100km: 3.8 },
+  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", yearFrom: 2015, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Toyota", model: "HiLux 2.7L Petrol 4x2", yearFrom: 2015, yearTo: null, l100km: 8.9 },
+  { region: "au", make: "Toyota", model: "Corolla Hybrid", yearFrom: 2019, yearTo: null, l100km: 4.2 },
+  { region: "au", make: "Toyota", model: "Corolla 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.0 },
+  { region: "au", make: "Toyota", model: "Corolla Cross Hybrid", yearFrom: 2022, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", yearFrom: 2019, yearTo: null, l100km: 4.8 },
+  { region: "au", make: "Toyota", model: "RAV4 2.0L Petrol", yearFrom: 2013, yearTo: 2019, l100km: 7.3 },
+  { region: "au", make: "Toyota", model: "Camry Hybrid", yearFrom: 2011, yearTo: null, l100km: 4.5 },
+  { region: "au", make: "Toyota", model: "Kluger Hybrid AWD", yearFrom: 2021, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Toyota", model: "LandCruiser Prado 2.8L Diesel", yearFrom: 2011, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Toyota", model: "LandCruiser 300 Series Diesel", yearFrom: 2021, yearTo: null, l100km: 8.9 },
+  { region: "au", make: "Toyota", model: "Yaris Cross Hybrid", yearFrom: 2020, yearTo: null, l100km: 3.8 },
+  { region: "au", make: "Toyota", model: "C-HR Hybrid", yearFrom: 2017, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Toyota", model: "Fortuner 2.8L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Toyota", model: "Prius Hybrid", yearFrom: 2011, yearTo: null, l100km: 3.4 },
+  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", yearFrom: 2022, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Ranger 3.2L Diesel", yearFrom: 2011, yearTo: 2022, l100km: 8.9 },
+  { region: "au", make: "Ford", model: "Everest 2.0L Bi-Turbo Diesel", yearFrom: 2022, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Territory 4-cyl Petrol", yearFrom: 2011, yearTo: 2016, l100km: 10.4 },
+  { region: "au", make: "Ford", model: "Focus 1.5T Petrol", yearFrom: 2011, yearTo: 2018, l100km: 6.7 },
+  { region: "au", make: "Ford", model: "Escape 2.0T Petrol", yearFrom: 2020, yearTo: null, l100km: 8.6 },
+  { region: "au", make: "Ford", model: "Mustang 2.3L EcoBoost", yearFrom: 2015, yearTo: null, l100km: 9.5 },
+  { region: "au", make: "Ford", model: "Mustang 5.0L V8 GT", yearFrom: 2015, yearTo: null, l100km: 12.6 },
+  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", yearFrom: 2012, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Mazda", model: "CX-3 2.0L Petrol", yearFrom: 2015, yearTo: null, l100km: 6.1 },
+  { region: "au", make: "Mazda", model: "CX-30 2.0L Petrol", yearFrom: 2020, yearTo: null, l100km: 6.5 },
+  { region: "au", make: "Mazda", model: "CX-9 2.5L Turbo Petrol", yearFrom: 2016, yearTo: null, l100km: 9.0 },
+  { region: "au", make: "Mazda", model: "CX-60 3.3L Diesel", yearFrom: 2023, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Mazda", model: "Mazda2 1.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Mazda", model: "Mazda3 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Mazda", model: "Mazda6 2.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Mazda", model: "BT-50 3.0L Diesel", yearFrom: 2020, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Kia", model: "Cerato 2.0L Petrol", yearFrom: 2013, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Kia", model: "Seltos 2.0L Petrol", yearFrom: 2019, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Kia", model: "Sorento 2.2L Diesel", yearFrom: 2011, yearTo: null, l100km: 6.1 },
+  { region: "au", make: "Kia", model: "Carnival 3.5L V6 Petrol", yearFrom: 2011, yearTo: null, l100km: 10.9 },
+  { region: "au", make: "Kia", model: "Picanto 1.2L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Kia", model: "Stonic 1.4L Petrol", yearFrom: 2021, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Kia", model: "Niro Hybrid", yearFrom: 2017, yearTo: null, l100km: 4.4 },
+  { region: "au", make: "Kia", model: "Rio 1.4L Petrol", yearFrom: 2011, yearTo: 2022, l100km: 6.0 },
+  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.7 },
+  { region: "au", make: "Mitsubishi", model: "Outlander PHEV", yearFrom: 2013, yearTo: null, l100km: 1.9 },
+  { region: "au", make: "Mitsubishi", model: "Outlander 2.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Mitsubishi", model: "ASX 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Mitsubishi", model: "Eclipse Cross 1.5T Petrol", yearFrom: 2018, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Mitsubishi", model: "Pajero Sport 2.4L Diesel", yearFrom: 2015, yearTo: null, l100km: 8.0 },
+  { region: "au", make: "Mitsubishi", model: "Mirage 1.2L Petrol", yearFrom: 2011, yearTo: 2024, l100km: 4.9 },
+  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Hyundai", model: "Tucson 2.0L Petrol", yearFrom: 2015, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Hyundai", model: "Kona 2.0L Petrol", yearFrom: 2017, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Hyundai", model: "Santa Fe 2.2L Diesel", yearFrom: 2011, yearTo: null, l100km: 6.3 },
+  { region: "au", make: "Hyundai", model: "Venue 1.6L Petrol", yearFrom: 2019, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "Hyundai", model: "i20 1.2L Petrol", yearFrom: 2011, yearTo: 2020, l100km: 5.9 },
+  { region: "au", make: "Hyundai", model: "Palisade 3.8L V6 Petrol", yearFrom: 2020, yearTo: null, l100km: 10.7 },
+  { region: "au", make: "Hyundai", model: "Staria 2.2L Diesel", yearFrom: 2021, yearTo: null, l100km: 7.5 },
+  { region: "au", make: "Hyundai", model: "Ioniq Hybrid", yearFrom: 2016, yearTo: null, l100km: 3.9 },
+  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", yearFrom: 2011, yearTo: null, l100km: 8.3 },
+  { region: "au", make: "Isuzu", model: "MU-X 3.0L Diesel", yearFrom: 2013, yearTo: null, l100km: 8.3 },
+  { region: "au", make: "MG", model: "MG3 1.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "MG", model: "ZS 1.5L Petrol", yearFrom: 2017, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "MG", model: "HS 1.5T Petrol", yearFrom: 2019, yearTo: null, l100km: 7.7 },
+  { region: "au", make: "MG", model: "MG5 1.5L Petrol", yearFrom: 2021, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "MG", model: "GS 2.0T Petrol", yearFrom: 2017, yearTo: 2019, l100km: 8.5 },
+  { region: "au", make: "GWM", model: "Haval Jolion 1.5T Petrol", yearFrom: 2021, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "GWM", model: "Haval H6 1.5T Petrol", yearFrom: 2021, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "GWM", model: "Haval H9 2.0T Petrol", yearFrom: 2015, yearTo: null, l100km: 10.4 },
+  { region: "au", make: "GWM", model: "Cannon Ute 2.0L Diesel", yearFrom: 2020, yearTo: null, l100km: 8.5 },
+  { region: "au", make: "GWM", model: "Tank 300 2.0T Petrol", yearFrom: 2023, yearTo: null, l100km: 9.8 },
+  { region: "au", make: "Nissan", model: "X-Trail 2.5L Petrol", yearFrom: 2013, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Nissan", model: "Navara 2.3L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", yearFrom: 2021, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Nissan", model: "Juke 1.0T Petrol", yearFrom: 2020, yearTo: null, l100km: 5.8 },
+  { region: "au", make: "Nissan", model: "Patrol 5.6L V8 Petrol", yearFrom: 2011, yearTo: null, l100km: 14.4 },
+  { region: "au", make: "Nissan", model: "Pathfinder 3.5L V6 Petrol", yearFrom: 2013, yearTo: null, l100km: 9.9 },
+  { region: "au", make: "Subaru", model: "Forester 2.5L Petrol", yearFrom: 2013, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Subaru", model: "Outback 2.5L Petrol", yearFrom: 2014, yearTo: null, l100km: 7.3 },
+  { region: "au", make: "Subaru", model: "Crosstrek 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Subaru", model: "Impreza 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Subaru", model: "WRX 2.4L Turbo Petrol", yearFrom: 2011, yearTo: null, l100km: 9.9 },
+  { region: "au", make: "Subaru", model: "BRZ 2.4L Petrol", yearFrom: 2012, yearTo: null, l100km: 8.7 },
+  { region: "au", make: "Subaru", model: "Levorg 1.8T Petrol", yearFrom: 2015, yearTo: 2021, l100km: 8.2 },
+  { region: "au", make: "Volkswagen", model: "Golf 1.5 TSI", yearFrom: 2011, yearTo: null, l100km: 5.7 },
+  { region: "au", make: "Volkswagen", model: "Tiguan 1.5 TSI", yearFrom: 2016, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "Volkswagen", model: "Amarok 2.0L Diesel", yearFrom: 2011, yearTo: null, l100km: 7.8 },
+  { region: "au", make: "Volkswagen", model: "Polo 1.0 TSI", yearFrom: 2011, yearTo: null, l100km: 5.0 },
+  { region: "au", make: "Volkswagen", model: "T-Roc 1.4T Petrol", yearFrom: 2020, yearTo: null, l100km: 6.4 },
+  { region: "au", make: "Volkswagen", model: "Touareg 3.0 V6 Diesel", yearFrom: 2011, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Volkswagen", model: "Passat 2.0 TDI", yearFrom: 2011, yearTo: null, l100km: 5.4 },
+  { region: "au", make: "BYD", model: "Shark 6 PHEV Ute", yearFrom: 2024, yearTo: null, l100km: 2.9 },
+  { region: "au", make: "Suzuki", model: "Vitara 1.6L Petrol", yearFrom: 2015, yearTo: null, l100km: 6.5 },
+  { region: "au", make: "Suzuki", model: "Swift 1.2L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Suzuki", model: "Jimny 1.5L Petrol", yearFrom: 2018, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "Suzuki", model: "S-Cross 1.4T Petrol", yearFrom: 2013, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Suzuki", model: "Baleno 1.4L Petrol", yearFrom: 2016, yearTo: null, l100km: 5.8 },
+  { region: "au", make: "Suzuki", model: "Ignis 1.2L Petrol", yearFrom: 2017, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Honda", model: "CR-V 1.5T Petrol", yearFrom: 2017, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Honda", model: "Civic 1.5T Petrol", yearFrom: 2016, yearTo: null, l100km: 6.4 },
+  { region: "au", make: "Honda", model: "HR-V e:HEV Hybrid", yearFrom: 2021, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Honda", model: "Accord 1.5T Petrol", yearFrom: 2011, yearTo: 2020, l100km: 7.3 },
+  { region: "au", make: "Honda", model: "Jazz 1.5L Hybrid", yearFrom: 2020, yearTo: null, l100km: 3.8 },
   { region: "eu", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
   { region: "eu", make: "Renault", model: "Clio 1.0 TCe", l100km: 5.3 },
   { region: "eu", make: "Peugeot", model: "208 1.2 PureTech", l100km: 5.5 },
@@ -2082,7 +2083,7 @@ function renderSettingsTab() {
         <div>
           <label class="field-label">Vehicle</label>
           ${state.settings.selectedVehicle ? `
-            <button id="carDetailsChip" class="btn btn-ghost" style="width:100%;text-align:left;">${icons.car} ${state.settings.selectedVehicle.label}</button>
+            <button id="carDetailsChip" class="input" style="text-align:left;cursor:pointer;">${state.settings.selectedVehicle.label}</button>
           ` : `
             <button id="carLookupBtn" class="btn btn-ghost" style="width:100%;">${icons.search} Search Vehicle</button>
           `}
@@ -2439,11 +2440,15 @@ function renderFuelFillupModal() {
 
 function renderCarLookupModal() {
   const f = state.carLookupForm;
+  const currentYear = new Date().getFullYear();
+  // Only surface models that were on sale at some point in roughly the last 15
+  // years; entries without year data (UK/EU) are always shown.
+  const inLast15Years = c => c.yearFrom === undefined || (c.yearTo == null ? true : c.yearTo >= currentYear - 15);
   const nonUsMakes = f.region !== "us"
-    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region).map(c => c.make))].sort()
+    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region && inLast15Years(c)).map(c => c.make))].sort()
     : [];
   const nonUsModels = f.region !== "us" && f.nonUsMake
-    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake)
+    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake && inLast15Years(c))
     : [];
   const unitLabelStr = state.settings.unit === "mi" ? "MPG" : "L/100km";
   return `
@@ -2489,7 +2494,7 @@ function renderCarLookupModal() {
         <label class="field-label">Model</label>
         <select id="carLookupNonUsModel" class="input" style="margin-bottom:14px;">
           <option value="">Select model</option>
-          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}${c.years ? ` (${c.years})` : ""}</option>`).join("")}
+          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}${c.yearFrom ? ` (${c.yearFrom}–${c.yearTo || currentYear})` : ""}</option>`).join("")}
         </select>` : ""}
       `}
       ${f.error ? `<p class="err" style="margin:8px 0 0;">${f.error}</p>` : ""}
