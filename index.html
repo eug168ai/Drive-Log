@@ -55,7 +55,7 @@
   .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px;margin-bottom:11px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px;margin-bottom:11px;}
   .field-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;}
   .input, select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
          padding:9px 10px;color:var(--text);font-size:14px;outline:none;}
@@ -1731,22 +1731,22 @@ function renderSettingsTab() {
     ` : state.sheetLink ? `
       <p class="settings-desc">Drives stay on this device until you tap Sync Now.</p>
       <div class="settings-actions" style="margin-top:12px;align-items:center;">
-        <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
-        <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
         ${unsyncedCount > 0 ? `
         <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
-          <span class="mono" style="font-size:18px;font-weight:700;color:var(--amber);">${unsyncedCount}</span>
+          <span class="mono" style="font-size:17px;font-weight:700;color:var(--amber);">${unsyncedCount}</span>
           <div style="line-height:1.15;">
             <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">Waiting</div>
             <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">to Sync</div>
           </div>
         </div>` : ""}
+        <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
+        <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
       </div>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
           <p class="settings-title" style="margin:0;">Sync Reminder</p>
-          <select id="syncReminderFrequencySelect" class="input" style="width:auto;flex:0 0 auto;">
+          <select id="syncReminderFrequencySelect" class="input" style="width:50%;flex:0 0 auto;">
             <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
             <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
             <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Quarterly</option>
