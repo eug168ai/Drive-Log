@@ -1553,19 +1553,66 @@ function checkSupervisedLicenceComplete() {
 }
 
 // --- Fuel cost -------------------------------------------------------------
-// "Accurate" mode: average spend per unit distance, derived from logged
-// refills against the distance driven over the same period (earliest
-// refill date through now). Returns null if there isn't enough data yet.
+function monthsAgoStr(monthsBack) {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - monthsBack);
+  return cutoff.toISOString().slice(0, 10);
+}
+// Consecutive full-tank-to-full-tank intervals, built from refills that have
+// an odometer reading (sorted by odometer, not date — protects against
+// refills logged out of order). The fuel added at the *later* refill of each
+// pair is what was actually consumed traveling between the two readings, so
+// this is real usage, independent of whether every trip in between got
+// logged in the app.
+function fuelIntervals() {
+  const withOdo = state.fuelFillups
+    .filter(f => f.odometer != null && !isNaN(f.odometer))
+    .slice()
+    .sort((a, b) => a.odometer - b.odometer);
+  const intervals = [];
+  for (let i = 1; i < withOdo.length; i++) {
+    const prev = withOdo[i - 1], cur = withOdo[i];
+    const distance = cur.odometer - prev.odometer;
+    if (distance <= 0) continue; // bad/duplicate reading — skip rather than corrupt the average
+    intervals.push({ date: cur.date, distance, amount: Number(cur.amount) || 0, price: Number(cur.price) || 0 });
+  }
+  return intervals;
+}
+// "Accurate" mode's $/km rate. Prefers real odometer-interval data — exact
+// distance per dollar spent, unaffected by gaps in trip logging. Falls back
+// to the old trip-distance method (spend since earliest refill vs. logged
+// trip distance since then) when there isn't yet a full odometer interval.
 function accurateFuelCostPerKm() {
   if (!state.fuelFillups.length) return null;
+  const intervals = fuelIntervals();
+  if (intervals.length) {
+    const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
+    const totalPrice = intervals.reduce((s, iv) => s + iv.price, 0);
+    if (!totalDistance) return null;
+    const totalDistanceKm = state.settings.unit === "mi" ? totalDistance / 0.621371 : totalDistance;
+    return totalPrice / totalDistanceKm;
+  }
   const dates = state.fuelFillups.map(f => f.date).sort();
   const from = dates[0];
   const totalSpend = state.fuelFillups.reduce((s, f) => s + (Number(f.price) || 0), 0);
   const distanceKm = state.trips.filter(t => t.date >= from).reduce((s, t) => s + t.distance, 0);
   if (!distanceKm) return null;
-  // fuel price entries are already in the user's chosen unit's currency-per-volume;
-  // distance is tracked internally in km, so convert spend/km -> spend/display-unit at display time.
   return totalSpend / distanceKm;
+}
+// Real fuel usage (L/100km or MPG, matching the current unit) from odometer
+// intervals — not an estimate, the actual litres burned per km covered.
+// Returns null until there's at least one complete odometer-to-odometer
+// interval (i.e. at least two refills logged with an odometer reading).
+function accurateFuelUsage(monthsBack) {
+  let intervals = fuelIntervals();
+  if (monthsBack != null) {
+    const cutoffStr = monthsAgoStr(monthsBack);
+    intervals = intervals.filter(iv => iv.date >= cutoffStr);
+  }
+  const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
+  const totalAmount = intervals.reduce((s, iv) => s + iv.amount, 0);
+  if (!totalDistance || !totalAmount) return null;
+  return state.settings.unit === "mi" ? totalDistance / totalAmount : (totalAmount / totalDistance) * 100;
 }
 // Average price paid per litre/gallon over a trailing window, from logged
 // refills. Weighted by volume (total spend / total volume) rather than a
@@ -1573,9 +1620,7 @@ function accurateFuelCostPerKm() {
 function avgFuelPriceForPeriod(monthsBack) {
   let refills = state.fuelFillups;
   if (monthsBack != null) {
-    const cutoff = new Date();
-    cutoff.setMonth(cutoff.getMonth() - monthsBack);
-    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    const cutoffStr = monthsAgoStr(monthsBack);
     refills = refills.filter(f => f.date >= cutoffStr);
   }
   const totalAmount = refills.reduce((s, f) => s + (Number(f.amount) || 0), 0);
@@ -2115,11 +2160,12 @@ function renderSettingsTab() {
       ${state.fuelFillups.length ? `
         <div class="table-scroll" style="max-height:220px;">
           <table>
-            <thead><tr><th>Date</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
+            <thead><tr><th>Date</th><th style="text-align:right;">Odo</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
             <tbody>
               ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
                 <tr>
                   <td>${formatDateForDisplay(f.date)}</td>
+                  <td class="mono" style="text-align:right;">${f.odometer != null ? Number(f.odometer).toLocaleString() : "—"}</td>
                   <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
                   <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
                   <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
@@ -2129,7 +2175,7 @@ function renderSettingsTab() {
         </div>
         <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
         <div style="margin-top:10px;">
-          <label class="field-label">Average Fuel Price</label>
+          <label class="field-label">Average Fuel Price &amp; Usage</label>
           <select id="fuelPriceAvgPeriodSelect" class="input" style="margin-bottom:6px;">
             <option value="1" ${state.fuelPriceAvgPeriod === "1" ? "selected" : ""}>Last month</option>
             <option value="3" ${state.fuelPriceAvgPeriod === "3" ? "selected" : ""}>Last 3 months</option>
@@ -2143,8 +2189,17 @@ function renderSettingsTab() {
               const months = state.fuelPriceAvgPeriod === "all" ? null : parseInt(state.fuelPriceAvgPeriod, 10);
               const avg = avgFuelPriceForPeriod(months);
               return avg != null
-                ? `<b class="mono" style="color:var(--text);">${avg.toFixed(2)}</b> / ${state.settings.unit === "mi" ? "gallon" : "litre"}`
+                ? `Price: <b class="mono" style="color:var(--text);">${avg.toFixed(2)}</b> / ${state.settings.unit === "mi" ? "gallon" : "litre"}`
                 : "No refills in this period.";
+            })()}
+          </p>
+          <p class="settings-desc" style="margin:4px 0 0;">
+            ${(() => {
+              const months = state.fuelPriceAvgPeriod === "all" ? null : parseInt(state.fuelPriceAvgPeriod, 10);
+              const usage = accurateFuelUsage(months);
+              return usage != null
+                ? `Usage: <b class="mono" style="color:var(--text);">${usage.toFixed(1)}</b> ${state.settings.unit === "mi" ? "MPG" : "L/100km"}`
+                : "Add odometer readings to at least two refills for a real usage figure.";
             })()}
           </p>
         </div>
@@ -2456,10 +2511,13 @@ function renderFuelFillupModal() {
       <h2>${icons.locate} Log a Refill</h2>
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
+      <label class="field-label">Odometer (${unitLabel()}) — optional</label>
+      <input id="fillupOdometer" class="input" inputmode="decimal" placeholder="e.g. 48250" value="${escAttr(f.odometer)}" style="margin-bottom:14px;" />
       <label class="field-label">${volLabel}</label>
       <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
       <label class="field-label">Total price paid</label>
       <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
+      <p class="settings-desc" style="margin:0 0 6px;">Enter it at every fill-up (assuming you fill to full) to get an accurate fuel usage figure, not just cost.</p>
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
@@ -2982,7 +3040,7 @@ function attachAppHandlers() {
   if (state.tab === "log") {
     const logFillupBtnLog = document.getElementById("logFillupBtnLog");
     if (logFillupBtnLog) logFillupBtnLog.onclick = () => {
-      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
 
@@ -3281,7 +3339,7 @@ function attachAppHandlers() {
     };
     const logFillupBtn = document.getElementById("logFillupBtn");
     if (logFillupBtn) logFillupBtn.onclick = () => {
-      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
     const carLookupBtn = document.getElementById("carLookupBtn");
@@ -3879,6 +3937,8 @@ function attachAppHandlers() {
     const f = state.fuelFillupForm;
     const dateInput = document.getElementById("fillupDate");
     if (dateInput) dateInput.onchange = (e) => { f.date = e.target.value; };
+    const odometerInput = document.getElementById("fillupOdometer");
+    if (odometerInput) odometerInput.oninput = (e) => { f.odometer = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.odometer; };
     const amountInput = document.getElementById("fillupAmount");
     if (amountInput) amountInput.oninput = (e) => { f.amount = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.amount; };
     const priceInput = document.getElementById("fillupPrice");
@@ -3890,12 +3950,18 @@ function attachAppHandlers() {
     const confirmBtn = document.getElementById("confirmFillupBtn");
     if (confirmBtn) confirmBtn.onclick = async () => {
       const amount = parseFloat(f.amount), price = parseFloat(f.price);
+      const odometer = f.odometer ? parseFloat(f.odometer) : null;
       if (!f.date || !amount || isNaN(amount) || amount <= 0 || !price || isNaN(price) || price <= 0) {
         f.error = "Enter a valid amount and price.";
         render();
         return;
       }
-      state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, amount, price }];
+      if (f.odometer && (isNaN(odometer) || odometer < 0)) {
+        f.error = "Enter a valid odometer reading, or leave it blank.";
+        render();
+        return;
+      }
+      state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, odometer, amount, price }];
       await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
       state.fuelFillupForm = null;
       render();
