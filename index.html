@@ -1705,7 +1705,7 @@ function renderLogTab() {
   <div class="card">
     ${(() => {
       const sup = supervisedTotals();
-      if (sup.minutes <= 0 && state.settings.driveType !== "supervised") return "";
+      if (state.settings.driveType !== "supervised") return "";
       const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
       const nightTarget = state.settings.supervisedNightHoursTarget || 15;
       const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
@@ -1973,21 +1973,14 @@ function renderSettingsTab() {
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
       <p class="settings-title" style="margin:0 0 10px;">${getDeviceRegionCode() === "au" ? "License Requirements (Learner's Permit)" : "Licence Requirements"}</p>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <span class="settings-desc" style="margin:0;">Total hours</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="supHoursMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
-          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedTotalHoursTarget}" />
-          <button id="supHoursPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+      <div class="row-2">
+        <div>
+          <label class="field-label">Total Hours</label>
+          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget}" />
         </div>
-      </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <span class="settings-desc" style="margin:0;">Night hours</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="supNightMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
-          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedNightHoursTarget}" />
-          <button id="supNightPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+        <div>
+          <label class="field-label">Night Hours</label>
+          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget}" />
         </div>
       </div>
 
@@ -2469,13 +2462,13 @@ function renderCarLookupModal() {
         ${f.year ? `
         <label class="field-label">Make</label>
         <select id="carLookupMake" class="input" style="margin-bottom:14px;" ${!f.makes.length && f.error ? "disabled" : ""}>
-          <option value="">${f.makes.length ? "Select make" : f.error ? "Unavailable" : "Loading..."}</option>
+          <option value="">${f.makes.length ? "Select Make" : f.error ? "Unavailable" : "Loading..."}</option>
           ${f.makes.map(m => `<option value="${escAttr(m.value)}" ${f.make === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
         </select>` : ""}
         ${f.make ? `
         <label class="field-label">Model</label>
         <select id="carLookupModel" class="input" style="margin-bottom:14px;" ${!f.models.length && f.error ? "disabled" : ""}>
-          <option value="">${f.models.length ? "Select model" : f.error ? "Unavailable" : "Loading..."}</option>
+          <option value="">${f.models.length ? "Select Model" : f.error ? "Unavailable" : "Loading..."}</option>
           ${f.models.map(m => `<option value="${escAttr(m.value)}" ${f.model === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
         </select>` : ""}
         ${f.model ? `
@@ -2488,13 +2481,13 @@ function renderCarLookupModal() {
         <p class="settings-desc" style="margin:0 0 12px;">Approximate figures — adjust if you know the exact number.</p>
         <label class="field-label">Make</label>
         <select id="carLookupNonUsMake" class="input" style="margin-bottom:14px;">
-          <option value="">Select make</option>
+          <option value="">Select Make</option>
           ${nonUsMakes.map(m => `<option value="${escAttr(m)}" ${f.nonUsMake === m ? "selected" : ""}>${m}</option>`).join("")}
         </select>
         ${f.nonUsMake ? `
         <label class="field-label">Model</label>
         <select id="carLookupNonUsModel" class="input" style="margin-bottom:14px;">
-          <option value="">Select model</option>
+          <option value="">Select Model</option>
           ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}${c.yearFrom ? ` (${c.yearFrom}–${c.yearTo || currentYear})` : ""}</option>`).join("")}
         </select>` : ""}
       `}
@@ -3151,56 +3144,30 @@ function attachAppHandlers() {
     };
 
     const supHoursInput = document.getElementById("supHoursTargetInput");
-    if (supHoursInput) supHoursInput.onchange = async (e) => {
-      const val = Math.max(1, Math.round(parseFloat(e.target.value)) || state.settings.supervisedTotalHoursTarget);
-      state.settings.supervisedTotalHoursTarget = val;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supHoursMinusBtn = document.getElementById("supHoursMinusBtn");
-    if (supHoursMinusBtn) supHoursMinusBtn.onclick = async () => {
-      state.settings.supervisedTotalHoursTarget = Math.max(1, (state.settings.supervisedTotalHoursTarget || 75) - 1);
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supHoursPlusBtn = document.getElementById("supHoursPlusBtn");
-    if (supHoursPlusBtn) supHoursPlusBtn.onclick = async () => {
-      state.settings.supervisedTotalHoursTarget = (state.settings.supervisedTotalHoursTarget || 75) + 1;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
+    if (supHoursInput) {
+      supHoursInput.onfocus = (e) => e.target.select();
+      supHoursInput.onchange = async (e) => {
+        const val = Math.max(1, Math.round(parseFloat(e.target.value)) || state.settings.supervisedTotalHoursTarget);
+        state.settings.supervisedTotalHoursTarget = val;
+        state.settings.supervisedCompletionNotified = false;
+        await storageSet(SETTINGS_KEY, state.settings);
+        checkSupervisedLicenceComplete();
+        render();
+      };
+    }
 
     const supNightInput = document.getElementById("supNightTargetInput");
-    if (supNightInput) supNightInput.onchange = async (e) => {
-      const val = Math.max(0, Math.round(parseFloat(e.target.value)) || state.settings.supervisedNightHoursTarget);
-      state.settings.supervisedNightHoursTarget = val;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supNightMinusBtn = document.getElementById("supNightMinusBtn");
-    if (supNightMinusBtn) supNightMinusBtn.onclick = async () => {
-      state.settings.supervisedNightHoursTarget = Math.max(0, (state.settings.supervisedNightHoursTarget || 15) - 1);
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supNightPlusBtn = document.getElementById("supNightPlusBtn");
-    if (supNightPlusBtn) supNightPlusBtn.onclick = async () => {
-      state.settings.supervisedNightHoursTarget = (state.settings.supervisedNightHoursTarget || 15) + 1;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
+    if (supNightInput) {
+      supNightInput.onfocus = (e) => e.target.select();
+      supNightInput.onchange = async (e) => {
+        const val = Math.max(0, Math.round(parseFloat(e.target.value)) || state.settings.supervisedNightHoursTarget);
+        state.settings.supervisedNightHoursTarget = val;
+        state.settings.supervisedCompletionNotified = false;
+        await storageSet(SETTINGS_KEY, state.settings);
+        checkSupervisedLicenceComplete();
+        render();
+      };
+    }
 
     const learnRoutesSwitch = document.getElementById("learnRoutesSwitch");
     if (learnRoutesSwitch) learnRoutesSwitch.onclick = async () => {
