@@ -745,6 +745,8 @@ const state = {
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
+    dashboardShowFuelStats: false, dashboardShowWeek: true, dashboardShowMonth: false, dashboardShowYear: false,
+    dashboardOverlayPrevious: false,
   },
   sheetLink: null,
   googleBusy: false,
@@ -1370,6 +1372,11 @@ async function loadData() {
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
+  if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = false;
+  if (state.settings.dashboardShowWeek === undefined) state.settings.dashboardShowWeek = true;
+  if (state.settings.dashboardShowMonth === undefined) state.settings.dashboardShowMonth = false;
+  if (state.settings.dashboardShowYear === undefined) state.settings.dashboardShowYear = false;
+  if (state.settings.dashboardOverlayPrevious === undefined) state.settings.dashboardOverlayPrevious = false;
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
@@ -1519,6 +1526,113 @@ function weekFuelCost() {
   const now = new Date();
   const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
   return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance * perKm, 0);
+}
+
+// --- Log-screen dashboard (This Week / This Month / This Year) -------------
+function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+// offset 0 = current period, offset -1 = the immediately preceding period of
+// the same length (used for the optional overlay comparison).
+function periodRange(period, offset) {
+  const now = new Date();
+  if (period === "week") {
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay() + offset * 7); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return { start, end, buckets: 7 };
+  }
+  if (period === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+    return { start, end, buckets: end.getDate() };
+  }
+  const start = new Date(now.getFullYear() + offset, 0, 1);
+  const end = new Date(now.getFullYear() + offset, 11, 31);
+  return { start, end, buckets: 12 };
+}
+function distanceInRange(start, end) {
+  const s = toDateStr(start), e = toDateStr(end);
+  return state.trips.filter(t => t.date >= s && t.date <= e).reduce((sum, t) => sum + t.distance, 0);
+}
+// Daily distance for week/month periods, monthly totals for the year period
+// (365 daily points would be too noisy for a small dashboard chart).
+function periodSeries(period, range) {
+  if (period === "year") {
+    const year = range.start.getFullYear();
+    return Array.from({ length: 12 }, (_, m) => {
+      const from = toDateStr(new Date(year, m, 1)), to = toDateStr(new Date(year, m + 1, 0));
+      return state.trips.filter(t => t.date >= from && t.date <= to).reduce((s, t) => s + t.distance, 0);
+    });
+  }
+  return Array.from({ length: range.buckets }, (_, i) => {
+    const d = new Date(range.start); d.setDate(range.start.getDate() + i);
+    if (d > range.end) return 0;
+    const ds = toDateStr(d);
+    return state.trips.filter(t => t.date === ds).reduce((s, t) => s + t.distance, 0);
+  });
+}
+// Minimal hand-drawn line chart (no external library) — full-width, distance
+// only (km internally; proportions are unaffected by unit conversion so the
+// raw values are fine for plotting).
+function renderLineChart(series, overlaySeries) {
+  const w = 600, h = 120, pad = 8;
+  const all = overlaySeries ? series.concat(overlaySeries) : series;
+  const maxVal = Math.max(1, ...all);
+  const toPoints = (arr) => arr.map((v, i) => {
+    const x = pad + (arr.length > 1 ? (i / (arr.length - 1)) * (w - pad * 2) : (w - pad * 2) / 2);
+    const y = h - pad - (v / maxVal) * (h - pad * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:120px;display:block;">
+    ${overlaySeries ? `<polyline points="${toPoints(overlaySeries)}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4,3" opacity=".7"/>` : ""}
+    <polyline points="${toPoints(series)}" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+  </svg>`;
+}
+const DASHBOARD_PERIODS = { week: "This Week", month: "This Month", year: "This Year" };
+function renderDashboardCard(period) {
+  const range = periodRange(period, 0);
+  const distanceKm = distanceInRange(range.start, range.end);
+  const series = periodSeries(period, range);
+  let overlaySeries = null;
+  if (state.settings.dashboardOverlayPrevious) {
+    const prevRange = periodRange(period, -1);
+    overlaySeries = periodSeries(period, prevRange);
+  }
+  const perKm = fuelCostPerKm();
+  const cost = state.settings.dashboardShowFuelStats && perKm != null ? distanceKm * perKm : null;
+  const usage = state.settings.dashboardShowFuelStats
+    ? (state.settings.fuelMode === "estimated" ? (parseFloat(state.settings.fuelRate) || null) : accurateFuelUsage(null))
+    : null;
+  const rangeLabel = period === "year"
+    ? `${range.start.getFullYear()}`
+    : `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+  return `
+  <div class="card">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${DASHBOARD_PERIODS[period]}</p>
+      <span style="font-size:11px;color:var(--muted);">${rangeLabel}</span>
+    </div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;">
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Distance</div>
+        <div class="mono" style="font-size:20px;font-weight:700;">${kmToDisplay(distanceKm).toFixed(1)} ${unitLabel()}</div>
+      </div>
+      ${cost != null ? `
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Fuel Cost</div>
+        <div class="mono" style="font-size:20px;font-weight:700;">${cost.toFixed(2)}</div>
+      </div>` : ""}
+      ${usage != null ? `
+      <div>
+        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Fuel Usage</div>
+        <div class="mono" style="font-size:20px;font-weight:700;">${usage.toFixed(1)} ${state.settings.unit === "mi" ? "MPG" : "L/100km"}</div>
+      </div>` : ""}
+    </div>
+    ${renderLineChart(series, overlaySeries)}
+    ${overlaySeries ? `<p style="font-size:10px;color:var(--muted);margin:6px 0 0;">— current &nbsp;&nbsp; ┄ previous ${DASHBOARD_PERIODS[period].replace("This ", "").toLowerCase()}</p>` : ""}
+  </div>`;
+}
+function renderDashboardCards() {
+  const cards = ["week", "month", "year"].filter(p => state.settings[`dashboardShow${p.charAt(0).toUpperCase()}${p.slice(1)}`]);
+  return cards.map(renderDashboardCard).join("");
 }
 
 // --- Supervised (learner) licence hour tracking -----------------------------
@@ -1803,6 +1917,8 @@ function renderLogTab() {
       <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
   </div>
+
+  ${renderDashboardCards()}
 
   ${!a ? `
   <div class="card">
@@ -2219,6 +2335,31 @@ function renderSettingsTab() {
       ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
     `}
     `}
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
+    <p class="settings-desc" style="margin-bottom:10px;">Choose which period summaries show on the Log screen, each with a distance graph.</p>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">This Week</span>
+      <div id="dashboardWeekSwitch" class="switch ${state.settings.dashboardShowWeek ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">This Month</span>
+      <div id="dashboardMonthSwitch" class="switch ${state.settings.dashboardShowMonth ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">This Year</span>
+      <div id="dashboardYearSwitch" class="switch ${state.settings.dashboardShowYear ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;padding-top:9px;border-top:1px solid var(--border);">
+      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
+      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row">
+      <span class="settings-desc" style="margin:0;">Overlay Previous Period</span>
+      <div id="dashboardOverlaySwitch" class="switch ${state.settings.dashboardOverlayPrevious ? "on" : ""}"><div class="knob"></div></div>
+    </div>
   </div>
 
   <div class="card">
@@ -3312,6 +3453,20 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
+    [
+      ["dashboardWeekSwitch", "dashboardShowWeek"],
+      ["dashboardMonthSwitch", "dashboardShowMonth"],
+      ["dashboardYearSwitch", "dashboardShowYear"],
+      ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
+      ["dashboardOverlaySwitch", "dashboardOverlayPrevious"],
+    ].forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (el) el.onclick = async () => {
+        state.settings[key] = !state.settings[key];
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
     const odometerRemindersSwitch = document.getElementById("odometerRemindersSwitch");
     if (odometerRemindersSwitch) odometerRemindersSwitch.onclick = async () => {
       state.settings.odometerReminders = state.settings.odometerReminders === false;
