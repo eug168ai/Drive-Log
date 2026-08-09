@@ -741,7 +741,7 @@ const state = {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: false, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
-    fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
+    fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
   },
@@ -805,6 +805,7 @@ const icons = {
   trash: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`,
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
+  search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -822,16 +823,55 @@ const CAR_FUEL_DATA = [
   { region: "uk", make: "Ford", model: "Focus 1.0 EcoBoost", l100km: 5.9 },
   { region: "uk", make: "Hyundai", model: "Tucson 1.6 Hybrid", l100km: 5.5 },
   { region: "uk", make: "Audi", model: "A3 1.5 TFSI", l100km: 5.9 },
-  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", l100km: 7.9 },
-  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", l100km: 7.4 },
-  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", l100km: 4.8 },
-  { region: "au", make: "Toyota", model: "Corolla Hybrid", l100km: 4.2 },
-  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", l100km: 7.4 },
-  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", l100km: 7.7 },
-  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", l100km: 7.4 },
-  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", l100km: 7.6 },
-  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", l100km: 8.3 },
-  { region: "au", make: "MG", model: "ZS 1.5L Petrol", l100km: 6.7 },
+  // Australia: last ~15 years of the 15 highest-volume manufacturers (VFACTS-style
+  // ranking) — a handful of representative nameplates per manufacturer, not every
+  // model/trim/year. Newer entrants (BYD, GWM) only list years they've actually
+  // been on sale in Australia.
+  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", years: "2015–2026", l100km: 7.9 },
+  { region: "au", make: "Toyota", model: "Corolla Hybrid", years: "2019–2026", l100km: 4.2 },
+  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", years: "2019–2026", l100km: 4.8 },
+  { region: "au", make: "Toyota", model: "Camry Hybrid", years: "2011–2026", l100km: 4.5 },
+  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", years: "2022–2026", l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Ranger 3.2L Diesel", years: "2011–2022", l100km: 8.9 },
+  { region: "au", make: "Ford", model: "Everest 2.0L Bi-Turbo Diesel", years: "2022–2026", l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Mustang 2.3L EcoBoost", years: "2015–2026", l100km: 9.5 },
+  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", years: "2012–2026", l100km: 7.4 },
+  { region: "au", make: "Mazda", model: "Mazda3 2.0L Petrol", years: "2011–2026", l100km: 6.2 },
+  { region: "au", make: "Mazda", model: "CX-3 2.0L Petrol", years: "2015–2026", l100km: 6.1 },
+  { region: "au", make: "Mazda", model: "BT-50 3.0L Diesel", years: "2020–2026", l100km: 7.9 },
+  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", years: "2011–2026", l100km: 7.6 },
+  { region: "au", make: "Kia", model: "Cerato 2.0L Petrol", years: "2013–2026", l100km: 7.4 },
+  { region: "au", make: "Kia", model: "Seltos 2.0L Petrol", years: "2019–2026", l100km: 7.2 },
+  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", years: "2015–2026", l100km: 7.7 },
+  { region: "au", make: "Mitsubishi", model: "Outlander PHEV", years: "2013–2026", l100km: 1.9 },
+  { region: "au", make: "Mitsubishi", model: "ASX 2.0L Petrol", years: "2011–2026", l100km: 7.6 },
+  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", years: "2011–2026", l100km: 7.4 },
+  { region: "au", make: "Hyundai", model: "Tucson 2.0L Petrol", years: "2015–2026", l100km: 8.1 },
+  { region: "au", make: "Hyundai", model: "Kona 2.0L Petrol", years: "2017–2026", l100km: 7.2 },
+  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", years: "2011–2026", l100km: 8.3 },
+  { region: "au", make: "Isuzu", model: "MU-X 3.0L Diesel", years: "2013–2026", l100km: 8.3 },
+  { region: "au", make: "MG", model: "ZS 1.5L Petrol", years: "2017–2026", l100km: 6.7 },
+  { region: "au", make: "MG", model: "MG3 1.5L Petrol", years: "2011–2026", l100km: 6.7 },
+  { region: "au", make: "MG", model: "HS 1.5T Petrol", years: "2019–2026", l100km: 7.7 },
+  { region: "au", make: "GWM", model: "Haval Jolion 1.5T Petrol", years: "2021–2026", l100km: 7.4 },
+  { region: "au", make: "GWM", model: "Haval H6 1.5T Petrol", years: "2021–2026", l100km: 7.9 },
+  { region: "au", make: "GWM", model: "Cannon Ute 2.0L Diesel", years: "2020–2026", l100km: 8.5 },
+  { region: "au", make: "Nissan", model: "X-Trail 2.5L Petrol", years: "2013–2026", l100km: 8.1 },
+  { region: "au", make: "Nissan", model: "Navara 2.3L Diesel", years: "2015–2026", l100km: 7.0 },
+  { region: "au", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", years: "2021–2026", l100km: 6.2 },
+  { region: "au", make: "Subaru", model: "Forester 2.5L Petrol", years: "2013–2026", l100km: 7.4 },
+  { region: "au", make: "Subaru", model: "Outback 2.5L Petrol", years: "2014–2026", l100km: 7.3 },
+  { region: "au", make: "Subaru", model: "Crosstrek 2.0L Petrol", years: "2011–2026", l100km: 7.0 },
+  { region: "au", make: "Volkswagen", model: "Golf 1.5 TSI", years: "2011–2026", l100km: 5.7 },
+  { region: "au", make: "Volkswagen", model: "Tiguan 1.5 TSI", years: "2016–2026", l100km: 6.7 },
+  { region: "au", make: "Volkswagen", model: "Amarok 2.0L Diesel", years: "2011–2026", l100km: 7.8 },
+  { region: "au", make: "BYD", model: "Shark 6 PHEV Ute", years: "2024–2026", l100km: 2.9 },
+  { region: "au", make: "Suzuki", model: "Vitara 1.6L Petrol", years: "2015–2026", l100km: 6.5 },
+  { region: "au", make: "Suzuki", model: "Swift 1.2L Petrol", years: "2011–2026", l100km: 5.5 },
+  { region: "au", make: "Suzuki", model: "Jimny 1.5L Petrol", years: "2018–2026", l100km: 6.9 },
+  { region: "au", make: "Honda", model: "CR-V 1.5T Petrol", years: "2017–2026", l100km: 7.6 },
+  { region: "au", make: "Honda", model: "Civic 1.5T Petrol", years: "2016–2026", l100km: 6.4 },
+  { region: "au", make: "Honda", model: "HR-V e:HEV Hybrid", years: "2021–2026", l100km: 4.3 },
   { region: "eu", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
   { region: "eu", make: "Renault", model: "Clio 1.0 TCe", l100km: 5.3 },
   { region: "eu", make: "Peugeot", model: "208 1.2 PureTech", l100km: 5.5 },
@@ -843,6 +883,18 @@ const CAR_FUEL_DATA = [
   { region: "eu", make: "Fiat", model: "500 Hybrid", l100km: 4.7 },
   { region: "eu", make: "Opel/Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
 ];
+// Best-effort region guess from the device's own locale setting, so the lookup
+// modal opens with a sensible default instead of forcing a manual pick every time.
+const EU_LOCALE_COUNTRIES = ["DE","FR","ES","IT","NL","BE","AT","PT","IE","PL","SE","DK","FI","GR","CZ","HU","RO","SK","BG","HR","SI","LT","LV","EE","LU","MT","CY"];
+function detectRegion() {
+  const locale = (navigator.languages && navigator.languages[0]) || navigator.language || "";
+  const country = (locale.split("-")[1] || "").toUpperCase();
+  if (country === "US") return "us";
+  if (country === "GB") return "uk";
+  if (country === "AU") return "au";
+  if (EU_LOCALE_COUNTRIES.includes(country)) return "eu";
+  return "";
+}
 // mpg is always US gallons for the "us" region (matches fueleconomy.gov) and
 // imperial gallons for uk/au/eu, matching how MPG is conventionally quoted there.
 function usMpgToL100(mpg) { return 235.215 / mpg; }
@@ -866,6 +918,16 @@ async function fegVehicle(id) {
   const comb08 = parseFloat(doc.getElementsByTagName("comb08")[0]?.textContent || "");
   if (!comb08 || isNaN(comb08)) throw new Error("no combined MPG for this vehicle");
   return comb08;
+}
+async function loadFegYears(f) {
+  try { f.years = await fegMenu("year"); }
+  catch { f.error = "Couldn't reach fueleconomy.gov. Check your connection or enter the figure manually."; }
+}
+function newCarLookupForm(region) {
+  return {
+    region: region || "", years: [], year: "", makes: [], make: "", models: [], model: "",
+    trims: [], trimId: "", nonUsMake: "", nonUsModel: "", result: null, error: "",
+  };
 }
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -1242,6 +1304,7 @@ async function loadData() {
   if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
+  if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
@@ -1956,17 +2019,20 @@ function renderSettingsTab() {
     ${state.settings.fuelMode === "estimated" ? `
       <div class="row-2" style="margin-bottom:6px;">
         <div>
+          <label class="field-label">Vehicle</label>
+          ${state.settings.selectedVehicle ? `
+            <button id="carDetailsChip" class="btn btn-ghost" style="width:100%;text-align:left;">${icons.car} ${state.settings.selectedVehicle.label}</button>
+          ` : `
+            <button id="carLookupBtn" class="btn btn-ghost" style="width:100%;">${icons.search} Search Vehicle</button>
+          `}
+        </div>
+        <div>
           <label class="field-label">Fuel Consumption (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
           <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
         </div>
-        <div>
-          <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
-          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
-        </div>
       </div>
-      <div class="settings-actions" style="margin-bottom:6px;">
-        <button id="carLookupBtn" class="btn btn-ghost">${icons.car} Look Up By Car Details</button>
-      </div>
+      <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+      <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" style="margin-bottom:6px;" />
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
@@ -2335,7 +2401,7 @@ function renderCarLookupModal() {
         ${regions.map(r => `<option value="${r.v}" ${f.region === r.v ? "selected" : ""}>${r.l}</option>`).join("")}
       </select>
       ${f.region === "us" ? `
-        <p class="settings-desc" style="margin:0 0 12px;">Live lookup via fueleconomy.gov (US EPA).</p>
+        <p class="settings-desc" style="margin:0 0 12px;">Live data from fueleconomy.gov.</p>
         <label class="field-label">Year</label>
         <select id="carLookupYear" class="input" style="margin-bottom:14px;" ${!f.years.length && f.error ? "disabled" : ""}>
           <option value="">${f.years.length ? "Select year" : f.error ? "Unavailable" : "Loading..."}</option>
@@ -2360,7 +2426,7 @@ function renderCarLookupModal() {
           ${f.trims.map(t => `<option value="${escAttr(t.value)}" ${f.trimId === t.value ? "selected" : ""}>${t.text}</option>`).join("")}
         </select>` : ""}
       ` : f.region ? `
-        <p class="settings-desc" style="margin:0 0 12px;">Approximate combined figures for common models — not a live database, so treat as a starting estimate and adjust if you know your car's actual figure.</p>
+        <p class="settings-desc" style="margin:0 0 12px;">Approximate figures — adjust if you know the exact number.</p>
         <label class="field-label">Make</label>
         <select id="carLookupNonUsMake" class="input" style="margin-bottom:14px;">
           <option value="">Select make</option>
@@ -2370,7 +2436,7 @@ function renderCarLookupModal() {
         <label class="field-label">Model</label>
         <select id="carLookupNonUsModel" class="input" style="margin-bottom:14px;">
           <option value="">Select model</option>
-          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}</option>`).join("")}
+          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}${c.years ? ` (${c.years})` : ""}</option>`).join("")}
         </select>` : ""}
       ` : ""}
       ${f.error ? `<p class="err" style="margin:8px 0 0;">${f.error}</p>` : ""}
@@ -3156,12 +3222,18 @@ function attachAppHandlers() {
       render();
     };
     const carLookupBtn = document.getElementById("carLookupBtn");
-    if (carLookupBtn) carLookupBtn.onclick = () => {
-      state.carLookupForm = {
-        region: "", years: [], year: "", makes: [], make: "", models: [], model: "",
-        trims: [], trimId: "", nonUsMake: "", nonUsModel: "", result: null, error: "",
-      };
+    if (carLookupBtn) carLookupBtn.onclick = async () => {
+      const region = detectRegion();
+      state.carLookupForm = newCarLookupForm(region);
       render();
+      if (region === "us") { await loadFegYears(state.carLookupForm); render(); }
+    };
+    const carDetailsChip = document.getElementById("carDetailsChip");
+    if (carDetailsChip) carDetailsChip.onclick = async () => {
+      const region = (state.settings.selectedVehicle && state.settings.selectedVehicle.region) || detectRegion();
+      state.carLookupForm = newCarLookupForm(region);
+      render();
+      if (region === "us") { await loadFegYears(state.carLookupForm); render(); }
     };
     document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
       btn.onclick = async () => {
@@ -3774,8 +3846,7 @@ function attachAppHandlers() {
       f.result = null; f.error = "";
       if (f.region === "us") {
         render();
-        try { f.years = await fegMenu("year"); }
-        catch { f.error = "Couldn't reach fueleconomy.gov. Check your connection or enter the figure manually."; }
+        await loadFegYears(f);
       }
       render();
     };
@@ -3847,6 +3918,10 @@ function attachAppHandlers() {
     if (applyCarLookupBtn) applyCarLookupBtn.onclick = async () => {
       if (f.result == null) return;
       state.settings.fuelRate = String(Math.round(f.result * 10) / 10);
+      const label = f.region === "us"
+        ? [f.year, f.make, f.model].filter(Boolean).join(" ")
+        : [f.nonUsMake, f.nonUsModel].filter(Boolean).join(" ");
+      state.settings.selectedVehicle = label ? { label, region: f.region } : null;
       await storageSet(SETTINGS_KEY, state.settings);
       state.carLookupForm = null;
       render();
