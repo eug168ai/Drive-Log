@@ -2199,7 +2199,7 @@ function renderSettingsTab() {
               const usage = accurateFuelUsage(months);
               return usage != null
                 ? `Usage: <b class="mono" style="color:var(--text);">${usage.toFixed(1)}</b> ${state.settings.unit === "mi" ? "MPG" : "L/100km"}`
-                : "Add odometer readings to at least two refills for a real usage figure.";
+                : "Add odometer readings (filling full tank to full tank) to at least two refills for a real usage figure.";
             })()}
           </p>
         </div>
@@ -2517,7 +2517,7 @@ function renderFuelFillupModal() {
       <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
       <label class="field-label">Total price paid</label>
       <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
-      <p class="settings-desc" style="margin:0 0 6px;">Enter it at every fill-up (assuming you fill to full) to get an accurate fuel usage figure, not just cost.</p>
+      <p class="settings-desc" style="margin:0 0 6px;">Requires filling full tank to full tank each time. Enter the odometer reading at every fill-up to get an accurate fuel usage figure, not just cost.</p>
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
