@@ -1181,7 +1181,7 @@ async function loadData() {
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
-  if (state.settings.syncRemindersEnabled === undefined) state.settings.syncRemindersEnabled = true;
+  state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
   if (!state.settings.supervisedTotalHoursTarget || !state.settings.supervisedNightHoursTarget) {
     const d = getSupervisedHourDefaults();
@@ -1730,23 +1730,27 @@ function renderSettingsTab() {
       <p class="settings-desc">This app hasn't been set up for Google Sheets yet. Ask whoever gave you this file to finish that one-time setup.</p>
     ` : state.sheetLink ? `
       <p class="settings-desc">Drives stay on this device until you tap Sync Now.</p>
-      <div class="settings-actions" style="margin-top:12px;">
+      <div class="settings-actions" style="margin-top:12px;align-items:center;">
         <button id="syncNowBtn" class="btn btn-ghost" ${state.syncingNow ? "disabled" : ""}>${state.syncingNow ? "Syncing…" : "Sync Now"}</button>
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
+        ${unsyncedCount > 0 ? `
+        <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+          <span class="mono" style="font-size:18px;font-weight:700;color:var(--amber);">${unsyncedCount}</span>
+          <div style="line-height:1.15;">
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">Waiting</div>
+            <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">to Sync</div>
+          </div>
+        </div>` : ""}
       </div>
-      ${unsyncedCount > 0 ? `<p class="settings-desc" style="margin-top:8px;color:var(--amber);">${unsyncedCount} drive${unsyncedCount === 1 ? "" : "s"} waiting to sync.</p>` : ""}
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <p class="settings-title" style="margin:0 0 8px;">Sync Reminder</p>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
-          ${state.settings.syncRemindersEnabled ? `
-          <select id="syncReminderFrequencySelect" class="input" style="flex:1;">
+          <p class="settings-title" style="margin:0;">Sync Reminder</p>
+          <select id="syncReminderFrequencySelect" class="input" style="width:auto;flex:0 0 auto;">
             <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
             <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
             <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Quarterly</option>
           </select>
-          ` : "<span></span>"}
-          <div id="syncRemindersSwitch" class="switch ${state.settings.syncRemindersEnabled ? "on" : ""}"><div class="knob"></div></div>
         </div>
       </div>
     ` : `
@@ -2976,13 +2980,6 @@ function attachAppHandlers() {
     const enterOdometerNowBtn = document.getElementById("enterOdometerNowBtn");
     if (enterOdometerNowBtn) enterOdometerNowBtn.onclick = () => {
       state.odometerPrompt = { value: state.settings.lastOdometerReading ? String(state.settings.lastOdometerReading.value) : "" };
-      render();
-    };
-
-    const syncRemindersSwitch = document.getElementById("syncRemindersSwitch");
-    if (syncRemindersSwitch) syncRemindersSwitch.onclick = async () => {
-      state.settings.syncRemindersEnabled = !state.settings.syncRemindersEnabled;
-      await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
 
