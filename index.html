@@ -1521,7 +1521,7 @@ function renderLogTab() {
       const nightTarget = state.settings.supervisedNightHoursTarget || 15;
       const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
       return `
-    <div style="padding-bottom:10px;margin-bottom:10px;border-bottom:1px solid var(--border);">
+    <div style="padding-bottom:7px;margin-bottom:7px;border-bottom:1px solid var(--border);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <label class="field-label" style="margin:0;">Supervised Driving</label>
         ${completed ? `<span class="connected-pill">Completed</span>` : ""}
@@ -1546,7 +1546,7 @@ function renderLogTab() {
       </div>
     </div>
     ${(() => { const cost = weekFuelCost(); return cost != null ? `
-    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+    <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
       <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
       <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
     </div>` : ""; })()}
@@ -1732,7 +1732,7 @@ function renderSettingsTab() {
       <p class="settings-desc">Drives stay on this device until you tap Sync Now.</p>
       <div class="settings-actions" style="margin-top:12px;align-items:center;">
         ${unsyncedCount > 0 ? `
-        <div style="display:flex;align-items:center;gap:6px;flex:0 0 auto;">
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex:1 1 0;min-width:0;">
           <span class="mono" style="font-size:17px;font-weight:700;color:var(--amber);">${unsyncedCount}</span>
           <div style="line-height:1.15;">
             <div style="font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);">Waiting</div>
@@ -1743,7 +1743,7 @@ function renderSettingsTab() {
         <button id="disconnectSheetBtn" class="btn btn-ghost">Disconnect</button>
       </div>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+      <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
           <p class="settings-title" style="margin:0;">Sync Reminder</p>
           <select id="syncReminderFrequencySelect" class="input" style="width:50%;flex:0 0 auto;">
@@ -1781,7 +1781,7 @@ function renderSettingsTab() {
       : "Normal — For everyday driving."
     }</p>
     ${state.settings.driveType === "supervised" ? `
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+    <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
       <p class="settings-title" style="margin:0 0 10px;">${getDeviceRegionCode() === "au" ? "License Requirements (Learner's Permit)" : "Licence Requirements"}</p>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1805,7 +1805,7 @@ function renderSettingsTab() {
       <p class="settings-desc" style="margin:10px 0 0;">Compulsory hours as per government agency. Notification upon completion.</p>
     </div>
     ` : ""}
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+    <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
       <div class="switch-row" style="margin-bottom:4px;">
         <p class="settings-title" style="margin:0;">Learn Routes (Beta)</p>
         <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
