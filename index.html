@@ -2080,22 +2080,22 @@ function renderSettingsTab() {
       <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
     </div>
     ${state.settings.fuelMode === "estimated" ? `
-      <div class="row-2" style="margin-bottom:6px;grid-template-columns:2fr 1fr;">
-        <div>
-          <label class="field-label">Vehicle</label>
-          ${state.settings.selectedVehicle ? `
-            <button id="carDetailsChip" class="input" style="text-align:left;cursor:pointer;">${state.settings.selectedVehicle.label}</button>
-          ` : `
-            <button id="carLookupBtn" class="btn btn-ghost" style="width:100%;">${icons.search} Search Vehicle</button>
-          `}
-        </div>
+      <label class="field-label">Vehicle</label>
+      ${state.settings.selectedVehicle ? `
+        <button id="carDetailsChip" class="input" style="width:100%;text-align:left;cursor:pointer;margin-bottom:14px;">${state.settings.selectedVehicle.label}</button>
+      ` : `
+        <button id="carLookupBtn" class="btn btn-ghost" style="width:100%;margin-bottom:14px;">${icons.search} Search Vehicle</button>
+      `}
+      <div class="row-2" style="margin-bottom:6px;">
         <div>
           <label class="field-label">Fuel Usage<br>(${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
           <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
         </div>
+        <div>
+          <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
+        </div>
       </div>
-      <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
-      <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" style="margin-bottom:6px;" />
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
