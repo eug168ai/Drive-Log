@@ -1966,7 +1966,33 @@ function renderHistoryTab() {
         </tbody>
       </table>
     </div>
-  </div>`;
+  </div>
+
+  ${state.settings.fuelTrackingEnabled !== false ? `
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.fuelPump} Refills</p>
+      <button id="logFillupBtnHistory" class="chip" title="Log a Refill">${icons.locate} <span class="chip-label">Log a Refill</span></button>
+    </div>
+    ${state.fuelFillups.length ? `
+      <div class="table-scroll" style="max-height:260px;">
+        <table>
+          <thead><tr><th>Date</th><th style="text-align:right;">Odo</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
+          <tbody>
+            ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
+              <tr>
+                <td>${formatDateForDisplay(f.date)}</td>
+                <td class="mono" style="text-align:right;">${f.odometer != null ? Number(f.odometer).toLocaleString() : "—"}</td>
+                <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
+                <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
+                <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
+  </div>
+  ` : ""}`;
 }
 
 function renderSettingsTab() {
@@ -2154,27 +2180,13 @@ function renderSettingsTab() {
       </div>
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
-      <p class="settings-desc" style="margin-bottom:12px;">Uses logged refills and distance driven to calculate an average cost.</p>
-      <div class="settings-actions" style="margin-bottom:12px;">
+      <p class="settings-desc" style="margin-bottom:12px;">Uses logged refuels and distance driven to calculate actual drive costs.</p>
+      <div class="row-2" style="margin-bottom:12px;">
         <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Refill</button>
+        <button id="viewRefillHistoryBtn" class="btn btn-ghost">${icons.clock} Refill History</button>
       </div>
       ${state.fuelFillups.length ? `
-        <div class="table-scroll" style="max-height:220px;">
-          <table>
-            <thead><tr><th>Date</th><th style="text-align:right;">Odo</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
-            <tbody>
-              ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
-                <tr>
-                  <td>${formatDateForDisplay(f.date)}</td>
-                  <td class="mono" style="text-align:right;">${f.odometer != null ? Number(f.odometer).toLocaleString() : "—"}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
-                  <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
-                </tr>`).join("")}
-            </tbody>
-          </table>
-        </div>
-        <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
+        <p class="settings-desc" style="margin-top:0;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
         <div style="margin-top:10px;">
           <label class="field-label">Average Fuel Price &amp; Usage</label>
           <select id="fuelPriceAvgPeriodSelect" class="input" style="margin-bottom:6px;">
@@ -3343,6 +3355,11 @@ function attachAppHandlers() {
       state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
+    const viewRefillHistoryBtn = document.getElementById("viewRefillHistoryBtn");
+    if (viewRefillHistoryBtn) viewRefillHistoryBtn.onclick = () => {
+      state.tab = "history";
+      render();
+    };
     const carLookupBtn = document.getElementById("carLookupBtn");
     if (carLookupBtn) carLookupBtn.onclick = async () => {
       const region = detectRegion() || "us";
@@ -3357,13 +3374,6 @@ function attachAppHandlers() {
       render();
       if (region === "us") { await loadFegYears(state.carLookupForm); render(); }
     };
-    document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
-      btn.onclick = async () => {
-        state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
-        await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
-        render();
-      };
-    });
     const fuelPriceAvgPeriodSelect = document.getElementById("fuelPriceAvgPeriodSelect");
     if (fuelPriceAvgPeriodSelect) fuelPriceAvgPeriodSelect.onchange = (e) => {
       state.fuelPriceAvgPeriod = e.target.value;
@@ -3484,6 +3494,19 @@ function attachAppHandlers() {
   }
 
   if (state.tab === "history") {
+    const logFillupBtnHistory = document.getElementById("logFillupBtnHistory");
+    if (logFillupBtnHistory) logFillupBtnHistory.onclick = () => {
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
+      render();
+    };
+    document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
+      btn.onclick = async () => {
+        state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
+        await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
+        render();
+      };
+    });
+
     const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
     if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
       state.addDrives = {
