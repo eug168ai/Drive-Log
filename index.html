@@ -1842,7 +1842,7 @@ function renderLogTab() {
     <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
   </div>`}
   ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
-  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Refills</button>
+  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refill</button>
   ` : ""}
   `;
 }
@@ -2110,7 +2110,7 @@ function renderSettingsTab() {
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged refills and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Refills</button>
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Refill</button>
       </div>
       ${state.fuelFillups.length ? `
         <div class="table-scroll" style="max-height:220px;">
