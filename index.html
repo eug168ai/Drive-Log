@@ -784,6 +784,7 @@ const state = {
   reportForm: null,
   reportGenerating: false,
   addDrives: null,
+  carLookupForm: null,
 };
 
 const icons = {
@@ -805,6 +806,67 @@ const icons = {
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
 };
+
+// Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
+// models outside the US, where no free live lookup API exists. Not pulled from a
+// live official database (VCA/Green Vehicle Guide/EEA) — treat as a starting
+// estimate; real-world figures vary by trim, drivetrain and model year.
+const CAR_FUEL_DATA = [
+  { region: "uk", make: "Ford", model: "Puma 1.0 EcoBoost Hybrid", l100km: 5.0 },
+  { region: "uk", make: "Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
+  { region: "uk", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", l100km: 6.2 },
+  { region: "uk", make: "MINI", model: "Hatch Cooper", l100km: 5.5 },
+  { region: "uk", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
+  { region: "uk", make: "Kia", model: "Sportage 1.6 Hybrid", l100km: 5.6 },
+  { region: "uk", make: "Toyota", model: "Yaris Hybrid", l100km: 3.8 },
+  { region: "uk", make: "Ford", model: "Focus 1.0 EcoBoost", l100km: 5.9 },
+  { region: "uk", make: "Hyundai", model: "Tucson 1.6 Hybrid", l100km: 5.5 },
+  { region: "uk", make: "Audi", model: "A3 1.5 TFSI", l100km: 5.9 },
+  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", l100km: 7.9 },
+  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", l100km: 7.4 },
+  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", l100km: 4.8 },
+  { region: "au", make: "Toyota", model: "Corolla Hybrid", l100km: 4.2 },
+  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", l100km: 7.4 },
+  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", l100km: 7.7 },
+  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", l100km: 7.4 },
+  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", l100km: 7.6 },
+  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", l100km: 8.3 },
+  { region: "au", make: "MG", model: "ZS 1.5L Petrol", l100km: 6.7 },
+  { region: "eu", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
+  { region: "eu", make: "Renault", model: "Clio 1.0 TCe", l100km: 5.3 },
+  { region: "eu", make: "Peugeot", model: "208 1.2 PureTech", l100km: 5.5 },
+  { region: "eu", make: "Volkswagen", model: "Tiguan 1.5 TSI", l100km: 6.7 },
+  { region: "eu", make: "Dacia", model: "Sandero 1.0 TCe", l100km: 5.5 },
+  { region: "eu", make: "Skoda", model: "Octavia 1.5 TSI", l100km: 5.8 },
+  { region: "eu", make: "BMW", model: "3 Series 320i", l100km: 6.3 },
+  { region: "eu", make: "Mercedes-Benz", model: "A-Class A200", l100km: 6.1 },
+  { region: "eu", make: "Fiat", model: "500 Hybrid", l100km: 4.7 },
+  { region: "eu", make: "Opel/Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
+];
+// mpg is always US gallons for the "us" region (matches fueleconomy.gov) and
+// imperial gallons for uk/au/eu, matching how MPG is conventionally quoted there.
+function usMpgToL100(mpg) { return 235.215 / mpg; }
+function l100ToUsMpg(l100) { return 235.215 / l100; }
+function impMpgToL100(mpg) { return 282.481 / mpg; }
+function l100ToImpMpg(l100) { return 282.481 / l100; }
+async function fegMenu(path, params) {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const res = await fetch(`https://www.fueleconomy.gov/ws/rest/vehicle/menu/${path}${qs}`);
+  if (!res.ok) throw new Error("menu lookup failed");
+  const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
+  return Array.from(doc.getElementsByTagName("menuItem")).map(el => ({
+    text: el.getElementsByTagName("text")[0]?.textContent || "",
+    value: el.getElementsByTagName("value")[0]?.textContent || "",
+  }));
+}
+async function fegVehicle(id) {
+  const res = await fetch(`https://www.fueleconomy.gov/ws/rest/vehicle/${id}`);
+  if (!res.ok) throw new Error("vehicle lookup failed");
+  const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
+  const comb08 = parseFloat(doc.getElementsByTagName("comb08")[0]?.textContent || "");
+  if (!comb08 || isNaN(comb08)) throw new Error("no combined MPG for this vehicle");
+  return comb08;
+}
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 function formatDateForDisplay(dateStr) {
@@ -1495,6 +1557,7 @@ function renderApp() {
     ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
     ${state.supervisedCompletionPrompt ? renderSupervisedCompletionModal() : ""}
     ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
+    ${state.carLookupForm ? renderCarLookupModal() : ""}
     ${state.reportForm ? renderReportModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
     <datalist id="recentLocations">
@@ -1901,6 +1964,9 @@ function renderSettingsTab() {
           <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
         </div>
       </div>
+      <div class="settings-actions" style="margin-bottom:6px;">
+        <button id="carLookupBtn" class="btn btn-ghost">${icons.car} Look Up By Car Details</button>
+      </div>
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
@@ -2239,6 +2305,81 @@ function renderFuelFillupModal() {
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
         <button id="confirmFillupBtn" class="btn btn-amber">Save fill-up</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCarLookupModal() {
+  const f = state.carLookupForm;
+  const regions = [
+    { v: "", l: "Select region" }, { v: "us", l: "United States" },
+    { v: "uk", l: "United Kingdom" }, { v: "au", l: "Australia" }, { v: "eu", l: "Europe" },
+  ];
+  const nonUsMakes = f.region && f.region !== "us"
+    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region).map(c => c.make))].sort()
+    : [];
+  const nonUsModels = f.region && f.region !== "us" && f.nonUsMake
+    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake)
+    : [];
+  const unitLabelStr = state.settings.unit === "mi" ? "MPG" : "L/100km";
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">${icons.car} Look Up Fuel Consumption</h2>
+        <button id="closeCarLookupBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+      <label class="field-label">Region</label>
+      <select id="carLookupRegion" class="input" style="margin-bottom:14px;">
+        ${regions.map(r => `<option value="${r.v}" ${f.region === r.v ? "selected" : ""}>${r.l}</option>`).join("")}
+      </select>
+      ${f.region === "us" ? `
+        <p class="settings-desc" style="margin:0 0 12px;">Live lookup via fueleconomy.gov (US EPA).</p>
+        <label class="field-label">Year</label>
+        <select id="carLookupYear" class="input" style="margin-bottom:14px;" ${!f.years.length && f.error ? "disabled" : ""}>
+          <option value="">${f.years.length ? "Select year" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.years.map(y => `<option value="${escAttr(y.value)}" ${f.year === y.value ? "selected" : ""}>${y.text}</option>`).join("")}
+        </select>
+        ${f.year ? `
+        <label class="field-label">Make</label>
+        <select id="carLookupMake" class="input" style="margin-bottom:14px;" ${!f.makes.length && f.error ? "disabled" : ""}>
+          <option value="">${f.makes.length ? "Select make" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.makes.map(m => `<option value="${escAttr(m.value)}" ${f.make === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
+        </select>` : ""}
+        ${f.make ? `
+        <label class="field-label">Model</label>
+        <select id="carLookupModel" class="input" style="margin-bottom:14px;" ${!f.models.length && f.error ? "disabled" : ""}>
+          <option value="">${f.models.length ? "Select model" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.models.map(m => `<option value="${escAttr(m.value)}" ${f.model === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
+        </select>` : ""}
+        ${f.model ? `
+        <label class="field-label">Trim / configuration</label>
+        <select id="carLookupTrim" class="input" style="margin-bottom:14px;" ${!f.trims.length && f.error ? "disabled" : ""}>
+          <option value="">${f.trims.length ? "Select trim" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.trims.map(t => `<option value="${escAttr(t.value)}" ${f.trimId === t.value ? "selected" : ""}>${t.text}</option>`).join("")}
+        </select>` : ""}
+      ` : f.region ? `
+        <p class="settings-desc" style="margin:0 0 12px;">Approximate combined figures for common models — not a live database, so treat as a starting estimate and adjust if you know your car's actual figure.</p>
+        <label class="field-label">Make</label>
+        <select id="carLookupNonUsMake" class="input" style="margin-bottom:14px;">
+          <option value="">Select make</option>
+          ${nonUsMakes.map(m => `<option value="${escAttr(m)}" ${f.nonUsMake === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+        ${f.nonUsMake ? `
+        <label class="field-label">Model</label>
+        <select id="carLookupNonUsModel" class="input" style="margin-bottom:14px;">
+          <option value="">Select model</option>
+          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}</option>`).join("")}
+        </select>` : ""}
+      ` : ""}
+      ${f.error ? `<p class="err" style="margin:8px 0 0;">${f.error}</p>` : ""}
+      ${f.result != null ? `
+        <p class="settings-desc" style="margin:14px 0 0;">Estimated consumption: <b class="mono" style="color:var(--text);">${f.result.toFixed(1)}</b> ${unitLabelStr}</p>
+      ` : ""}
+      <div class="row-2" style="margin-top:16px;">
+        <button id="cancelCarLookupBtn" class="btn btn-ghost">Cancel</button>
+        <button id="applyCarLookupBtn" class="btn btn-amber" ${f.result == null ? "disabled" : ""}>Use This Figure</button>
       </div>
     </div>
   </div>`;
@@ -3014,6 +3155,14 @@ function attachAppHandlers() {
       state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
       render();
     };
+    const carLookupBtn = document.getElementById("carLookupBtn");
+    if (carLookupBtn) carLookupBtn.onclick = () => {
+      state.carLookupForm = {
+        region: "", years: [], year: "", makes: [], make: "", models: [], model: "",
+        trims: [], trimId: "", nonUsMake: "", nonUsModel: "", result: null, error: "",
+      };
+      render();
+    };
     document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
       btn.onclick = async () => {
         state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
@@ -3609,6 +3758,97 @@ function attachAppHandlers() {
       state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, amount, price }];
       await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
       state.fuelFillupForm = null;
+      render();
+    };
+  }
+
+  if (state.carLookupForm) {
+    const f = state.carLookupForm;
+
+    const regionSelect = document.getElementById("carLookupRegion");
+    if (regionSelect) regionSelect.onchange = async (e) => {
+      f.region = e.target.value;
+      f.year = ""; f.make = ""; f.model = ""; f.trimId = "";
+      f.years = []; f.makes = []; f.models = []; f.trims = [];
+      f.nonUsMake = ""; f.nonUsModel = "";
+      f.result = null; f.error = "";
+      if (f.region === "us") {
+        render();
+        try { f.years = await fegMenu("year"); }
+        catch { f.error = "Couldn't reach fueleconomy.gov. Check your connection or enter the figure manually."; }
+      }
+      render();
+    };
+
+    const yearSelect = document.getElementById("carLookupYear");
+    if (yearSelect) yearSelect.onchange = async (e) => {
+      f.year = e.target.value; f.make = ""; f.model = ""; f.trimId = "";
+      f.makes = []; f.models = []; f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.year) {
+        try { f.makes = await fegMenu("make", { year: f.year }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const makeSelect = document.getElementById("carLookupMake");
+    if (makeSelect) makeSelect.onchange = async (e) => {
+      f.make = e.target.value; f.model = ""; f.trimId = "";
+      f.models = []; f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.make) {
+        try { f.models = await fegMenu("model", { year: f.year, make: f.make }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const modelSelect = document.getElementById("carLookupModel");
+    if (modelSelect) modelSelect.onchange = async (e) => {
+      f.model = e.target.value; f.trimId = "";
+      f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.model) {
+        try { f.trims = await fegMenu("options", { year: f.year, make: f.make, model: f.model }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const trimSelect = document.getElementById("carLookupTrim");
+    if (trimSelect) trimSelect.onchange = async (e) => {
+      f.trimId = e.target.value; f.result = null; f.error = "";
+      render();
+      if (f.trimId) {
+        try {
+          const comb08 = await fegVehicle(f.trimId);
+          f.result = state.settings.unit === "mi" ? comb08 : usMpgToL100(comb08);
+        } catch { f.error = "Couldn't fetch vehicle data. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+
+    const nonUsMakeSelect = document.getElementById("carLookupNonUsMake");
+    if (nonUsMakeSelect) nonUsMakeSelect.onchange = (e) => {
+      f.nonUsMake = e.target.value; f.nonUsModel = ""; f.result = null; f.error = "";
+      render();
+    };
+    const nonUsModelSelect = document.getElementById("carLookupNonUsModel");
+    if (nonUsModelSelect) nonUsModelSelect.onchange = (e) => {
+      f.nonUsModel = e.target.value;
+      const entry = CAR_FUEL_DATA.find(c => c.region === f.region && c.make === f.nonUsMake && c.model === f.nonUsModel);
+      f.result = entry ? (state.settings.unit === "mi" ? l100ToImpMpg(entry.l100km) : entry.l100km) : null;
+      render();
+    };
+
+    const closeCarLookupBtn = document.getElementById("closeCarLookupBtn");
+    if (closeCarLookupBtn) closeCarLookupBtn.onclick = () => { state.carLookupForm = null; render(); };
+    const cancelCarLookupBtn = document.getElementById("cancelCarLookupBtn");
+    if (cancelCarLookupBtn) cancelCarLookupBtn.onclick = () => { state.carLookupForm = null; render(); };
+    const applyCarLookupBtn = document.getElementById("applyCarLookupBtn");
+    if (applyCarLookupBtn) applyCarLookupBtn.onclick = async () => {
+      if (f.result == null) return;
+      state.settings.fuelRate = String(Math.round(f.result * 10) / 10);
+      await storageSet(SETTINGS_KEY, state.settings);
+      state.carLookupForm = null;
       render();
     };
   }
