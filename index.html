@@ -121,7 +121,7 @@
   .timer{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:18px;font-weight:600;}
   .hidden{display:none !important;}
   .icon{width:15px;height:15px;flex-shrink:0;}
-  .icon-fuel{width:.72em;height:.72em;}
+  .icon-fuel{width:.9em;height:.9em;}
   .switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
   .switch{position:relative;width:44px;height:24px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);
           border-radius:999px;cursor:pointer;transition:background .15s,border-color .15s;}
@@ -827,7 +827,7 @@ const CAR_FUEL_DATA = [
   { region: "uk", make: "Audi", model: "A3 1.5 TFSI", l100km: 5.9 },
   // Australia: the 15 highest-volume manufacturers (VFACTS-style ranking), covering
   // every distinct petrol/diesel/PHEV nameplate each has sold in Australia over the
-  // last ~15 years. A few brands (Isuzu Ute, BYD, GWM, MG) genuinely don't have 20
+  // last ~20 years. A few brands (Isuzu Ute, BYD, GWM, MG) genuinely don't have 20
   // separate models on the AU market — their real lineup is listed in full rather
   // than padded with invented trims. Newer entrants only list years they've
   // actually been on sale here.
@@ -930,7 +930,8 @@ const CAR_FUEL_DATA = [
   { region: "au", make: "Honda", model: "CR-V 1.5T Petrol", yearFrom: 2017, yearTo: null, l100km: 7.6 },
   { region: "au", make: "Honda", model: "Civic 1.5T Petrol", yearFrom: 2016, yearTo: null, l100km: 6.4 },
   { region: "au", make: "Honda", model: "HR-V e:HEV Hybrid", yearFrom: 2021, yearTo: null, l100km: 4.3 },
-  { region: "au", make: "Honda", model: "Accord 1.5T Petrol", yearFrom: 2011, yearTo: 2020, l100km: 7.3 },
+  { region: "au", make: "Honda", model: "Accord Euro 2.4L Petrol", yearFrom: 2003, yearTo: 2015, l100km: 9.4 },
+  { region: "au", make: "Honda", model: "Accord 1.5T Petrol", yearFrom: 2019, yearTo: 2021, l100km: 7.3 },
   { region: "au", make: "Honda", model: "Jazz 1.5L Hybrid", yearFrom: 2020, yearTo: null, l100km: 3.8 },
   { region: "eu", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
   { region: "eu", make: "Renault", model: "Clio 1.0 TCe", l100km: 5.3 },
@@ -2079,7 +2080,7 @@ function renderSettingsTab() {
       <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
     </div>
     ${state.settings.fuelMode === "estimated" ? `
-      <div class="row-2" style="margin-bottom:6px;">
+      <div class="row-2" style="margin-bottom:6px;grid-template-columns:2fr 1fr;">
         <div>
           <label class="field-label">Vehicle</label>
           ${state.settings.selectedVehicle ? `
@@ -2089,7 +2090,7 @@ function renderSettingsTab() {
           `}
         </div>
         <div>
-          <label class="field-label">Fuel Usage (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+          <label class="field-label">Fuel Usage<br>(${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
           <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
         </div>
       </div>
@@ -2441,14 +2442,14 @@ function renderFuelFillupModal() {
 function renderCarLookupModal() {
   const f = state.carLookupForm;
   const currentYear = new Date().getFullYear();
-  // Only surface models that were on sale at some point in roughly the last 15
+  // Only surface models that were on sale at some point in roughly the last 20
   // years; entries without year data (UK/EU) are always shown.
-  const inLast15Years = c => c.yearFrom === undefined || (c.yearTo == null ? true : c.yearTo >= currentYear - 15);
+  const inLast20Years = c => c.yearFrom === undefined || (c.yearTo == null ? true : c.yearTo >= currentYear - 20);
   const nonUsMakes = f.region !== "us"
-    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region && inLast15Years(c)).map(c => c.make))].sort()
+    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region && inLast20Years(c)).map(c => c.make))].sort()
     : [];
   const nonUsModels = f.region !== "us" && f.nonUsMake
-    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake && inLast15Years(c))
+    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake && inLast20Years(c))
     : [];
   const unitLabelStr = state.settings.unit === "mi" ? "MPG" : "L/100km";
   return `
