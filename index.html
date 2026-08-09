@@ -55,7 +55,7 @@
   .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px;margin-bottom:16px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:9px;margin-bottom:11px;}
   .field-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:8px;}
   .input, select{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;
          padding:9px 10px;color:var(--text);font-size:14px;outline:none;}
@@ -986,9 +986,23 @@ function renderSavedAddressChips(targetId) {
   if (state.settings.showSavedAddresses === false) return "";
   const list = savedAddressList();
   if (!list.length) return "";
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${list.map(a =>
+  // Pills: Home, Work, and the first 2 "Other" addresses. Any further
+  // "Other" addresses go in a dropdown instead, to keep the row from
+  // growing unbounded as more addresses get saved.
+  const homeWork = list.filter(a => a.id === "home" || a.id === "work");
+  const others = list.filter(a => a.id !== "home" && a.id !== "work");
+  const pills = [...homeWork, ...others.slice(0, 2)];
+  const overflow = others.slice(2);
+  const pillsHtml = pills.map(a =>
     `<button type="button" class="chip savedAddressChip" data-target="${targetId}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`
-  ).join("")}</div>`;
+  ).join("");
+  const overflowHtml = overflow.length ? `
+    <select class="input savedAddressOverflowSelect" data-target="${targetId}" style="flex:1 1 100%;margin-top:2px;">
+      <option value="">More saved addresses…</option>
+      ${overflow.map(a => `<option value="${escAttr(a.address)}">${escAttr(a.name)}</option>`).join("")}
+    </select>
+  ` : "";
+  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${pillsHtml}${overflowHtml}</div>`;
 }
 
 async function addRecentLocations(locs) {
@@ -1724,15 +1738,14 @@ function renderSettingsTab() {
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
       <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
         <p class="settings-title" style="margin:0 0 8px;">Sync Reminder</p>
-        ${state.settings.syncRemindersEnabled ? `
-        <select id="syncReminderFrequencySelect" class="input" style="margin-bottom:10px;">
-          <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
-          <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-          <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Quarterly</option>
-        </select>
-        ` : ""}
-        <div class="switch-row">
-          <span class="settings-desc" style="margin:0;">Remind me</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+          ${state.settings.syncRemindersEnabled ? `
+          <select id="syncReminderFrequencySelect" class="input" style="flex:1;">
+            <option value="weekly" ${state.settings.syncReminderFrequency === "weekly" ? "selected" : ""}>Weekly</option>
+            <option value="monthly" ${state.settings.syncReminderFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+            <option value="quarterly" ${state.settings.syncReminderFrequency === "quarterly" ? "selected" : ""}>Quarterly</option>
+          </select>
+          ` : "<span></span>"}
           <div id="syncRemindersSwitch" class="switch ${state.settings.syncRemindersEnabled ? "on" : ""}"><div class="knob"></div></div>
         </div>
       </div>
@@ -1807,19 +1820,25 @@ function renderSettingsTab() {
     </div>
     <label class="field-label">Home</label>
     <div class="input-icon" style="margin-bottom:14px;">
-      ${icons.pin}<input id="savedHomeInput" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" />
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="savedHomeInput" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
     </div>
     <label class="field-label">Work</label>
     <div class="input-icon" style="margin-bottom:14px;">
-      ${icons.pin}<input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" />
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
     </div>
 
     ${state.addingSavedOther || state.savedAddresses.other.length ? `<label class="field-label">Other</label>` : ""}
     ${state.savedAddresses.other.length ? state.savedAddresses.other.map(o => `
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-top:8px;">
-        <div style="min-width:0;">
+        <div style="min-width:0;flex:1;">
           <p style="margin:0;font-weight:600;font-size:13px;">${escAttr(o.name)}</p>
-          <p class="settings-desc" style="margin:2px 0 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escAttr(o.address)}</p>
+          <div class="route-cell" style="padding:0;margin-top:2px;"><div class="route-clip"><span class="route-track settings-desc" style="margin:0;">${escAttr(o.address)}</span></div></div>
         </div>
         <button class="icon-btn deleteSavedOtherBtn" data-id="${o.id}" title="Remove">${icons.trash}</button>
       </div>
@@ -2623,29 +2642,37 @@ function attachAppHandlers() {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
   });
 
+  function applySavedAddressSelection(targetId, address) {
+    const el = document.getElementById(targetId);
+    if (el) el.value = address;
+    if (targetId === "startPointInput") {
+      state.startPointInput = address;
+      state.startLocArmed = true;
+    } else if (targetId === "preTripEndInput") {
+      state.preTripEndLocation = address;
+      state.endLocArmed = true;
+      const section = document.getElementById("preTripEstimateSection");
+      const hint = document.getElementById("preTripEndHint");
+      if (section) section.style.display = "";
+      if (hint) hint.style.display = "none";
+    } else if (targetId === "endPointInput") {
+      state.endPoint = address;
+      state.endLocArmed = true;
+      const estBtn = document.getElementById("estimateRouteBtn");
+      if (estBtn) estBtn.disabled = false;
+    }
+    armLocationMarquee(targetId);
+  }
+
   document.querySelectorAll(".savedAddressChip").forEach(chip => {
-    chip.onclick = () => {
-      const targetId = chip.dataset.target;
-      const address = chip.dataset.address;
-      const el = document.getElementById(targetId);
-      if (el) el.value = address;
-      if (targetId === "startPointInput") {
-        state.startPointInput = address;
-        state.startLocArmed = true;
-      } else if (targetId === "preTripEndInput") {
-        state.preTripEndLocation = address;
-        state.endLocArmed = true;
-        const section = document.getElementById("preTripEstimateSection");
-        const hint = document.getElementById("preTripEndHint");
-        if (section) section.style.display = "";
-        if (hint) hint.style.display = "none";
-      } else if (targetId === "endPointInput") {
-        state.endPoint = address;
-        state.endLocArmed = true;
-        const estBtn = document.getElementById("estimateRouteBtn");
-        if (estBtn) estBtn.disabled = false;
-      }
-      armLocationMarquee(targetId);
+    chip.onclick = () => applySavedAddressSelection(chip.dataset.target, chip.dataset.address);
+  });
+
+  document.querySelectorAll(".savedAddressOverflowSelect").forEach(sel => {
+    sel.onchange = () => {
+      if (!sel.value) return;
+      applySavedAddressSelection(sel.dataset.target, sel.value);
+      sel.value = "";
     };
   });
 
@@ -3026,6 +3053,11 @@ function attachAppHandlers() {
         render();
       });
     }
+    setupLocationMarquee("savedHomeInput");
+    setupLocationMarquee("savedWorkInput");
+    if (state.savedAddresses.home) armLocationMarquee("savedHomeInput");
+    if (state.savedAddresses.work) armLocationMarquee("savedWorkInput");
+    attachRouteAutoScroll();
 
     document.querySelectorAll(".deleteSavedOtherBtn").forEach(btn => {
       btn.onclick = async () => {
