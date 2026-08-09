@@ -1553,8 +1553,8 @@ function checkSupervisedLicenceComplete() {
 
 // --- Fuel cost -------------------------------------------------------------
 // "Accurate" mode: average spend per unit distance, derived from logged
-// fill-ups against the distance driven over the same period (earliest
-// fill-up date through now). Returns null if there isn't enough data yet.
+// refills against the distance driven over the same period (earliest
+// refill date through now). Returns null if there isn't enough data yet.
 function accurateFuelCostPerKm() {
   if (!state.fuelFillups.length) return null;
   const dates = state.fuelFillups.map(f => f.date).sort();
@@ -1825,7 +1825,7 @@ function renderLogTab() {
     <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
   </div>`}
   ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
-  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
+  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Refills</button>
   ` : ""}
   `;
 }
@@ -2098,9 +2098,9 @@ function renderSettingsTab() {
       </div>
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
     ` : `
-      <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
+      <p class="settings-desc" style="margin-bottom:12px;">Uses logged refills and distance driven to calculate an average cost.</p>
       <div class="settings-actions" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Refills</button>
       </div>
       ${state.fuelFillups.length ? `
         <div class="table-scroll" style="max-height:220px;">
@@ -2118,7 +2118,7 @@ function renderSettingsTab() {
           </table>
         </div>
         <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
-      ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
+      ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
     `}
     `}
   </div>
@@ -2423,7 +2423,7 @@ function renderFuelFillupModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>${icons.locate} Log a Fill-Up</h2>
+      <h2>${icons.locate} Log a Refill</h2>
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
       <label class="field-label">${volLabel}</label>
@@ -2433,7 +2433,7 @@ function renderFuelFillupModal() {
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmFillupBtn" class="btn btn-amber">Save fill-up</button>
+        <button id="confirmFillupBtn" class="btn btn-amber">Save refill</button>
       </div>
     </div>
   </div>`;
