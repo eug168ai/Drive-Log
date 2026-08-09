@@ -782,6 +782,7 @@ const state = {
   syncReminderPrompt: null,
   fuelFillups: [],
   fuelFillupForm: null,
+  fuelPriceAvgPeriod: "all",
   reportForm: null,
   reportGenerating: false,
   addDrives: null,
@@ -1566,6 +1567,22 @@ function accurateFuelCostPerKm() {
   // distance is tracked internally in km, so convert spend/km -> spend/display-unit at display time.
   return totalSpend / distanceKm;
 }
+// Average price paid per litre/gallon over a trailing window, from logged
+// refills. Weighted by volume (total spend / total volume) rather than a
+// simple mean of each refill's unit price, so bigger fill-ups count more.
+function avgFuelPriceForPeriod(monthsBack) {
+  let refills = state.fuelFillups;
+  if (monthsBack != null) {
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - monthsBack);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+    refills = refills.filter(f => f.date >= cutoffStr);
+  }
+  const totalAmount = refills.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  if (!totalAmount) return null;
+  const totalPrice = refills.reduce((s, f) => s + (Number(f.price) || 0), 0);
+  return totalPrice / totalAmount;
+}
 function estimatedFuelCostPerKm() {
   const rate = parseFloat(state.settings.fuelRate);
   const price = parseFloat(state.settings.fuelPrice);
@@ -2111,6 +2128,26 @@ function renderSettingsTab() {
           </table>
         </div>
         <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
+        <div style="margin-top:10px;">
+          <label class="field-label">Average Fuel Price</label>
+          <select id="fuelPriceAvgPeriodSelect" class="input" style="margin-bottom:6px;">
+            <option value="1" ${state.fuelPriceAvgPeriod === "1" ? "selected" : ""}>Last month</option>
+            <option value="3" ${state.fuelPriceAvgPeriod === "3" ? "selected" : ""}>Last 3 months</option>
+            <option value="6" ${state.fuelPriceAvgPeriod === "6" ? "selected" : ""}>Last 6 months</option>
+            <option value="9" ${state.fuelPriceAvgPeriod === "9" ? "selected" : ""}>Last 9 months</option>
+            <option value="12" ${state.fuelPriceAvgPeriod === "12" ? "selected" : ""}>Last year</option>
+            <option value="all" ${state.fuelPriceAvgPeriod === "all" ? "selected" : ""}>All time</option>
+          </select>
+          <p class="settings-desc" style="margin:0;">
+            ${(() => {
+              const months = state.fuelPriceAvgPeriod === "all" ? null : parseInt(state.fuelPriceAvgPeriod, 10);
+              const avg = avgFuelPriceForPeriod(months);
+              return avg != null
+                ? `<b class="mono" style="color:var(--text);">${avg.toFixed(2)}</b> / ${state.settings.unit === "mi" ? "gallon" : "litre"}`
+                : "No refills in this period.";
+            })()}
+          </p>
+        </div>
       ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
     `}
     `}
@@ -3268,6 +3305,11 @@ function attachAppHandlers() {
         render();
       };
     });
+    const fuelPriceAvgPeriodSelect = document.getElementById("fuelPriceAvgPeriodSelect");
+    if (fuelPriceAvgPeriodSelect) fuelPriceAvgPeriodSelect.onchange = (e) => {
+      state.fuelPriceAvgPeriod = e.target.value;
+      render();
+    };
 
     const savedHomeInput = document.getElementById("savedHomeInput");
     if (savedHomeInput) {
