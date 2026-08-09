@@ -2517,11 +2517,11 @@ function renderFuelFillupModal() {
       <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
       <label class="field-label">Total price paid</label>
       <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
-      <p class="settings-desc" style="margin:0 0 6px;">Requires filling full tank to full tank each time. Enter the odometer reading at every fill-up to get an accurate fuel usage figure, not just cost.</p>
+      <p class="settings-desc" style="margin:0 0 6px;">Fill to full each time for an accurate usage figure.</p>
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmFillupBtn" class="btn btn-amber">Save refill</button>
+        <button id="confirmFillupBtn" class="btn btn-amber">Save Refill</button>
       </div>
     </div>
   </div>`;
