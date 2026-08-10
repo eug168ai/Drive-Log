@@ -1673,9 +1673,9 @@ function monthsAgoStr(monthsBack) {
   cutoff.setMonth(cutoff.getMonth() - monthsBack);
   return cutoff.toISOString().slice(0, 10);
 }
-// Consecutive full-tank-to-full-tank intervals, built from refills that have
+// Consecutive full-tank-to-full-tank intervals, built from refuels that have
 // an odometer reading (sorted by odometer, not date — protects against
-// refills logged out of order). The fuel added at the *later* refill of each
+// refuels logged out of order). The fuel added at the *later* refuel of each
 // pair is what was actually consumed traveling between the two readings, so
 // this is real usage, independent of whether every trip in between got
 // logged in the app.
@@ -1695,7 +1695,7 @@ function fuelIntervals() {
 }
 // "Accurate" mode's $/km rate. Prefers real odometer-interval data — exact
 // distance per dollar spent, unaffected by gaps in trip logging. Falls back
-// to the old trip-distance method (spend since earliest refill vs. logged
+// to the old trip-distance method (spend since earliest refuel vs. logged
 // trip distance since then) when there isn't yet a full odometer interval.
 function accurateFuelCostPerKm() {
   if (!state.fuelFillups.length) return null;
@@ -1717,7 +1717,7 @@ function accurateFuelCostPerKm() {
 // Real fuel usage (L/100km or MPG, matching the current unit) from odometer
 // intervals — not an estimate, the actual litres burned per km covered.
 // Returns null until there's at least one complete odometer-to-odometer
-// interval (i.e. at least two refills logged with an odometer reading).
+// interval (i.e. at least two refuels logged with an odometer reading).
 function accurateFuelUsage(monthsBack) {
   let intervals = fuelIntervals();
   if (monthsBack != null) {
@@ -1730,17 +1730,17 @@ function accurateFuelUsage(monthsBack) {
   return state.settings.unit === "mi" ? totalDistance / totalAmount : (totalAmount / totalDistance) * 100;
 }
 // Average price paid per litre/gallon over a trailing window, from logged
-// refills. Weighted by volume (total spend / total volume) rather than a
-// simple mean of each refill's unit price, so bigger fill-ups count more.
+// refuels. Weighted by volume (total spend / total volume) rather than a
+// simple mean of each refuel's unit price, so bigger fill-ups count more.
 function avgFuelPriceForPeriod(monthsBack) {
-  let refills = state.fuelFillups;
+  let refuels = state.fuelFillups;
   if (monthsBack != null) {
     const cutoffStr = monthsAgoStr(monthsBack);
-    refills = refills.filter(f => f.date >= cutoffStr);
+    refuels = refuels.filter(f => f.date >= cutoffStr);
   }
-  const totalAmount = refills.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  const totalAmount = refuels.reduce((s, f) => s + (Number(f.amount) || 0), 0);
   if (!totalAmount) return null;
-  const totalPrice = refills.reduce((s, f) => s + (Number(f.price) || 0), 0);
+  const totalPrice = refuels.reduce((s, f) => s + (Number(f.price) || 0), 0);
   return totalPrice / totalAmount;
 }
 function estimatedFuelCostPerKm() {
@@ -2004,7 +2004,7 @@ function renderLogTab() {
     <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
   </div>`}
   ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
-  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refill</button>
+  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>
   ` : ""}
   `;
 }
@@ -2087,8 +2087,8 @@ function renderHistoryTab() {
   ${state.settings.fuelTrackingEnabled !== false ? `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">${icons.fuelPump} Refills</p>
-      <button id="logFillupBtnHistory" class="chip" title="Log a Refill">${icons.locate} <span class="chip-label">Log a Refill</span></button>
+      <p class="settings-title" style="margin:0;">${icons.fuelPump} Refuels</p>
+      <button id="logFillupBtnHistory" class="chip" title="Log a Refuel">${icons.locate} <span class="chip-label">Log a Refuel</span></button>
     </div>
     ${state.fuelFillups.length ? `
       <div class="table-scroll" style="max-height:260px;">
@@ -2106,7 +2106,7 @@ function renderHistoryTab() {
           </tbody>
         </table>
       </div>
-    ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
+    ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
   </div>
   ` : ""}`;
 }
@@ -2298,8 +2298,8 @@ function renderSettingsTab() {
     ` : `
       <p class="settings-desc" style="margin-bottom:12px;">Uses logged refuels and distance driven to calculate actual drive costs.</p>
       <div class="row-2" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Refill</button>
-        <button id="viewRefillHistoryBtn" class="btn btn-ghost">${icons.clock} Refill History</button>
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Refuel</button>
+        <button id="viewRefillHistoryBtn" class="btn btn-ghost">${icons.clock} Refuel History</button>
       </div>
       ${state.fuelFillups.length ? `
         <p class="settings-desc" style="margin-top:0;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
@@ -2319,7 +2319,7 @@ function renderSettingsTab() {
               const avg = avgFuelPriceForPeriod(months);
               return avg != null
                 ? `Price: <b class="mono" style="color:var(--text);">${avg.toFixed(2)}</b> / ${state.settings.unit === "mi" ? "gallon" : "litre"}`
-                : "No refills in this period.";
+                : "No refuels in this period.";
             })()}
           </p>
           <p class="settings-desc" style="margin:4px 0 0;">
@@ -2328,11 +2328,11 @@ function renderSettingsTab() {
               const usage = accurateFuelUsage(months);
               return usage != null
                 ? `Usage: <b class="mono" style="color:var(--text);">${usage.toFixed(1)}</b> ${state.settings.unit === "mi" ? "MPG" : "L/100km"}`
-                : "Add odometer readings to at least two full-tank refills for a real usage figure.";
+                : "Add odometer readings to at least two full-tank refuels for a real usage figure.";
             })()}
           </p>
         </div>
-      ` : `<p class="settings-desc" style="margin:0;">No refills logged yet.</p>`}
+      ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
     `}
     `}
   </div>
@@ -2662,7 +2662,7 @@ function renderFuelFillupModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>${icons.locate} Log a Refill</h2>
+      <h2>${icons.locate} Log a Refuel</h2>
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
       <label class="field-label">Odometer (${unitLabel()}) — optional</label>
@@ -2675,7 +2675,7 @@ function renderFuelFillupModal() {
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmFillupBtn" class="btn btn-amber">Save Refill</button>
+        <button id="confirmFillupBtn" class="btn btn-amber">Save Refuel</button>
       </div>
     </div>
   </div>`;
