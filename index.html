@@ -2330,6 +2330,18 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
+      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row">
+      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
+      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -2512,18 +2524,6 @@ function renderSettingsTab() {
       ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
     `}
     `}
-  </div>
-
-  <div class="card">
-    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
-    <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
-      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row">
-      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
-      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
-    </div>
   </div>
 
   <div class="card">
