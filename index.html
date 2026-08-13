@@ -792,6 +792,7 @@ const state = {
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
     dashboardShowFuelStats: true, showDashboard: true, darkMode: true,
+    showSupervisedDashboard: true, showNormalDashboard: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
   dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
@@ -858,6 +859,8 @@ const icons = {
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
   search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
   fuelPump: `<svg class="icon icon-fuel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
+  moon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  chart: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="14" width="4" height="6" rx="1"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1425,6 +1428,8 @@ async function loadData() {
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
   if (state.settings.showDashboard === undefined) state.settings.showDashboard = true;
+  if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
+  if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
   if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
@@ -1681,32 +1686,37 @@ function renderChartLabels(buckets, layout, period) {
   }).join("");
   return `<div class="daylabels">${items}</div>`;
 }
-// Two-series overlay bar chart: series B is drawn as a narrower/shorter bar
-// on top of series A, sharing the same baseline, each scaled to its own max
-// so the two stay visually comparable despite different units.
+// Two-series grouped bar chart: series A and B render as separate,
+// side-by-side sub-bars per bucket (not stacked/overlaid), each scaled to
+// its own max — so both stay clearly visible even when the two series are
+// proportional to each other (e.g. cost = distance × a fixed rate), which
+// would make same-rectangle overlays collapse into a single indistinguishable
+// shape.
 function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex) {
   const padTop = 10, padBottom = 10;
   const plotH = height - padTop - padBottom;
   const n = buckets.length;
   const { w, barW, xs } = dashColumnLayout(n);
+  const hasB = seriesB.some(v => v != null);
+  const subGap = hasB ? Math.max(2, barW * 0.12) : 0;
+  const subW = hasB ? (barW - subGap) / 2 : barW;
   const maxA = Math.max(1, ...seriesA);
   const maxB = Math.max(1, ...seriesB.map(v => v || 0));
   const baseline = height - padBottom;
-  const yAvgA = baseline - (avgA / maxA) * plotH;
-  const yAvgB = baseline - (avgB / maxB) * plotH;
+  // Nudged apart by a fixed small amount so the two average lines never
+  // fully coincide even when avgA/maxA and avgB/maxB work out identical.
+  const yAvgA = baseline - (avgA / maxA) * plotH - 1.2;
+  const yAvgB = baseline - (avgB / maxB) * plotH + 1.2;
   let tip = "";
   const cols = buckets.map((b, i) => {
     const x = xs[i];
     const va = seriesA[i] || 0, vb = seriesB[i];
     const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH : 0;
     const yA = baseline - hA, yB = baseline - hB;
-    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}" fill-opacity=".82"/>` : "";
-    // A's own cap stays on top so series A is always readable even when B
-    // is proportional to A and would otherwise fully cover it at the same height.
-    const capH = Math.min(3, hA);
-    const cap = hA > 0 ? `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${capH.toFixed(1)}" rx="1.5" fill="${colorA}"/>` : "";
+    const rectA = `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${subW.toFixed(1)}" height="${hA.toFixed(1)}" rx="2.5" fill="${colorA}"/>`;
+    const rectB = vb != null ? `<rect x="${(x + subW + subGap).toFixed(1)}" y="${yB.toFixed(1)}" width="${subW.toFixed(1)}" height="${hB.toFixed(1)}" rx="2.5" fill="${colorB}"/>` : "";
     if (i === tipIndex) tip = renderChartTip(x + barW / 2, Math.min(yA, vb != null ? yB : yA), b.tip, w);
-    return `<g class="col" data-i="${i}" data-chart="${chartId}"><rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>${rectB}${cap}</g>`;
+    return `<g class="col" data-i="${i}" data-chart="${chartId}">${rectA}${rectB}</g>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
     <line x1="0" y1="${yAvgA.toFixed(1)}" x2="${w}" y2="${yAvgA.toFixed(1)}" stroke="${colorA}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>
@@ -1771,6 +1781,7 @@ function supervisedPaceInfo() {
 }
 function renderSupervisedDashboardCard() {
   if (state.settings.driveType !== "supervised") return "";
+  if (state.settings.showSupervisedDashboard === false) return "";
   const sup = supervisedTotals();
   const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
   const nightTarget = state.settings.supervisedNightHoursTarget || 15;
@@ -1815,16 +1826,16 @@ function renderSupervisedDashboardCard() {
       <div class="hdr">Day Hours</div>
       <div class="pill-track">
         <div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div>
-        <span class="pill-left">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
-        <span class="pill-count">${Math.round(dayPct)}%</span>
+        <span class="pill-left">${Math.round(dayPct)}%</span>
+        <span class="pill-count">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
       </div>
     </div>
     <div class="pill-row">
       <div class="hdr">Night Hours</div>
       <div class="pill-track">
         <div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div>
-        <span class="pill-left">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
-        <span class="pill-count">${Math.round(nightPct)}%</span>
+        <span class="pill-left">${Math.round(nightPct)}%</span>
+        <span class="pill-count">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
       </div>
     </div>
 
@@ -1841,6 +1852,7 @@ function renderSupervisedDashboardCard() {
 }
 // --- Normal Driving card -----------------------------------------------------
 function renderNormalDashboardCard() {
+  if (state.settings.showNormalDashboard === false) return "";
   const perKm = state.settings.dashboardShowFuelStats ? fuelCostPerKm() : null;
   const period = state.dashNormPeriod, offset = state.dashNormOffset;
   const range = dashRange(period, offset);
@@ -2355,16 +2367,24 @@ function renderSettingsTab() {
 
   <div class="card">
     <div class="switch-row" style="margin:0;">
-      <p class="settings-title" style="margin:0;">${icons.route} Dark Mode</p>
+      <p class="settings-title" style="margin:0;">${icons.moon} Dark Mode</p>
       <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
+    <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
     <div class="switch-row" style="margin-bottom:10px;">
       <span class="settings-desc" style="margin:0;">Show Dashboard</span>
       <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
+      <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Show Normal Driving</span>
+      <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <div class="switch-row">
       <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
@@ -3681,6 +3701,8 @@ function attachAppHandlers() {
     [
       ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
       ["showDashboardSwitch", "showDashboard"],
+      ["showSupervisedDashboardSwitch", "showSupervisedDashboard"],
+      ["showNormalDashboardSwitch", "showNormalDashboard"],
     ].forEach(([id, key]) => {
       const el = document.getElementById(id);
       if (el) el.onclick = async () => {
