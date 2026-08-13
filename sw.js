@@ -1,4 +1,4 @@
-const CACHE = 'drive-log-v1';
+const CACHE = 'drive-log-v2';
 const SHELL = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', (e) => {
