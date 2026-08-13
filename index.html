@@ -1599,7 +1599,7 @@ function formatDuration(mins) {
   return `${h}h ${m}m`;
 }
 
-// --- Log-screen dashboard (Supervised Driving / Normal Driving bar charts) --
+// --- Log-screen dashboard (Supervised Driving / All Driving bar charts) --
 function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function dashRange(period, offset) {
   const now = new Date();
@@ -1891,7 +1891,7 @@ function renderSupervisedDashboardCard() {
     </div>
   </div>`;
 }
-// --- Normal Driving card -----------------------------------------------------
+// --- All Driving card ---------------------------------------------------------
 function renderNormalDashboardCard() {
   const showFull = state.settings.showNormalDashboard !== false;
   const perKm = state.settings.dashboardShowFuelStats ? fuelCostPerKm() : null;
@@ -1939,7 +1939,7 @@ function renderNormalDashboardCard() {
 
   return `
   <div class="card" style="padding:12px 10px;">
-    <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
+    <p class="settings-title" style="margin:0 0 10px;">All Driving</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
     ${renderBarChart("norm", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
@@ -2450,7 +2450,7 @@ function renderSettingsTab() {
   <div class="card">
     <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
     <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Normal Driving</span>
+      <span class="settings-desc" style="margin:0;">Show All Driving</span>
       <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "10px" : "0"};">
