@@ -2,8 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Drive Log</title>
+<link rel="manifest" href="manifest.json" />
+<link rel="icon" href="icons/favicon-32.png" type="image/png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta id="themeColorMeta" name="theme-color" content="#14171C" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Drive Log" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -1369,8 +1377,11 @@ const THEME_COLORS = [
   { key: "red", label: "Red", swatch: "#F2453B", rgb: "242,69,59" },
 ];
 function applyTheme() {
-  document.documentElement.setAttribute("data-theme", state.settings.darkMode === false ? "light" : "dark");
+  const isLight = state.settings.darkMode === false;
+  document.documentElement.setAttribute("data-theme", isLight ? "light" : "dark");
   document.documentElement.setAttribute("data-accent", state.settings.themeColor || "amber");
+  const themeMeta = document.getElementById("themeColorMeta");
+  if (themeMeta) themeMeta.setAttribute("content", isLight ? "#EEF0F3" : "#14171C");
 }
 function render() {
   applyTheme();
@@ -4745,6 +4756,12 @@ function attachAppHandlers() {
   }
   render();
 })();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
