@@ -17,12 +17,12 @@
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C;
+    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#29B6C7;
   }
   html[data-theme="light"]{
     --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
-    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015;
+    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#147885;
   }
   /* Accent theme colors — override --amber (primary) / --cost (secondary
      series) only; amber's own values above are the "amber" accent default.
@@ -814,10 +814,11 @@ const state = {
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
     dashboardShowFuelStats: true, darkMode: true, themeColor: "amber",
-    showSupervisedDashboard: true, showNormalDashboard: true,
+    showSupervisedDashboard: true, showNormalDashboard: true, showDistanceTimeDashboard: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
   dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
+  dashTimePeriod: "week", dashTimeOffset: 0, dashTimeTipIndex: null,
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -1463,6 +1464,7 @@ async function loadData() {
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
   if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
   if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
+  if (state.settings.showDistanceTimeDashboard === undefined) state.settings.showDistanceTimeDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
   if (state.settings.themeColor === undefined) state.settings.themeColor = "amber";
   if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
@@ -1694,12 +1696,13 @@ function dashSupervisedBucketData(bucket) {
   return { dayHours: (minutes - nightMinutes) / 60, nightHours: nightMinutes / 60 };
 }
 function dashNormalBucketData(bucket, perKm) {
-  let distanceKm = 0;
+  let distanceKm = 0, minutes = 0;
   state.trips.forEach(t => {
     if (t.tag === "supervised" || t.date < bucket.from || t.date > bucket.to) return;
     distanceKm += t.distance;
+    minutes += tripMinutes(t);
   });
-  return { distanceKm, cost: perKm != null ? distanceKm * perKm : null };
+  return { distanceKm, cost: perKm != null ? distanceKm * perKm : null, minutes };
 }
 function formatHM(mins) {
   const m = Math.max(0, Math.round(mins));
@@ -1950,7 +1953,7 @@ function renderNormalDashboardCard() {
 
   return `
   <div class="card" style="padding:12px 10px;">
-    <p class="settings-title" style="margin:0 0 10px;">All Driving</p>
+    <p class="settings-title" style="margin:0 0 10px;">Distance and Fuel Cost</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
     ${renderBarChart("norm", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
@@ -1960,8 +1963,42 @@ function renderNormalDashboardCard() {
     </div>
   </div>`;
 }
+// --- Distance and Time card -------------------------------------------------
+function renderDistanceTimeDashboardCard() {
+  if (state.settings.showDistanceTimeDashboard === false) return "";
+
+  const period = state.dashTimePeriod, offset = state.dashTimeOffset;
+  const range = dashRange(period, offset);
+  const buckets = dashBuckets(period, range);
+  const bucketData = buckets.map(b => dashNormalBucketData(b, null));
+  const elapsedDays = Math.max(1, daysElapsedInRange(range));
+
+  const seriesA = bucketData.map(d => kmToDisplay(d.distanceKm));
+  const seriesB = bucketData.map(d => d.minutes / 60);
+  buckets.forEach((b, i) => {
+    b.tip = `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}  ·  ${formatHM(seriesB[i] * 60)}`;
+  });
+  const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
+  const totalMinutes = bucketData.reduce((s, d) => s + d.minutes, 0);
+  const avgDistPerDay = kmToDisplay(totalDistanceKm) / elapsedDays;
+  const avgTimePerDay = totalMinutes / elapsedDays;
+  const avgBucketA = elapsedBucketAvg(buckets, seriesA);
+  const avgBucketB = elapsedBucketAvg(buckets, seriesB);
+
+  return `
+  <div class="card" style="padding:12px 10px;">
+    <p class="settings-title" style="margin:0 0 10px;">Distance and Time</p>
+    ${dashSegAndNav("time", period, offset, range, earliestTripDateFor("normal"))}
+    ${renderBarChart("time", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--time)", 110, state.dashTimeTipIndex, 0.65)}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
+    <div class="legend2">
+      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
+      <div class="item"><span class="sw" style="background:var(--time);"></span><span class="lbl">Time</span><span class="avgval mono">${formatHM(avgTimePerDay)}/day</span></div>
+    </div>
+  </div>`;
+}
 function renderDashboardSection() {
-  return `${renderSupervisedDashboardCard()}${renderNormalDashboardCard()}`;
+  return `${renderSupervisedDashboardCard()}${renderNormalDashboardCard()}${renderDistanceTimeDashboardCard()}`;
 }
 
 // --- Supervised (learner) licence hour tracking -----------------------------
@@ -2461,12 +2498,16 @@ function renderSettingsTab() {
   <div class="card">
     <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
     <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show All Driving</span>
+      <span class="settings-desc" style="margin:0;">Show Distance and Fuel Cost</span>
       <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
-    <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "10px" : "0"};">
-      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Show Fuel Cost</span>
       <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "10px" : "0"};">
+      <span class="settings-desc" style="margin:0;">Show Distance and Time</span>
+      <div id="showDistanceTimeDashboardSwitch" class="switch ${state.settings.showDistanceTimeDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     ${state.settings.driveType === "supervised" ? `
     <div class="switch-row" style="margin-bottom:0;">
@@ -3496,27 +3537,32 @@ function attachAppHandlers() {
     if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
       btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
     });
+    const dashChartKeys = {
+      sup: { period: "dashSupPeriod", offset: "dashSupOffset", tip: "dashSupTipIndex" },
+      norm: { period: "dashNormPeriod", offset: "dashNormOffset", tip: "dashNormTipIndex" },
+      time: { period: "dashTimePeriod", offset: "dashTimeOffset", tip: "dashTimeTipIndex" },
+    };
     document.querySelectorAll(".dashperiod").forEach(btn => {
       btn.onclick = () => {
-        const chart = btn.dataset.chart, period = btn.dataset.period;
-        if (chart === "sup") { state.dashSupPeriod = period; state.dashSupOffset = 0; state.dashSupTipIndex = null; }
-        else { state.dashNormPeriod = period; state.dashNormOffset = 0; state.dashNormTipIndex = null; }
+        const keys = dashChartKeys[btn.dataset.chart];
+        state[keys.period] = btn.dataset.period;
+        state[keys.offset] = 0;
+        state[keys.tip] = null;
         render();
       };
     });
     document.querySelectorAll(".dashnav").forEach(btn => {
       btn.onclick = () => {
-        const chart = btn.dataset.chart, dir = parseInt(btn.dataset.dir, 10);
-        if (chart === "sup") { state.dashSupOffset += dir; state.dashSupTipIndex = null; }
-        else { state.dashNormOffset += dir; state.dashNormTipIndex = null; }
+        const keys = dashChartKeys[btn.dataset.chart], dir = parseInt(btn.dataset.dir, 10);
+        state[keys.offset] += dir;
+        state[keys.tip] = null;
         render();
       };
     });
     document.querySelectorAll(".col").forEach(col => {
       col.onclick = () => {
-        const chart = col.dataset.chart, i = parseInt(col.dataset.i, 10);
-        if (chart === "sup") state.dashSupTipIndex = state.dashSupTipIndex === i ? null : i;
-        else state.dashNormTipIndex = state.dashNormTipIndex === i ? null : i;
+        const keys = dashChartKeys[col.dataset.chart], i = parseInt(col.dataset.i, 10);
+        state[keys.tip] = state[keys.tip] === i ? null : i;
         render();
       };
     });
@@ -3786,6 +3832,7 @@ function attachAppHandlers() {
       ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
       ["showSupervisedDashboardSwitch", "showSupervisedDashboard"],
       ["showNormalDashboardSwitch", "showNormalDashboard"],
+      ["showDistanceTimeDashboardSwitch", "showDistanceTimeDashboard"],
     ].forEach(([id, key]) => {
       const el = document.getElementById(id);
       if (el) el.onclick = async () => {
