@@ -9,23 +9,25 @@
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C;
+    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C;
   }
   html[data-theme="light"]{
     --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
-    --amber:#B9740F; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015;
+    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015;
   }
   /* Accent theme colors — override --amber (primary) / --cost (secondary
-     series) only; amber's own values above are the "amber" accent default. */
-  html[data-theme="dark"][data-accent="emerald"]{--amber:#3ECF8E; --cost:#197E4F;}
-  html[data-theme="light"][data-accent="emerald"]{--amber:#1C8F5B; --cost:#0F5C34;}
-  html[data-theme="dark"][data-accent="violet"]{--amber:#A78BFA; --cost:#634AAE;}
-  html[data-theme="light"][data-accent="violet"]{--amber:#6B46C1; --cost:#4A3480;}
-  html[data-theme="dark"][data-accent="rose"]{--amber:#F2739B; --cost:#9B335A;}
-  html[data-theme="light"][data-accent="rose"]{--amber:#C2185B; --cost:#7A1F42;}
-  html[data-theme="dark"][data-accent="teal"]{--amber:#3BC9DB; --cost:#186E7E;}
-  html[data-theme="light"][data-accent="teal"]{--amber:#0E7C8C; --cost:#0B4D57;}
+     series) only; amber's own values above are the "amber" accent default.
+     --amber-rgb mirrors --amber as bare R,G,B channels so tint backgrounds
+     (rgba(var(--amber-rgb), .14) etc.) can react to the accent too. */
+  html[data-theme="dark"][data-accent="emerald"]{--amber:#3ECF8E; --amber-rgb:62,207,142; --cost:#197E4F;}
+  html[data-theme="light"][data-accent="emerald"]{--amber:#1C8F5B; --amber-rgb:28,143,91; --cost:#0F5C34;}
+  html[data-theme="dark"][data-accent="violet"]{--amber:#A78BFA; --amber-rgb:167,139,250; --cost:#634AAE;}
+  html[data-theme="light"][data-accent="violet"]{--amber:#6B46C1; --amber-rgb:107,70,193; --cost:#4A3480;}
+  html[data-theme="dark"][data-accent="rose"]{--amber:#F2739B; --amber-rgb:242,115,155; --cost:#9B335A;}
+  html[data-theme="light"][data-accent="rose"]{--amber:#C2185B; --amber-rgb:194,24,91; --cost:#7A1F42;}
+  html[data-theme="dark"][data-accent="teal"]{--amber:#3BC9DB; --amber-rgb:59,201,219; --cost:#186E7E;}
+  html[data-theme="light"][data-accent="teal"]{--amber:#0E7C8C; --amber-rgb:14,124,140; --cost:#0B4D57;}
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text);
@@ -51,7 +53,7 @@
   .odo{display:inline-flex;background:#0B0D10;border:1px solid var(--border);border-radius:8px;
        padding:5px 6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);}
   .odo span{font-size:16px;font-weight:600;color:var(--amber);width:0.85ch;text-align:center;
-            text-shadow:0 0 8px rgba(242,169,59,.45);}
+            text-shadow:0 0 8px rgba(var(--amber-rgb),.45);}
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;
                   justify-content:center;padding:20px;z-index:50;}
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
@@ -104,7 +106,7 @@
   .tag.normal{background:rgba(76,159,112,.15);color:var(--normal);border:1px solid rgba(76,159,112,.3);}
   .tag.supervised{background:rgba(76,159,242,.15);color:var(--blue);border:1px solid rgba(76,159,242,.3);}
   .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
-            background:rgba(242,169,59,.18);color:var(--amber);border:1px solid rgba(242,169,59,.35);
+            background:rgba(var(--amber-rgb),.18);color:var(--amber);border:1px solid rgba(var(--amber-rgb),.35);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
@@ -161,7 +163,7 @@
   .divider{height:1px;background:var(--border);margin:7px 0;}
   .seg{display:flex;gap:5px;margin-bottom:8px;}
   .seg button{flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
-  .seg button.on{background:rgba(242,169,59,.14);border-color:var(--amber);color:var(--amber);}
+  .seg button.on{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
   .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px;}
   .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
   .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
@@ -190,7 +192,7 @@
   .pace-card .txt span{font-size:10.5px;opacity:.85;display:block;margin-top:1px;}
   .toggle2{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:10.5px;flex-shrink:0;align-self:stretch;cursor:pointer;}
   .toggle2 span{padding:4px 10px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;flex:1;}
-  .toggle2 span.on{background:rgba(242,169,59,.14);color:var(--amber);font-weight:600;}
+  .toggle2 span.on{background:rgba(var(--amber-rgb),.14);color:var(--amber);font-weight:600;}
   .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
   .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
   .col{cursor:pointer;}
@@ -1855,7 +1857,7 @@ function renderSupervisedDashboardCard() {
     <div class="kv-line"><span class="k">${pace.label}</span><span class="v mono">${pace.dateDisplay}</span></div>
     <div class="kv-sub">${pace.sub}</div>
     <div class="pacerow">
-      <div class="pace-card" style="background:${rateMin != null ? "rgba(242,169,59,.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(242,169,59,.35)" : "var(--border)"};">
+      <div class="pace-card" style="background:${rateMin != null ? "rgba(var(--amber-rgb),.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(var(--amber-rgb),.35)" : "var(--border)"};">
         <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
           <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
         </span>
