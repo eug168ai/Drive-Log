@@ -16,6 +16,16 @@
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
     --amber:#B9740F; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015;
   }
+  /* Accent theme colors — override --amber (primary) / --cost (secondary
+     series) only; amber's own values above are the "amber" accent default. */
+  html[data-theme="dark"][data-accent="emerald"]{--amber:#3ECF8E; --cost:#197E4F;}
+  html[data-theme="light"][data-accent="emerald"]{--amber:#1C8F5B; --cost:#0F5C34;}
+  html[data-theme="dark"][data-accent="violet"]{--amber:#A78BFA; --cost:#634AAE;}
+  html[data-theme="light"][data-accent="violet"]{--amber:#6B46C1; --cost:#4A3480;}
+  html[data-theme="dark"][data-accent="rose"]{--amber:#F2739B; --cost:#9B335A;}
+  html[data-theme="light"][data-accent="rose"]{--amber:#C2185B; --cost:#7A1F42;}
+  html[data-theme="dark"][data-accent="teal"]{--amber:#3BC9DB; --cost:#186E7E;}
+  html[data-theme="light"][data-accent="teal"]{--amber:#0E7C8C; --cost:#0B4D57;}
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text);
@@ -184,6 +194,13 @@
   .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
   .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
   .col{cursor:pointer;}
+  .swatch-row{display:flex;gap:12px;margin-top:4px;}
+  .swatch-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;}
+  .swatch-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--surface),0 0 0 4px transparent;}
+  .swatch-circle.selected{box-shadow:0 0 0 2px var(--surface),0 0 0 4px currentColor;}
+  .swatch-circle svg{width:14px;height:14px;}
+  .swatch-label{font-size:10px;color:var(--muted);font-weight:600;}
+  .swatch-btn.active .swatch-label{color:var(--text);}
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
@@ -790,7 +807,7 @@ const state = {
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
-    dashboardShowFuelStats: true, darkMode: true,
+    dashboardShowFuelStats: true, darkMode: true, themeColor: "amber",
     showSupervisedDashboard: true, showNormalDashboard: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
@@ -860,6 +877,7 @@ const icons = {
   fuelPump: `<svg class="icon icon-fuel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
   moon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
   chart: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="14" width="4" height="6" rx="1"/></svg>`,
+  palette: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 0-18c4.5 0 8 3 8 6.5 0 2-1.5 3.5-3.5 3.5H15a1.5 1.5 0 0 0-1 2.6c.4.4.6.9.6 1.4a3 3 0 0 1-2.6 3z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1345,8 +1363,16 @@ async function storageDelete(key) {
   } catch {}
 }
 
+const THEME_COLORS = [
+  { key: "amber", label: "Amber", swatch: "#F2A93B" },
+  { key: "emerald", label: "Emerald", swatch: "#3ECF8E" },
+  { key: "violet", label: "Violet", swatch: "#A78BFA" },
+  { key: "rose", label: "Rose", swatch: "#F2739B" },
+  { key: "teal", label: "Teal", swatch: "#3BC9DB" },
+];
 function applyTheme() {
   document.documentElement.setAttribute("data-theme", state.settings.darkMode === false ? "light" : "dark");
+  document.documentElement.setAttribute("data-accent", state.settings.themeColor || "amber");
 }
 function render() {
   applyTheme();
@@ -1429,6 +1455,7 @@ async function loadData() {
   if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
   if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
+  if (state.settings.themeColor === undefined) state.settings.themeColor = "amber";
   if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
@@ -2386,6 +2413,22 @@ function renderSettingsTab() {
     <div class="switch-row" style="margin:0;">
       <p class="settings-title" style="margin:0;">${icons.moon} Dark Mode</p>
       <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.palette} Theme Color</p>
+    <div class="swatch-row">
+      ${THEME_COLORS.map(c => {
+        const selected = (state.settings.themeColor || "amber") === c.key;
+        return `
+        <button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}">
+          <span class="swatch-circle ${selected ? "selected" : ""}" style="background:${c.swatch};color:${c.swatch};">
+            ${selected ? icons.check.replace('class="icon"', 'class="icon" style="color:#14171C;"') : ""}
+          </span>
+          <span class="swatch-label">${c.label}</span>
+        </button>`;
+      }).join("")}
     </div>
   </div>
 
@@ -3731,6 +3774,15 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
+
+    document.querySelectorAll("[data-themecolor]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.themeColor = btn.dataset.themecolor;
+        applyTheme();
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
 
     const supTargetDateInput = document.getElementById("supTargetDateInput");
     if (supTargetDateInput) supTargetDateInput.onchange = async (e) => {
