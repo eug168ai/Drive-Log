@@ -148,32 +148,32 @@
   .history-actions .chip{padding:5px 8px;}
 
   /* Log-tab dashboard (bar-chart cards) */
-  .divider{height:1px;background:var(--border);margin:14px 0;}
-  .seg{display:flex;gap:5px;margin-bottom:14px;}
+  .divider{height:1px;background:var(--border);margin:7px 0;}
+  .seg{display:flex;gap:5px;margin-bottom:8px;}
   .seg button{flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
   .seg button.on{background:rgba(242,169,59,.14);border-color:var(--amber);color:var(--amber);}
-  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:16px;}
+  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px;}
   .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
   .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
   svg.chart{width:100%;display:block;overflow:visible;}
   .daylabels{position:relative;height:13px;margin-top:2px;}
   .daylabels span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--faint);white-space:nowrap;}
-  .legend2{display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;}
+  .legend2{display:flex;gap:20px;margin-top:6px;flex-wrap:wrap;}
   .legend2 .item{display:flex;align-items:baseline;gap:6px;}
   .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
   .legend2 .lbl{font-size:11px;color:var(--muted);}
   .legend2 .avgval{font-size:11px;color:var(--text);font-weight:600;}
-  .pill-row{margin-bottom:12px;}
+  .pill-row{margin-bottom:7px;}
   .pill-row:last-child{margin-bottom:0;}
-  .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;}
+  .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 3px;}
   .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;isolation:isolate;}
   .pill-fill{position:absolute;inset:0;border-radius:999px;}
   .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
-  .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:4px;}
+  .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px;}
   .kv-line .k{color:var(--muted);}
   .kv-line .v{color:var(--text);font-weight:600;}
-  .kv-sub{font-size:10.5px;color:var(--faint);margin:0 0 10px;}
-  .pacerow{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .kv-sub{font-size:10.5px;color:var(--faint);margin:0 0 6px;}
+  .pacerow{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
   .pace-card{flex:1;min-width:0;border-radius:10px;padding:8px 11px;border:1px solid;display:flex;align-items:flex-start;gap:8px;}
   .pace-card .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0;}
   .pace-card .txt b{display:block;font-size:12.5px;}
@@ -1649,7 +1649,7 @@ function renderChartTip(x, topY, text, w) {
 // a handful of buckets (e.g. a 3-bar quarter view) doesn't turn into a few
 // giant slabs — instead the capped bars spread out evenly across the width.
 function dashColumnLayout(n) {
-  const w = 390, sidePad = 8, maxBarW = 56;
+  const w = 390, sidePad = 6, maxBarW = 56;
   const minGap = n > 15 ? 1 : n > 8 ? 2 : 5;
   const availW = w - sidePad * 2;
   const barW = Math.min(maxBarW, (availW - minGap * Math.max(0, n - 1)) / n);
@@ -1768,7 +1768,7 @@ function renderSupervisedDashboardCard() {
   const avgB = seriesB.reduce((s, v) => s + v, 0) / (seriesB.length || 1);
 
   return `
-  <div class="card" style="padding:14px 16px;">
+  <div class="card" style="padding:12px 10px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">Supervised Driving</p>
       ${completed ? `<span class="connected-pill">Completed</span>` : ""}
@@ -1829,7 +1829,7 @@ function renderNormalDashboardCard() {
   const avgCostPerDay = totalCost != null ? totalCost / days : null;
 
   return `
-  <div class="card" style="padding:14px 16px;">
+  <div class="card" style="padding:12px 10px;">
     <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
     ${dashSegAndNav("norm", period, offset, range)}
     ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex)}
