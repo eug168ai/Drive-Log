@@ -1453,18 +1453,28 @@ async function loadData() {
 
 // --- Odometer reconciliation reminders -----------------------------------
 const ODOMETER_FREQUENCY_DAYS = { monthly: 30, quarterly: 91, biannual: 182, yearly: 365 };
+// Most recent odometer reading from either an explicit "Enter Now" entry or
+// a refuel log's odometer field — whichever is more recent counts as the
+// last reconciliation, so a logged refuel resets the reminder clock too.
+function lastKnownOdometerDate() {
+  let latest = (state.settings.lastOdometerReading && state.settings.lastOdometerReading.date) || null;
+  state.fuelFillups.forEach(f => {
+    if (f.odometer != null && !isNaN(f.odometer) && (!latest || f.date > latest)) latest = f.date;
+  });
+  return latest;
+}
 function odometerDueDate() {
-  const last = state.settings.lastOdometerReading;
-  if (!last || !last.date) return null; // never entered — due immediately
+  const lastDate = lastKnownOdometerDate();
+  if (!lastDate) return null; // never entered — due immediately
   const days = ODOMETER_FREQUENCY_DAYS[state.settings.odometerFrequency] || 91;
-  const due = new Date(`${last.date}T00:00:00`);
+  const due = new Date(`${lastDate}T00:00:00`);
   due.setDate(due.getDate() + days);
   return due;
 }
 function checkOdometerDue() {
   if (state.settings.odometerReminders === false) return;
-  const last = state.settings.lastOdometerReading;
-  if (!last) {
+  const lastDate = lastKnownOdometerDate();
+  if (!lastDate) {
     // Never entered a reading — don't nag a brand-new install with zero drives yet.
     if (state.trips.length === 0) return;
     state.odometerPrompt = { value: "" };
@@ -2438,22 +2448,6 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <div class="switch-row" style="margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
-      <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="settings-inline-controls">
-      <select id="odometerFrequencySelect" class="input" ${state.settings.odometerReminders === false ? "disabled" : ""}>
-        <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
-        <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
-        <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
-        <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
-      </select>
-      <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
-    </div>
-  </div>
-
-  <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.fuelPump} Fuel Cost Tracking (Beta)</p>
       <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
@@ -2524,6 +2518,22 @@ function renderSettingsTab() {
       ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
     `}
     `}
+  </div>
+
+  <div class="card">
+    <div class="switch-row" style="margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
+      <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="settings-inline-controls">
+      <select id="odometerFrequencySelect" class="input" ${state.settings.odometerReminders === false ? "disabled" : ""}>
+        <option value="monthly" ${state.settings.odometerFrequency === "monthly" ? "selected" : ""}>Monthly</option>
+        <option value="quarterly" ${state.settings.odometerFrequency === "quarterly" ? "selected" : ""}>Every 3 months</option>
+        <option value="biannual" ${state.settings.odometerFrequency === "biannual" ? "selected" : ""}>Every 6 months</option>
+        <option value="yearly" ${state.settings.odometerFrequency === "yearly" ? "selected" : ""}>Yearly</option>
+      </select>
+      <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
+    </div>
   </div>
 
   <div class="card">
@@ -2925,10 +2935,11 @@ const REPORT_FIELD_DEFS = [
   { v: "weather", l: "Weather" }, { v: "traffic", l: "Traffic density" },
   { v: "supervisorName", l: "Supervisor name" },
 ];
+const REPORT_CONDITION_FIELDS = ["timeOfDay", "roadType", "weather", "traffic", "supervisorName"];
 const REPORT_DEFAULTS = {
-  normal: ["date", "startPoint", "endPoint", "distance", "duration"],
-  work: ["date", "startPoint", "endPoint", "distance", "duration", "purpose", "fuelCost"],
-  supervised: ["date", "startTime", "endTime", "duration", "distance", "timeOfDay", "supervisorName"],
+  normal: ["date", "startPoint", "endPoint", "distance"],
+  work: ["date", "startPoint", "endPoint", "distance", "purpose", "fuelCost"],
+  supervised: ["date", "startTime", "endTime", "duration", "distance", ...REPORT_CONDITION_FIELDS],
 };
 function renderReportModal() {
   const r = state.reportForm;
@@ -2967,7 +2978,7 @@ function renderReportModal() {
 
       <label class="field-label">Fields</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-        ${REPORT_FIELD_DEFS.map(fd => `<button type="button" class="chip ${r.fields.includes(fd.v) ? "active" : ""}" data-reportfield="${fd.v}">${fd.l}</button>`).join("")}
+        ${REPORT_FIELD_DEFS.filter(fd => !REPORT_CONDITION_FIELDS.includes(fd.v) || (r.type === "custom" ? r.categories.includes("supervised") : r.type === "supervised")).map(fd => `<button type="button" class="chip ${r.fields.includes(fd.v) ? "active" : ""}" data-reportfield="${fd.v}">${fd.l}</button>`).join("")}
       </div>
       <p class="settings-desc" style="margin:0 0 18px;">Defaults are pre-selected for the report type — tap any field to add or remove it.</p>
 
