@@ -24,7 +24,7 @@
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px;}
   .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
-  .stats-row{display:flex;align-items:flex-end;gap:8px;}
+  .stats-row{display:flex;align-items:flex-start;gap:8px;}
   .stat-block{display:flex;flex-direction:column;align-items:center;}
   .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px;
             display:flex;align-items:center;justify-content:center;}
@@ -2106,7 +2106,7 @@ function renderApp() {
           <p class="odo-label">Total time</p>
           ${odometerTime(totalMinutes())}
         </div>
-        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;align-self:flex-start;margin-top:-14px;" title="Settings">${icons.gear}</button>
+        <button id="settingsBtn" class="icon-btn" style="padding:0;" title="Settings">${icons.gear}</button>
       </div>
     </div>
 
