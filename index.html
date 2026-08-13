@@ -168,6 +168,7 @@
   .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 3px;}
   .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;isolation:isolate;}
   .pill-fill{position:absolute;inset:0;border-radius:999px;}
+  .pill-left{position:relative;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
   .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
   .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px;}
   .kv-line .k{color:var(--muted);}
@@ -783,7 +784,7 @@ const state = {
   loginPin: "",
   loginEnterPin: "",
   settings: {
-    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: true, requirePin: false,
+    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: true, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
@@ -1405,11 +1406,11 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: true, requirePin: false };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
-  if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = true;
+  if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
@@ -1599,7 +1600,7 @@ function dashRange(period, offset) {
 function daysInRange(range) { return Math.round((range.end - range.start) / 86400000) + 1; }
 function dashRangeLabel(period, range) {
   if (period === "week" || period === "month" && range.count <= 7)
-    return `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+    return `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
   if (period === "month") return range.start.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   if (period === "quarter") return `Q${Math.floor(range.start.getMonth() / 3) + 1} ${range.start.getFullYear()}`;
   return `${range.start.getFullYear()}`;
@@ -1699,9 +1700,13 @@ function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, 
     const va = seriesA[i] || 0, vb = seriesB[i];
     const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH : 0;
     const yA = baseline - hA, yB = baseline - hB;
-    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}"/>` : "";
+    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}" fill-opacity=".82"/>` : "";
+    // A's own cap stays on top so series A is always readable even when B
+    // is proportional to A and would otherwise fully cover it at the same height.
+    const capH = Math.min(3, hA);
+    const cap = hA > 0 ? `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${capH.toFixed(1)}" rx="1.5" fill="${colorA}"/>` : "";
     if (i === tipIndex) tip = renderChartTip(x + barW / 2, Math.min(yA, vb != null ? yB : yA), b.tip, w);
-    return `<g class="col" data-i="${i}" data-chart="${chartId}"><rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>${rectB}</g>`;
+    return `<g class="col" data-i="${i}" data-chart="${chartId}"><rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>${rectB}${cap}</g>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
     <line x1="0" y1="${yAvgA.toFixed(1)}" x2="${w}" y2="${yAvgA.toFixed(1)}" stroke="${colorA}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>
@@ -1710,13 +1715,21 @@ function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, 
     ${tip}
   </svg>`;
 }
-function dashSegAndNav(chartId, period, offset, range) {
+// Earliest logged-drive date for a chart's trip subset, so range navigation
+// can't page back into history with no drives in it at all.
+function earliestTripDateFor(tag) {
+  const trips = tag === "supervised" ? state.trips.filter(t => t.tag === "supervised") : state.trips.filter(t => t.tag !== "supervised");
+  if (!trips.length) return null;
+  return trips.reduce((min, t) => (t.date < min ? t.date : min), trips[0].date);
+}
+function dashSegAndNav(chartId, period, offset, range, earliestDate) {
+  const prevDisabled = earliestDate != null && toDateStr(range.start) <= earliestDate;
   return `
     <div class="seg">
       ${["week", "month", "quarter", "year"].map(p => `<button class="dashperiod ${p === period ? "on" : ""}" data-chart="${chartId}" data-period="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`).join("")}
     </div>
     <div class="rangenav">
-      <button class="dashnav" data-chart="${chartId}" data-dir="-1">‹</button>
+      <button class="dashnav" data-chart="${chartId}" data-dir="-1" ${prevDisabled ? "disabled" : ""}>‹</button>
       <span class="range">${dashRangeLabel(period, range)}</span>
       <button class="dashnav" data-chart="${chartId}" data-dir="1" ${offset >= 0 ? "disabled" : ""}>›</button>
     </div>`;
@@ -1800,16 +1813,24 @@ function renderSupervisedDashboardCard() {
 
     <div class="pill-row">
       <div class="hdr">Day Hours</div>
-      <div class="pill-track"><div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div><span class="pill-count">${formatHM((sup.hours - sup.nightHours) * 60)} / ${totalTarget}h</span></div>
+      <div class="pill-track">
+        <div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div>
+        <span class="pill-left">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
+        <span class="pill-count">${Math.round(dayPct)}%</span>
+      </div>
     </div>
     <div class="pill-row">
       <div class="hdr">Night Hours</div>
-      <div class="pill-track"><div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div><span class="pill-count">${formatHM(sup.nightHours * 60)} / ${nightTarget}h</span></div>
+      <div class="pill-track">
+        <div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div>
+        <span class="pill-left">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
+        <span class="pill-count">${Math.round(nightPct)}%</span>
+      </div>
     </div>
 
     <div class="divider"></div>
 
-    ${dashSegAndNav("sup", period, offset, range)}
+    ${dashSegAndNav("sup", period, offset, range, earliestTripDateFor("supervised"))}
     ${renderBarChart("sup", buckets, seriesA, seriesB, avgA, avgB, "var(--amber)", "var(--cost)", 90, state.dashSupTipIndex)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
@@ -1841,7 +1862,7 @@ function renderNormalDashboardCard() {
   return `
   <div class="card" style="padding:12px 10px;">
     <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
-    ${dashSegAndNav("norm", period, offset, range)}
+    ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
     ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
