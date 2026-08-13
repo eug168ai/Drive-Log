@@ -156,7 +156,8 @@
   .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
   .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
   svg.chart{width:100%;display:block;overflow:visible;}
-  .daylabels{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-top:2px;}
+  .daylabels{position:relative;height:13px;margin-top:2px;}
+  .daylabels span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--faint);white-space:nowrap;}
   .legend2{display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;}
   .legend2 .item{display:flex;align-items:baseline;gap:6px;}
   .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
@@ -165,9 +166,9 @@
   .pill-row{margin-bottom:12px;}
   .pill-row:last-child{margin-bottom:0;}
   .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;}
-  .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;}
+  .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;isolation:isolate;}
   .pill-fill{position:absolute;inset:0;border-radius:999px;}
-  .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+  .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
   .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:4px;}
   .kv-line .k{color:var(--muted);}
   .kv-line .v{color:var(--text);font-weight:600;}
@@ -782,14 +783,14 @@ const state = {
   loginPin: "",
   loginEnterPin: "",
   settings: {
-    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: false, showSavedAddresses: true,
+    driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: true, requirePin: false,
+    unit: null, learnRoutes: true, showSavedAddresses: true,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
-    dashboardShowFuelStats: false, showDashboard: true, darkMode: true,
+    dashboardShowFuelStats: true, showDashboard: true, darkMode: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
   dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
@@ -1404,14 +1405,14 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
-  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false };
+  state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: true, requirePin: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
   }
-  if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
+  if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = true;
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
-  if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
+  if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
@@ -1421,7 +1422,7 @@ async function loadData() {
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
-  if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = false;
+  if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
   if (state.settings.showDashboard === undefined) state.settings.showDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
   if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
@@ -1564,7 +1565,7 @@ function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).pa
 function dashRange(period, offset) {
   const now = new Date();
   if (period === "week") {
-    const start = new Date(now); start.setDate(now.getDate() - now.getDay() + offset * 7); start.setHours(0, 0, 0, 0);
+    const start = new Date(now); start.setDate(now.getDate() - ((now.getDay() + 6) % 7) + offset * 7); start.setHours(0, 0, 0, 0);
     const end = new Date(start); end.setDate(start.getDate() + 6);
     return { start, end, unit: "day", count: 7 };
   }
@@ -1599,7 +1600,7 @@ function dashBuckets(period, range) {
     for (let i = 0; i < range.count; i++) {
       const d = new Date(range.start); d.setDate(range.start.getDate() + i);
       const ds = toDateStr(d);
-      buckets.push({ from: ds, to: ds, label: period === "week" ? "SMTWTFS"[d.getDay()] : String(d.getDate()) });
+      buckets.push({ from: ds, to: ds, label: period === "week" ? "MTWTFSS"[(d.getDay() + 6) % 7] : String(d.getDate()) });
     }
   } else {
     for (let i = 0; i < range.count; i++) {
@@ -1643,16 +1644,40 @@ function renderChartTip(x, topY, text, w) {
   const ty = Math.max(2, topY - h - 6);
   return `<g class="tip"><rect class="tip-bg" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${textW.toFixed(1)}" height="${h}" rx="5"/><text class="tip-text" x="${(tx + padX).toFixed(1)}" y="${(ty + padY + fontSize - 1).toFixed(1)}">${escAttr(text)}</text></g>`;
 }
+// Shared x-position math for both the bars and their labels, so the two
+// always line up exactly regardless of bucket count. Bar width is capped so
+// a handful of buckets (e.g. a 3-bar quarter view) doesn't turn into a few
+// giant slabs — instead the capped bars spread out evenly across the width.
+function dashColumnLayout(n) {
+  const w = 390, sidePad = 8, maxBarW = 56;
+  const minGap = n > 15 ? 1 : n > 8 ? 2 : 5;
+  const availW = w - sidePad * 2;
+  const barW = Math.min(maxBarW, (availW - minGap * Math.max(0, n - 1)) / n);
+  const gap = n > 1 ? Math.max(minGap, (availW - n * barW) / (n - 1)) : 0;
+  const xs = Array.from({ length: n }, (_, i) => sidePad + i * (barW + gap));
+  return { w, barW, xs };
+}
+// Bucket labels positioned as absolute spans aligned to each bar's exact
+// horizontal center (not flexbox spacing, which can't match capped/spread
+// bar positions once bucket counts get uneven).
+function renderChartLabels(buckets, layout, period) {
+  const n = buckets.length;
+  const thin = period === "month" ? Math.ceil(n / 10) : 1;
+  const items = buckets.map((b, i) => {
+    if (i % thin !== 0) return "";
+    const pct = ((layout.xs[i] + layout.barW / 2) / layout.w) * 100;
+    return `<span style="left:${pct.toFixed(2)}%;">${b.label}</span>`;
+  }).join("");
+  return `<div class="daylabels">${items}</div>`;
+}
 // Two-series overlay bar chart: series B is drawn as a narrower/shorter bar
 // on top of series A, sharing the same baseline, each scaled to its own max
 // so the two stay visually comparable despite different units.
 function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex) {
-  const w = 390, padTop = 10, padBottom = 10;
+  const padTop = 10, padBottom = 10;
   const plotH = height - padTop - padBottom;
   const n = buckets.length;
-  const gap = n > 15 ? 1 : n > 8 ? 2 : 5;
-  const sidePad = 8;
-  const barW = Math.max(2, (w - sidePad * 2 - gap * (n - 1)) / n);
+  const { w, barW, xs } = dashColumnLayout(n);
   const maxA = Math.max(1, ...seriesA);
   const maxB = Math.max(1, ...seriesB.map(v => v || 0));
   const baseline = height - padBottom;
@@ -1660,7 +1685,7 @@ function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, 
   const yAvgB = baseline - (avgB / maxB) * plotH;
   let tip = "";
   const cols = buckets.map((b, i) => {
-    const x = sidePad + i * (barW + gap);
+    const x = xs[i];
     const va = seriesA[i] || 0, vb = seriesB[i];
     const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH : 0;
     const yA = baseline - hA, yB = baseline - hB;
@@ -1755,7 +1780,7 @@ function renderSupervisedDashboardCard() {
       <div class="pace-card" style="background:${rateMin != null ? "rgba(242,169,59,.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(242,169,59,.35)" : "var(--border)"};">
         <span class="dot" style="background:${rateMin != null ? "var(--amber)" : "var(--muted)"};"></span>
         <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
-          <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} needed` : "—"}</b>
+          <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
         </span>
       </div>
       <div class="toggle2" id="dashSupPaceToggle"><span class="${paceUnit === "day" ? "on" : ""}" data-paceunit="day">Per Day</span><span class="${paceUnit === "week" ? "on" : ""}" data-paceunit="week">Per Week</span></div>
@@ -1765,18 +1790,18 @@ function renderSupervisedDashboardCard() {
 
     <div class="pill-row">
       <div class="hdr">Day Hours</div>
-      <div class="pill-track"><div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div><span class="pill-count" style="color:var(--amber);">${formatHM((sup.hours - sup.nightHours) * 60)} / ${totalTarget}h</span></div>
+      <div class="pill-track"><div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div><span class="pill-count">${formatHM((sup.hours - sup.nightHours) * 60)} / ${totalTarget}h</span></div>
     </div>
     <div class="pill-row">
       <div class="hdr">Night Hours</div>
-      <div class="pill-track"><div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div><span class="pill-count" style="color:var(--cost);">${formatHM(sup.nightHours * 60)} / ${nightTarget}h</span></div>
+      <div class="pill-track"><div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div><span class="pill-count">${formatHM(sup.nightHours * 60)} / ${nightTarget}h</span></div>
     </div>
 
     <div class="divider"></div>
 
     ${dashSegAndNav("sup", period, offset, range)}
     ${renderBarChart("sup", buckets, seriesA, seriesB, avgA, avgB, "var(--amber)", "var(--cost)", 90, state.dashSupTipIndex)}
-    ${range.unit === "day" && period === "week" ? `<div class="daylabels">${buckets.map(b => `<span>${b.label}</span>`).join("")}</div>` : ""}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
       <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Night hours</span><span class="avgval mono">${formatHM(avgB * 60)} avg</span></div>
@@ -1808,7 +1833,7 @@ function renderNormalDashboardCard() {
     <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
     ${dashSegAndNav("norm", period, offset, range)}
     ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex)}
-    ${range.unit === "day" && period === "week" ? `<div class="daylabels">${buckets.map(b => `<span>${b.label}</span>`).join("")}</div>` : ""}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
       ${avgCostPerDay != null ? `<div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Cost</span><span class="avgval mono">${formatCurrency(avgCostPerDay)}/day</span></div>` : ""}
@@ -2304,6 +2329,10 @@ function renderSettingsTab() {
       <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <div class="switch-row" style="margin:10px 0 0;">
+      <span class="settings-desc" style="margin:0;">Show Drive Type</span>
+      <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin:10px 0 0;">
       <span class="settings-desc" style="margin:0;">Show Dashboard</span>
       <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
@@ -2318,13 +2347,7 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span class="settings-desc">Show in Log Screen</span>
-        <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
-      </div>
-    </div>
+    <p class="settings-title" style="margin:0 0 10px;">${icons.car} Drive Type</p>
     <div class="toggle-row" style="margin-bottom:12px;">
       <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
       <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
@@ -2354,7 +2377,7 @@ function renderSettingsTab() {
 
       <label class="field-label" style="margin-top:12px;">Target Completion Date</label>
       <input id="supTargetDateInput" type="date" class="input mono" value="${escAttr(state.settings.supervisedTargetDate || "")}" />
-      <p class="settings-desc" style="margin-top:6px;">Optional — leave blank and the dashboard will project a completion date from your current average pace instead.</p>
+      <p class="settings-desc" style="margin-top:6px;">Optional — leave blank to project a date from your current pace.</p>
     </div>
     ` : ""}
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
