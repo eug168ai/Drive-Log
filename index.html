@@ -1619,7 +1619,7 @@ function tripMinutes(t) {
 function totalMinutes() { return state.trips.reduce((s, t) => s + tripMinutes(t), 0); }
 function formatDuration(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
-  return `${h}h ${m}m`;
+  return h === 0 ? `${m}m` : `${h}h ${m}m`;
 }
 
 // --- Log-screen dashboard (Supervised Driving / All Driving bar charts) --
@@ -1716,7 +1716,8 @@ function dashNormalBucketData(bucket, perKm) {
 }
 function formatHM(mins) {
   const m = Math.max(0, Math.round(mins));
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
+  const h = Math.floor(m / 60);
+  return h === 0 ? `${m % 60}m` : `${h}h ${m % 60}m`;
 }
 // Server-rendered (no DOM measurement) click-to-reveal tooltip: estimates its
 // own text width from character count so it can be positioned purely from
