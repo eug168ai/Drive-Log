@@ -791,7 +791,7 @@ const state = {
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
-    dashboardShowFuelStats: true, showDashboard: true, darkMode: true,
+    dashboardShowFuelStats: true, darkMode: true,
     showSupervisedDashboard: true, showNormalDashboard: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
@@ -1427,7 +1427,6 @@ async function loadData() {
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
-  if (state.settings.showDashboard === undefined) state.settings.showDashboard = true;
   if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
   if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
@@ -1686,37 +1685,34 @@ function renderChartLabels(buckets, layout, period) {
   }).join("");
   return `<div class="daylabels">${items}</div>`;
 }
-// Two-series grouped bar chart: series A and B render as separate,
-// side-by-side sub-bars per bucket (not stacked/overlaid), each scaled to
-// its own max — so both stay clearly visible even when the two series are
-// proportional to each other (e.g. cost = distance × a fixed rate), which
-// would make same-rectangle overlays collapse into a single indistinguishable
-// shape.
-function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex) {
+// Two-series overlay bar chart: both series share the same column, drawn
+// from the same baseline. Series B is scaled by `bFactor` (< 1 shrinks it
+// relative to its own max) so it reads as visually "smaller" than A rather
+// than risking an exact-height match — and whichever of the two is shorter
+// for a given bucket is drawn last (in front) so it always stays visible,
+// even on the rare bucket where the shrink still isn't enough.
+function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex, bFactor) {
   const padTop = 10, padBottom = 10;
   const plotH = height - padTop - padBottom;
   const n = buckets.length;
   const { w, barW, xs } = dashColumnLayout(n);
-  const hasB = seriesB.some(v => v != null);
-  const subGap = hasB ? Math.max(2, barW * 0.12) : 0;
-  const subW = hasB ? (barW - subGap) / 2 : barW;
+  const factor = bFactor || 1;
   const maxA = Math.max(1, ...seriesA);
   const maxB = Math.max(1, ...seriesB.map(v => v || 0));
   const baseline = height - padBottom;
-  // Nudged apart by a fixed small amount so the two average lines never
-  // fully coincide even when avgA/maxA and avgB/maxB work out identical.
-  const yAvgA = baseline - (avgA / maxA) * plotH - 1.2;
-  const yAvgB = baseline - (avgB / maxB) * plotH + 1.2;
+  const yAvgA = baseline - (avgA / maxA) * plotH;
+  const yAvgB = baseline - (avgB / maxB) * plotH * factor;
   let tip = "";
   const cols = buckets.map((b, i) => {
     const x = xs[i];
     const va = seriesA[i] || 0, vb = seriesB[i];
-    const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH : 0;
+    const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH * factor : 0;
     const yA = baseline - hA, yB = baseline - hB;
-    const rectA = `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${subW.toFixed(1)}" height="${hA.toFixed(1)}" rx="2.5" fill="${colorA}"/>`;
-    const rectB = vb != null ? `<rect x="${(x + subW + subGap).toFixed(1)}" y="${yB.toFixed(1)}" width="${subW.toFixed(1)}" height="${hB.toFixed(1)}" rx="2.5" fill="${colorB}"/>` : "";
+    const rectA = `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>`;
+    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}"/>` : "";
+    const ordered = vb != null && hA <= hB ? rectB + rectA : rectA + rectB;
     if (i === tipIndex) tip = renderChartTip(x + barW / 2, Math.min(yA, vb != null ? yB : yA), b.tip, w);
-    return `<g class="col" data-i="${i}" data-chart="${chartId}">${rectA}${rectB}</g>`;
+    return `<g class="col" data-i="${i}" data-chart="${chartId}">${ordered}</g>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
     <line x1="0" y1="${yAvgA.toFixed(1)}" x2="${w}" y2="${yAvgA.toFixed(1)}" stroke="${colorA}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>
@@ -1826,16 +1822,16 @@ function renderSupervisedDashboardCard() {
       <div class="hdr">Day Hours</div>
       <div class="pill-track">
         <div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div>
-        <span class="pill-left">${Math.round(dayPct)}%</span>
-        <span class="pill-count">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
+        <span class="pill-left">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
+        <span class="pill-count">${Math.round(dayPct)}%</span>
       </div>
     </div>
     <div class="pill-row">
       <div class="hdr">Night Hours</div>
       <div class="pill-track">
         <div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div>
-        <span class="pill-left">${Math.round(nightPct)}%</span>
-        <span class="pill-count">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
+        <span class="pill-left">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
+        <span class="pill-count">${Math.round(nightPct)}%</span>
       </div>
     </div>
 
@@ -1875,7 +1871,7 @@ function renderNormalDashboardCard() {
   <div class="card" style="padding:12px 10px;">
     <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
-    ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex)}
+    ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
@@ -1884,7 +1880,6 @@ function renderNormalDashboardCard() {
   </div>`;
 }
 function renderDashboardSection() {
-  if (state.settings.showDashboard === false) return "";
   return `${renderSupervisedDashboardCard()}${renderNormalDashboardCard()}`;
 }
 
@@ -2375,20 +2370,16 @@ function renderSettingsTab() {
   <div class="card">
     <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
     <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
-      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
-      <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin-bottom:10px;">
       <span class="settings-desc" style="margin:0;">Show Normal Driving</span>
       <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
-    <div class="switch-row">
+    <div class="switch-row" style="margin-bottom:10px;">
       <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
       <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row">
+      <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
+      <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
   </div>
 
@@ -3700,7 +3691,6 @@ function attachAppHandlers() {
     };
     [
       ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
-      ["showDashboardSwitch", "showDashboard"],
       ["showSupervisedDashboardSwitch", "showSupervisedDashboard"],
       ["showNormalDashboardSwitch", "showNormalDashboard"],
     ].forEach(([id, key]) => {
