@@ -1893,12 +1893,36 @@ function renderSupervisedDashboardCard() {
 }
 // --- Normal Driving card -----------------------------------------------------
 function renderNormalDashboardCard() {
-  if (state.settings.showNormalDashboard === false) return "";
+  const showFull = state.settings.showNormalDashboard !== false;
   const perKm = state.settings.dashboardShowFuelStats ? fuelCostPerKm() : null;
+  const showCostOnly = !showFull && perKm != null;
+  if (!showFull && !showCostOnly) return "";
+
   const period = state.dashNormPeriod, offset = state.dashNormOffset;
   const range = dashRange(period, offset);
   const buckets = dashBuckets(period, range);
   const bucketData = buckets.map(b => dashNormalBucketData(b, perKm));
+  const elapsedDays = Math.max(1, daysElapsedInRange(range));
+
+  if (showCostOnly) {
+    const seriesCost = bucketData.map(d => d.cost || 0);
+    const emptySeries = buckets.map(() => null);
+    buckets.forEach((b, i) => { b.tip = `${b.label}  ·  ${formatCurrency(seriesCost[i])}`; });
+    const totalCost = bucketData.reduce((s, d) => s + (d.cost || 0), 0);
+    const avgCostPerDay = totalCost / elapsedDays;
+    const avgBucketCost = elapsedBucketAvg(buckets, seriesCost);
+    return `
+    <div class="card" style="padding:12px 10px;">
+      <p class="settings-title" style="margin:0 0 10px;">Fuel Cost</p>
+      ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
+      ${renderBarChart("norm", buckets, seriesCost, emptySeries, avgBucketCost, 0, "var(--cost)", "var(--cost)", 110, state.dashNormTipIndex)}
+      ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
+      <div class="legend2">
+        <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Cost</span><span class="avgval mono">${formatCurrency(avgCostPerDay)}/day</span></div>
+      </div>
+    </div>`;
+  }
+
   const seriesA = bucketData.map(d => kmToDisplay(d.distanceKm));
   const seriesB = perKm != null ? bucketData.map(d => d.cost) : buckets.map(() => null);
   buckets.forEach((b, i) => {
@@ -1908,7 +1932,6 @@ function renderNormalDashboardCard() {
   });
   const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
   const totalCost = perKm != null ? bucketData.reduce((s, d) => s + (d.cost || 0), 0) : null;
-  const elapsedDays = Math.max(1, daysElapsedInRange(range));
   const avgDistPerDay = kmToDisplay(totalDistanceKm) / elapsedDays;
   const avgCostPerDay = totalCost != null ? totalCost / elapsedDays : null;
   const avgBucketA = elapsedBucketAvg(buckets, seriesA);
@@ -2430,16 +2453,16 @@ function renderSettingsTab() {
       <span class="settings-desc" style="margin:0;">Show Normal Driving</span>
       <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
-    <div class="switch-row" style="margin-bottom:${state.settings.showNormalDashboard === false ? "4" : "10"}px;">
+    <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "0" : "10px"};">
       <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
       <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
     </div>
-    ${state.settings.showNormalDashboard === false ? `<p class="settings-desc" style="margin:0 0 10px;">Shown inside Normal Driving — turn that back on to see it.</p>` : ""}
-    <div class="switch-row" style="margin-bottom:${state.settings.driveType !== "supervised" ? "4px" : "0"};">
+    ${state.settings.driveType === "supervised" ? `
+    <div class="switch-row">
       <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
       <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
-    ${state.settings.driveType !== "supervised" ? `<p class="settings-desc" style="margin:0;">Only appears when Drive Type (below) is set to Supervised.</p>` : ""}
+    ` : ""}
   </div>
 
   <div class="card">
