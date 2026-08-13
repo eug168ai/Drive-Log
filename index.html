@@ -764,7 +764,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
   const token = await getFreshGoogleToken();
   const row = [[
     trip.date, trip.startTime, trip.endTime, Number(trip.distance).toFixed(1),
-    trip.startPoint, trip.endPoint, trip.tag === "work" ? "Work" : trip.tag === "supervised" ? "Supervised" : "Normal",
+    trip.startPoint, trip.endPoint, labelFor(DRIVE_TYPES, trip.tag),
     trip.timeOfDay ? (trip.timeOfDay === "day" ? "Daytime" : "Nighttime") : "",
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
@@ -2242,8 +2242,8 @@ function renderLogTab() {
     ${state.settings.showDriveTypeOnLog ? `
     <label class="field-label">Drive Type</label>
     <div class="toggle-row" style="margin-bottom:16px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
     ` : ""}
@@ -2281,7 +2281,7 @@ function renderLogTab() {
 
     ${(() => { const sug = suggestRouteTag(); return sug ? `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
-      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${sug.tag}</b> for this route</span>
+      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${labelFor(DRIVE_TYPES, sug.tag)}</b> for this route</span>
       <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
     </div>` : ""; })()}
 
@@ -2290,7 +2290,7 @@ function renderLogTab() {
   ` : `
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <span class="tag ${a.tag}">${a.tag}</span>
+      <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
       <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
     </div>
     <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
@@ -2348,7 +2348,7 @@ function renderHistoryTab() {
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-      ${["all","work","normal","supervised"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
+      ${[{ v: "all", l: "All" }, ...DRIVE_TYPES].map(tg => `<button class="chip ${state.filterTag===tg.v?"active":""}" data-filtertag="${tg.v}">${tg.l}</button>`).join("")}
     </div>
     <div class="row-2" style="margin-bottom:10px;">
       <input type="date" id="filterFrom" class="input" value="${state.filterFrom}" style="font-size:12px;" />
@@ -2522,14 +2522,14 @@ function renderSettingsTab() {
       </div>
     </div>
     <div class="toggle-row" style="margin-bottom:12px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
     <p class="settings-desc" style="margin:0;">${
-      state.settings.driveType === "work" ? "Work — For business and employment driving records."
+      state.settings.driveType === "work" ? "Business — For business and employment driving records."
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
-      : "Normal — For everyday driving."
+      : "Personal — For everyday driving."
     }</p>
     ${state.settings.driveType === "supervised" ? `
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
@@ -2720,6 +2720,9 @@ const ROAD_TYPES = [
 ];
 const WEATHER_TYPES = [{ v: "dry", l: "Dry" }, { v: "wet", l: "Wet" }];
 const TRAFFIC_LEVELS = [{ v: "light", l: "Light" }, { v: "medium", l: "Medium" }, { v: "heavy", l: "Heavy" }];
+// Display labels only — the underlying "normal"/"work" values stay as-is
+// in storage, settings keys and data attributes for backward compatibility.
+const DRIVE_TYPES = [{ v: "normal", l: "Personal" }, { v: "work", l: "Business" }, { v: "supervised", l: "Supervised" }];
 
 function renderConditionsModal() {
   const f = state.conditionsForm;
@@ -2808,8 +2811,8 @@ function renderEditTripModal() {
 
       <label class="field-label">Type</label>
       <div class="toggle-row" style="margin-bottom:${t.tag === "supervised" ? "14" : "20"}px;">
-        <button class="toggle normal ${t.tag === "normal" ? "on" : ""}" data-edittag="normal">Normal</button>
-        <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Work</button>
+        <button class="toggle normal ${t.tag === "normal" ? "on" : ""}" data-edittag="normal">Personal</button>
+        <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Business</button>
         <button class="toggle supervised ${t.tag === "supervised" ? "on" : ""}" data-edittag="supervised">Supervised</button>
       </div>
 
@@ -3115,8 +3118,8 @@ function renderReportModal() {
 
       <label class="field-label">Report type</label>
       <select id="reportType" class="input" style="margin-bottom:14px;">
-        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Normal (Personal)</option>
-        <option value="work" ${r.type === "work" ? "selected" : ""}>Work</option>
+        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Personal</option>
+        <option value="work" ${r.type === "work" ? "selected" : ""}>Business</option>
         <option value="supervised" ${r.type === "supervised" ? "selected" : ""}>Supervised</option>
         <option value="custom" ${r.type === "custom" ? "selected" : ""}>Custom combination</option>
       </select>
@@ -3124,7 +3127,7 @@ function renderReportModal() {
       ${r.type === "custom" ? `
       <label class="field-label">Include categories</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-        ${["normal","work","supervised"].map(c => `<button type="button" class="chip ${r.categories.includes(c) ? "active" : ""}" data-reportcat="${c}">${c}</button>`).join("")}
+        ${DRIVE_TYPES.map(c => `<button type="button" class="chip ${r.categories.includes(c.v) ? "active" : ""}" data-reportcat="${c.v}">${c.l}</button>`).join("")}
       </div>` : ""}
 
       <div class="row-2" style="margin-bottom:14px;">
@@ -3293,7 +3296,7 @@ async function generateReportPDF() {
     y += 7;
     doc.text(`${state.profile ? state.profile.name : ""}`, marginX, y);
     y += 5;
-    doc.text(`${r.type === "custom" ? categories.join(" + ") : r.type} report · ${formatDateForDisplay(r.from)} – ${formatDateForDisplay(r.to)}`, marginX, y);
+    doc.text(`${r.type === "custom" ? categories.map(c => labelFor(DRIVE_TYPES, c)).join(" + ") : labelFor(DRIVE_TYPES, r.type)} report · ${formatDateForDisplay(r.from)} – ${formatDateForDisplay(r.to)}`, marginX, y);
     y += 9;
 
     const totalDistance = subset.reduce((s, t) => s + t.distance, 0);
@@ -3302,7 +3305,7 @@ async function generateReportPDF() {
     doc.setFont(undefined, "bold"); doc.text("Summary", marginX, y); doc.setFont(undefined, "normal");
     y += 6;
     doc.text(`Total distance: ${kmToDisplay(totalDistance).toFixed(1)} ${unitLabel()}`, marginX, y); y += 5;
-    doc.text(`Total drives: ${subset.length}  (Normal ${byCat.normal || 0} · Work ${byCat.work || 0} · Supervised ${byCat.supervised || 0})`, marginX, y);
+    doc.text(`Total drives: ${subset.length}  (Personal ${byCat.normal || 0} · Business ${byCat.work || 0} · Supervised ${byCat.supervised || 0})`, marginX, y);
     y += 10;
 
     doc.setFont(undefined, "bold"); doc.text("Trips", marginX, y); doc.setFont(undefined, "normal");
