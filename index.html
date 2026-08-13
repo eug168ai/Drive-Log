@@ -2323,31 +2323,20 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin:0 0 4px;">${icons.route} Appearance</p>
-    <div class="switch-row" style="margin:10px 0 0;">
-      <span class="settings-desc" style="margin:0;">Dark Mode</span>
+    <div class="switch-row" style="margin:0;">
+      <p class="settings-title" style="margin:0;">${icons.route} Dark Mode</p>
       <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin:10px 0 0;">
-      <span class="settings-desc" style="margin:0;">Show Drive Type</span>
-      <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin:10px 0 0;">
-      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
-      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin:10px 0 0;">
-      <span class="settings-desc" style="margin:0;">Show Saved Addresses</span>
-      <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin:10px 0 0;">
-      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
-      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
     </div>
   </div>
 
   <div class="card">
-    <p class="settings-title" style="margin:0 0 10px;">${icons.car} Drive Type</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="settings-desc">Show in Log Screen</span>
+        <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
+      </div>
+    </div>
     <div class="toggle-row" style="margin-bottom:12px;">
       <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
       <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
@@ -2392,7 +2381,10 @@ function renderSettingsTab() {
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
       <p class="settings-title" style="margin:0;">${icons.pin} Saved Addresses</p>
-      ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
+        <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
+      </div>
     </div>
     <label class="field-label">Home</label>
     <div class="input-icon" style="margin-bottom:14px;">
@@ -2520,6 +2512,18 @@ function renderSettingsTab() {
       ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
     `}
     `}
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
+      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row">
+      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
+      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
   </div>
 
   <div class="card">
