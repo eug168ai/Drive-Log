@@ -196,13 +196,9 @@
   .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
   .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
   .col{cursor:pointer;}
-  .swatch-row{display:flex;gap:12px;margin-top:4px;}
-  .swatch-btn{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;padding:0;cursor:pointer;font-family:inherit;}
-  .swatch-circle{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px var(--surface),0 0 0 4px transparent;}
-  .swatch-circle.selected{box-shadow:0 0 0 2px var(--surface),0 0 0 4px currentColor;}
-  .swatch-circle svg{width:14px;height:14px;}
-  .swatch-label{font-size:10px;color:var(--muted);font-weight:600;}
-  .swatch-btn.active .swatch-label{color:var(--text);}
+  .swatch-row{display:flex;gap:5px;}
+  .swatch-btn{flex:1;min-width:0;border:1px solid var(--c);border-radius:8px;padding:8px 2px;font-size:10.5px;font-weight:700;text-align:center;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;background:rgba(var(--c-rgb),.14);color:var(--c);}
+  .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
@@ -1366,11 +1362,11 @@ async function storageDelete(key) {
 }
 
 const THEME_COLORS = [
-  { key: "amber", label: "Amber", swatch: "#F2A93B" },
-  { key: "emerald", label: "Emerald", swatch: "#3ECF8E" },
-  { key: "violet", label: "Violet", swatch: "#A78BFA" },
-  { key: "rose", label: "Rose", swatch: "#F2739B" },
-  { key: "teal", label: "Teal", swatch: "#3BC9DB" },
+  { key: "amber", label: "Amber", swatch: "#F2A93B", rgb: "242,169,59" },
+  { key: "emerald", label: "Emerald", swatch: "#3ECF8E", rgb: "62,207,142" },
+  { key: "violet", label: "Violet", swatch: "#A78BFA", rgb: "167,139,250" },
+  { key: "rose", label: "Rose", swatch: "#F2739B", rgb: "242,115,155" },
+  { key: "teal", label: "Teal", swatch: "#3BC9DB", rgb: "59,201,219" },
 ];
 function applyTheme() {
   document.documentElement.setAttribute("data-theme", state.settings.darkMode === false ? "light" : "dark");
@@ -2423,13 +2419,7 @@ function renderSettingsTab() {
     <div class="swatch-row">
       ${THEME_COLORS.map(c => {
         const selected = (state.settings.themeColor || "amber") === c.key;
-        return `
-        <button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}">
-          <span class="swatch-circle ${selected ? "selected" : ""}" style="background:${c.swatch};color:${c.swatch};">
-            ${selected ? icons.check.replace('class="icon"', 'class="icon" style="color:#14171C;"') : ""}
-          </span>
-          <span class="swatch-label">${c.label}</span>
-        </button>`;
+        return `<button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}" style="--c:${c.swatch};--c-rgb:${c.rgb};">${c.label}</button>`;
       }).join("")}
     </div>
   </div>
