@@ -175,8 +175,7 @@
   .kv-line .v{color:var(--text);font-weight:600;}
   .kv-sub{font-size:10.5px;color:var(--faint);margin:0 0 6px;}
   .pacerow{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
-  .pace-card{flex:1;min-width:0;border-radius:10px;padding:8px 11px;border:1px solid;display:flex;align-items:flex-start;gap:8px;}
-  .pace-card .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+  .pace-card{flex:1;min-width:0;border-radius:10px;padding:8px 11px;border:1px solid;display:flex;align-items:center;justify-content:center;text-align:center;}
   .pace-card .txt b{display:block;font-size:12.5px;}
   .pace-card .txt span{font-size:10.5px;opacity:.85;display:block;margin-top:1px;}
   .toggle2{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:10.5px;flex-shrink:0;align-self:stretch;cursor:pointer;}
@@ -1602,6 +1601,24 @@ function dashRange(period, offset) {
   return { start, end, unit: "month", count: 12 };
 }
 function daysInRange(range) { return Math.round((range.end - range.start) / 86400000) + 1; }
+// Calendar days actually elapsed within a range (clamped to today), so an
+// average doesn't get diluted by future days/buckets that haven't happened
+// yet — e.g. viewing "this year" in August shouldn't average distance over
+// the whole 365 days when only ~225 of them have occurred.
+function daysElapsedInRange(range) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = range.end < today ? range.end : today;
+  if (end < range.start) return 0;
+  return Math.round((end - range.start) / 86400000) + 1;
+}
+// Same idea at bucket granularity: average only over buckets that have
+// started (from <= today), ignoring future empty buckets.
+function elapsedBucketAvg(buckets, series) {
+  const todayStr = toDateStr(new Date());
+  let sum = 0, n = 0;
+  buckets.forEach((b, i) => { if (b.from <= todayStr) { sum += series[i]; n++; } });
+  return sum / Math.max(1, n);
+}
 function dashRangeLabel(period, range) {
   if (period === "week" || period === "month" && range.count <= 7)
     return `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
@@ -1794,8 +1811,8 @@ function renderSupervisedDashboardCard() {
   const dayData = buckets.map(b => dashSupervisedBucketData(b));
   const seriesA = dayData.map(d => d.dayHours), seriesB = dayData.map(d => d.nightHours);
   buckets.forEach((b, i) => { b.tip = `${b.label}  ·  Day ${formatHM(seriesA[i] * 60)}  ·  Night ${formatHM(seriesB[i] * 60)}`; });
-  const avgA = seriesA.reduce((s, v) => s + v, 0) / (seriesA.length || 1);
-  const avgB = seriesB.reduce((s, v) => s + v, 0) / (seriesB.length || 1);
+  const avgA = elapsedBucketAvg(buckets, seriesA);
+  const avgB = elapsedBucketAvg(buckets, seriesB);
 
   return `
   <div class="card" style="padding:12px 10px;">
@@ -1808,7 +1825,6 @@ function renderSupervisedDashboardCard() {
     <div class="kv-sub">${pace.sub}</div>
     <div class="pacerow">
       <div class="pace-card" style="background:${rateMin != null ? "rgba(242,169,59,.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(242,169,59,.35)" : "var(--border)"};">
-        <span class="dot" style="background:${rateMin != null ? "var(--amber)" : "var(--muted)"};"></span>
         <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
           <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
         </span>
@@ -1863,15 +1879,17 @@ function renderNormalDashboardCard() {
   });
   const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
   const totalCost = perKm != null ? bucketData.reduce((s, d) => s + (d.cost || 0), 0) : null;
-  const days = daysInRange(range);
-  const avgDistPerDay = kmToDisplay(totalDistanceKm) / days;
-  const avgCostPerDay = totalCost != null ? totalCost / days : null;
+  const elapsedDays = Math.max(1, daysElapsedInRange(range));
+  const avgDistPerDay = kmToDisplay(totalDistanceKm) / elapsedDays;
+  const avgCostPerDay = totalCost != null ? totalCost / elapsedDays : null;
+  const avgBucketA = elapsedBucketAvg(buckets, seriesA);
+  const avgBucketB = elapsedBucketAvg(buckets, seriesB);
 
   return `
   <div class="card" style="padding:12px 10px;">
     <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
-    ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
+    ${renderBarChart("norm", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
