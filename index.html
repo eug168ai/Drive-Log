@@ -9,7 +9,12 @@
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2;
+    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C;
+  }
+  html[data-theme="light"]{
+    --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
+    --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
+    --amber:#B9740F; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015;
   }
   *{box-sizing:border-box;}
   body{
@@ -141,6 +146,44 @@
   .pretrip-values{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted);}
   /* History action chips: icon-only on narrow (phone) screens so they always stay in line with the Filters label. */
   .history-actions .chip{padding:5px 8px;}
+
+  /* Log-tab dashboard (bar-chart cards) */
+  .divider{height:1px;background:var(--border);margin:14px 0;}
+  .seg{display:flex;gap:5px;margin-bottom:14px;}
+  .seg button{flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
+  .seg button.on{background:rgba(242,169,59,.14);border-color:var(--amber);color:var(--amber);}
+  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:16px;}
+  .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
+  .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
+  svg.chart{width:100%;display:block;overflow:visible;}
+  .daylabels{display:flex;justify-content:space-between;font-size:10px;color:var(--faint);margin-top:2px;}
+  .legend2{display:flex;gap:20px;margin-top:10px;flex-wrap:wrap;}
+  .legend2 .item{display:flex;align-items:baseline;gap:6px;}
+  .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
+  .legend2 .lbl{font-size:11px;color:var(--muted);}
+  .legend2 .avgval{font-size:11px;color:var(--text);font-weight:600;}
+  .pill-row{margin-bottom:12px;}
+  .pill-row:last-child{margin-bottom:0;}
+  .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 6px;}
+  .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;}
+  .pill-fill{position:absolute;inset:0;border-radius:999px;}
+  .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
+  .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:4px;}
+  .kv-line .k{color:var(--muted);}
+  .kv-line .v{color:var(--text);font-weight:600;}
+  .kv-sub{font-size:10.5px;color:var(--faint);margin:0 0 10px;}
+  .pacerow{display:flex;align-items:center;gap:10px;margin-bottom:14px;}
+  .pace-card{flex:1;min-width:0;border-radius:10px;padding:8px 11px;border:1px solid;display:flex;align-items:flex-start;gap:8px;}
+  .pace-card .dot{width:7px;height:7px;border-radius:50%;margin-top:5px;flex-shrink:0;}
+  .pace-card .txt b{display:block;font-size:12.5px;}
+  .pace-card .txt span{font-size:10.5px;opacity:.85;display:block;margin-top:1px;}
+  .toggle2{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:10.5px;flex-shrink:0;align-self:stretch;cursor:pointer;}
+  .toggle2 span{padding:4px 10px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;flex:1;}
+  .toggle2 span.on{background:rgba(242,169,59,.14);color:var(--amber);font-weight:600;}
+  .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
+  .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
+  .col{cursor:pointer;}
+
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
   }
@@ -745,9 +788,11 @@ const state = {
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
-    dashboardShowFuelStats: false, dashboardShowWeek: true, dashboardShowMonth: false, dashboardShowYear: false,
-    dashboardOverlayPrevious: false,
+    supervisedTargetDate: "",
+    dashboardShowFuelStats: false, showDashboard: true, darkMode: true,
   },
+  dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
+  dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -1296,7 +1341,11 @@ async function storageDelete(key) {
   } catch {}
 }
 
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", state.settings.darkMode === false ? "light" : "dark");
+}
 function render() {
+  applyTheme();
   const app = document.getElementById("app");
   if (state.loadingProfile) { app.innerHTML = `<div class="login-screen"><span style="color:var(--muted)">Loading…</span></div>`; return; }
   if (!state.profile) { app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
@@ -1373,10 +1422,9 @@ async function loadData() {
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = false;
-  if (state.settings.dashboardShowWeek === undefined) state.settings.dashboardShowWeek = true;
-  if (state.settings.dashboardShowMonth === undefined) state.settings.dashboardShowMonth = false;
-  if (state.settings.dashboardShowYear === undefined) state.settings.dashboardShowYear = false;
-  if (state.settings.dashboardOverlayPrevious === undefined) state.settings.dashboardOverlayPrevious = false;
+  if (state.settings.showDashboard === undefined) state.settings.showDashboard = true;
+  if (state.settings.darkMode === undefined) state.settings.darkMode = true;
+  if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
@@ -1510,129 +1558,266 @@ function formatDuration(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
   return `${h}h ${m}m`;
 }
-function weekTotal() {
-  const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance, 0);
-}
-function weekMinutes() {
-  const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + tripMinutes(t), 0);
-}
-function weekFuelCost() {
-  const perKm = fuelCostPerKm();
-  if (perKm == null) return null;
-  const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance * perKm, 0);
-}
 
-// --- Log-screen dashboard (This Week / This Month / This Year) -------------
+// --- Log-screen dashboard (Supervised Driving / Normal Driving bar charts) --
 function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
-// offset 0 = current period, offset -1 = the immediately preceding period of
-// the same length (used for the optional overlay comparison).
-function periodRange(period, offset) {
+function dashRange(period, offset) {
   const now = new Date();
   if (period === "week") {
     const start = new Date(now); start.setDate(now.getDate() - now.getDay() + offset * 7); start.setHours(0, 0, 0, 0);
     const end = new Date(start); end.setDate(start.getDate() + 6);
-    return { start, end, buckets: 7 };
+    return { start, end, unit: "day", count: 7 };
   }
   if (period === "month") {
     const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
-    return { start, end, buckets: end.getDate() };
+    return { start, end, unit: "day", count: end.getDate() };
   }
-  const start = new Date(now.getFullYear() + offset, 0, 1);
-  const end = new Date(now.getFullYear() + offset, 11, 31);
-  return { start, end, buckets: 12 };
-}
-function distanceInRange(start, end) {
-  const s = toDateStr(start), e = toDateStr(end);
-  return state.trips.filter(t => t.date >= s && t.date <= e).reduce((sum, t) => sum + t.distance, 0);
-}
-// Daily distance for week/month periods, monthly totals for the year period
-// (365 daily points would be too noisy for a small dashboard chart).
-function periodSeries(period, range) {
-  if (period === "year") {
-    const year = range.start.getFullYear();
-    return Array.from({ length: 12 }, (_, m) => {
-      const from = toDateStr(new Date(year, m, 1)), to = toDateStr(new Date(year, m + 1, 0));
-      return state.trips.filter(t => t.date >= from && t.date <= to).reduce((s, t) => s + t.distance, 0);
-    });
+  if (period === "quarter") {
+    const totalQ = now.getFullYear() * 4 + Math.floor(now.getMonth() / 3) + offset;
+    const year = Math.floor(totalQ / 4), qIdx = ((totalQ % 4) + 4) % 4;
+    const start = new Date(year, qIdx * 3, 1);
+    const end = new Date(year, qIdx * 3 + 3, 0);
+    return { start, end, unit: "month", count: 3 };
   }
-  return Array.from({ length: range.buckets }, (_, i) => {
-    const d = new Date(range.start); d.setDate(range.start.getDate() + i);
-    if (d > range.end) return 0;
-    const ds = toDateStr(d);
-    return state.trips.filter(t => t.date === ds).reduce((s, t) => s + t.distance, 0);
+  const year = now.getFullYear() + offset;
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  return { start, end, unit: "month", count: 12 };
+}
+function daysInRange(range) { return Math.round((range.end - range.start) / 86400000) + 1; }
+function dashRangeLabel(period, range) {
+  if (period === "week" || period === "month" && range.count <= 7)
+    return `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+  if (period === "month") return range.start.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  if (period === "quarter") return `Q${Math.floor(range.start.getMonth() / 3) + 1} ${range.start.getFullYear()}`;
+  return `${range.start.getFullYear()}`;
+}
+function dashBuckets(period, range) {
+  const buckets = [];
+  if (range.unit === "day") {
+    for (let i = 0; i < range.count; i++) {
+      const d = new Date(range.start); d.setDate(range.start.getDate() + i);
+      const ds = toDateStr(d);
+      buckets.push({ from: ds, to: ds, label: period === "week" ? "SMTWTFS"[d.getDay()] : String(d.getDate()) });
+    }
+  } else {
+    for (let i = 0; i < range.count; i++) {
+      const d = new Date(range.start.getFullYear(), range.start.getMonth() + i, 1);
+      const dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      buckets.push({ from: toDateStr(d), to: toDateStr(dEnd), label: d.toLocaleDateString(undefined, { month: "short" }) });
+    }
+  }
+  return buckets;
+}
+function dashSupervisedBucketData(bucket) {
+  let minutes = 0, nightMinutes = 0;
+  state.trips.forEach(t => {
+    if (t.tag !== "supervised" || t.date < bucket.from || t.date > bucket.to) return;
+    const m = tripMinutes(t);
+    minutes += m;
+    if (t.timeOfDay === "night") nightMinutes += m;
   });
+  return { dayHours: (minutes - nightMinutes) / 60, nightHours: nightMinutes / 60 };
 }
-// Minimal hand-drawn line chart (no external library) — full-width, distance
-// only (km internally; proportions are unaffected by unit conversion so the
-// raw values are fine for plotting).
-function renderLineChart(series, overlaySeries) {
-  const w = 600, h = 120, pad = 8;
-  const all = overlaySeries ? series.concat(overlaySeries) : series;
-  const maxVal = Math.max(1, ...all);
-  const toPoints = (arr) => arr.map((v, i) => {
-    const x = pad + (arr.length > 1 ? (i / (arr.length - 1)) * (w - pad * 2) : (w - pad * 2) / 2);
-    const y = h - pad - (v / maxVal) * (h - pad * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="width:100%;height:120px;display:block;">
-    ${overlaySeries ? `<polyline points="${toPoints(overlaySeries)}" fill="none" stroke="var(--muted)" stroke-width="2" stroke-dasharray="4,3" opacity=".7"/>` : ""}
-    <polyline points="${toPoints(series)}" fill="none" stroke="var(--amber)" stroke-width="2.5"/>
+function dashNormalBucketData(bucket, perKm) {
+  let distanceKm = 0;
+  state.trips.forEach(t => {
+    if (t.tag === "supervised" || t.date < bucket.from || t.date > bucket.to) return;
+    distanceKm += t.distance;
+  });
+  return { distanceKm, cost: perKm != null ? distanceKm * perKm : null };
+}
+function formatHM(mins) {
+  const m = Math.max(0, Math.round(mins));
+  return `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+// Server-rendered (no DOM measurement) click-to-reveal tooltip: estimates its
+// own text width from character count so it can be positioned purely from
+// the string that will be shown, matching the bar it was clicked on.
+function renderChartTip(x, topY, text, w) {
+  const padX = 8, padY = 5, fontSize = 10;
+  const textW = text.length * 6.1 + padX * 2;
+  const h = fontSize + padY * 2 + 2;
+  let tx = Math.max(2, Math.min(w - textW - 2, x - textW / 2));
+  const ty = Math.max(2, topY - h - 6);
+  return `<g class="tip"><rect class="tip-bg" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${textW.toFixed(1)}" height="${h}" rx="5"/><text class="tip-text" x="${(tx + padX).toFixed(1)}" y="${(ty + padY + fontSize - 1).toFixed(1)}">${escAttr(text)}</text></g>`;
+}
+// Two-series overlay bar chart: series B is drawn as a narrower/shorter bar
+// on top of series A, sharing the same baseline, each scaled to its own max
+// so the two stay visually comparable despite different units.
+function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex) {
+  const w = 390, padTop = 10, padBottom = 10;
+  const plotH = height - padTop - padBottom;
+  const n = buckets.length;
+  const gap = n > 15 ? 1 : n > 8 ? 2 : 5;
+  const sidePad = 8;
+  const barW = Math.max(2, (w - sidePad * 2 - gap * (n - 1)) / n);
+  const maxA = Math.max(1, ...seriesA);
+  const maxB = Math.max(1, ...seriesB.map(v => v || 0));
+  const baseline = height - padBottom;
+  const yAvgA = baseline - (avgA / maxA) * plotH;
+  const yAvgB = baseline - (avgB / maxB) * plotH;
+  let tip = "";
+  const cols = buckets.map((b, i) => {
+    const x = sidePad + i * (barW + gap);
+    const va = seriesA[i] || 0, vb = seriesB[i];
+    const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH : 0;
+    const yA = baseline - hA, yB = baseline - hB;
+    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}"/>` : "";
+    if (i === tipIndex) tip = renderChartTip(x + barW / 2, Math.min(yA, vb != null ? yB : yA), b.tip, w);
+    return `<g class="col" data-i="${i}" data-chart="${chartId}"><rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>${rectB}</g>`;
+  }).join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
+    <line x1="0" y1="${yAvgA.toFixed(1)}" x2="${w}" y2="${yAvgA.toFixed(1)}" stroke="${colorA}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>
+    <line x1="0" y1="${yAvgB.toFixed(1)}" x2="${w}" y2="${yAvgB.toFixed(1)}" stroke="${colorB}" stroke-width="1" stroke-dasharray="3,4" opacity=".65"/>
+    <g class="cols">${cols}</g>
+    ${tip}
   </svg>`;
 }
-const DASHBOARD_PERIODS = { week: "This Week", month: "This Month", year: "This Year" };
-function renderDashboardCard(period) {
-  const range = periodRange(period, 0);
-  const distanceKm = distanceInRange(range.start, range.end);
-  const series = periodSeries(period, range);
-  let overlaySeries = null;
-  if (state.settings.dashboardOverlayPrevious) {
-    const prevRange = periodRange(period, -1);
-    overlaySeries = periodSeries(period, prevRange);
-  }
-  const perKm = fuelCostPerKm();
-  const cost = state.settings.dashboardShowFuelStats && perKm != null ? distanceKm * perKm : null;
-  const usage = state.settings.dashboardShowFuelStats
-    ? (state.settings.fuelMode === "estimated" ? (parseFloat(state.settings.fuelRate) || null) : accurateFuelUsage(null))
-    : null;
-  const rangeLabel = period === "year"
-    ? `${range.start.getFullYear()}`
-    : `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short" })}`;
+function dashSegAndNav(chartId, period, offset, range) {
   return `
-  <div class="card">
-    <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">${DASHBOARD_PERIODS[period]}</p>
-      <span style="font-size:11px;color:var(--muted);">${rangeLabel}</span>
+    <div class="seg">
+      ${["week", "month", "quarter", "year"].map(p => `<button class="dashperiod ${p === period ? "on" : ""}" data-chart="${chartId}" data-period="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`).join("")}
     </div>
-    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px;">
-      <div>
-        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Distance</div>
-        <div class="mono" style="font-size:20px;font-weight:700;">${kmToDisplay(distanceKm).toFixed(1)} ${unitLabel()}</div>
+    <div class="rangenav">
+      <button class="dashnav" data-chart="${chartId}" data-dir="-1">‹</button>
+      <span class="range">${dashRangeLabel(period, range)}</span>
+      <button class="dashnav" data-chart="${chartId}" data-dir="1" ${offset >= 0 ? "disabled" : ""}>›</button>
+    </div>`;
+}
+// --- Supervised Driving card -------------------------------------------------
+function supervisedFirstTripDate() {
+  const dates = state.trips.filter(t => t.tag === "supervised").map(t => t.date).sort();
+  return dates.length ? dates[0] : null;
+}
+function supervisedPaceInfo() {
+  const sup = supervisedTotals();
+  const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+  const remainingHours = Math.max(0, totalTarget - sup.hours);
+  const targetDateStr = state.settings.supervisedTargetDate;
+  let label, dateDisplay, sub, ratePerDayMin = null;
+  if (targetDateStr) {
+    label = "Target Completion Date";
+    const targetDate = new Date(`${targetDateStr}T00:00:00`);
+    dateDisplay = targetDate.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    const daysLeft = Math.ceil((targetDate - new Date()) / 86400000);
+    if (remainingHours <= 0) sub = "Hours requirement already met";
+    else if (daysLeft <= 0) sub = "Target date has passed";
+    else { ratePerDayMin = (remainingHours * 60) / daysLeft; sub = `Steady effort required to hit ${dateDisplay}`; }
+  } else {
+    label = "Projected Completion Date";
+    const firstDate = supervisedFirstTripDate();
+    const daysActive = firstDate ? Math.max(1, Math.round((new Date() - new Date(`${firstDate}T00:00:00`)) / 86400000)) : 0;
+    const avgPerDayMin = daysActive ? sup.minutes / daysActive : 0;
+    if (remainingHours <= 0) { dateDisplay = "—"; sub = "Hours requirement already met"; }
+    else if (avgPerDayMin > 0) {
+      const daysNeeded = Math.ceil((remainingHours * 60) / avgPerDayMin);
+      const projected = new Date(); projected.setDate(projected.getDate() + daysNeeded);
+      dateDisplay = projected.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      ratePerDayMin = avgPerDayMin;
+      sub = "No target date set — projected from your current average pace";
+    } else { dateDisplay = "—"; sub = "Log a few supervised drives to see a projection"; }
+  }
+  return { label, dateDisplay, sub, ratePerDayMin, remainingHours };
+}
+function renderSupervisedDashboardCard() {
+  if (state.settings.driveType !== "supervised") return "";
+  const sup = supervisedTotals();
+  const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+  const nightTarget = state.settings.supervisedNightHoursTarget || 15;
+  const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
+  const pace = supervisedPaceInfo();
+  const paceUnit = state.dashSupPaceUnit;
+  const rateMin = pace.ratePerDayMin != null ? (paceUnit === "week" ? pace.ratePerDayMin * 7 : pace.ratePerDayMin) : null;
+  const dayPct = totalTarget ? Math.min(100, ((sup.hours - sup.nightHours) / totalTarget) * 100) : 0;
+  const nightPct = nightTarget ? Math.min(100, (sup.nightHours / nightTarget) * 100) : 0;
+
+  const period = state.dashSupPeriod, offset = state.dashSupOffset;
+  const range = dashRange(period, offset);
+  const buckets = dashBuckets(period, range);
+  const dayData = buckets.map(b => dashSupervisedBucketData(b));
+  const seriesA = dayData.map(d => d.dayHours), seriesB = dayData.map(d => d.nightHours);
+  buckets.forEach((b, i) => { b.tip = `${b.label}  ·  Day ${formatHM(seriesA[i] * 60)}  ·  Night ${formatHM(seriesB[i] * 60)}`; });
+  const avgA = seriesA.reduce((s, v) => s + v, 0) / (seriesA.length || 1);
+  const avgB = seriesB.reduce((s, v) => s + v, 0) / (seriesB.length || 1);
+
+  return `
+  <div class="card" style="padding:14px 16px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">Supervised Driving</p>
+      ${completed ? `<span class="connected-pill">Completed</span>` : ""}
+    </div>
+
+    <div class="kv-line"><span class="k">${pace.label}</span><span class="v mono">${pace.dateDisplay}</span></div>
+    <div class="kv-sub">${pace.sub}</div>
+    <div class="pacerow">
+      <div class="pace-card" style="background:${rateMin != null ? "rgba(242,169,59,.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(242,169,59,.35)" : "var(--border)"};">
+        <span class="dot" style="background:${rateMin != null ? "var(--amber)" : "var(--muted)"};"></span>
+        <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
+          <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} needed` : "—"}</b>
+        </span>
       </div>
-      ${cost != null ? `
-      <div>
-        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Fuel Cost</div>
-        <div class="mono" style="font-size:20px;font-weight:700;">${cost.toFixed(2)}</div>
-      </div>` : ""}
-      ${usage != null ? `
-      <div>
-        <div style="font-size:9px;text-transform:uppercase;color:var(--muted);letter-spacing:.04em;">Fuel Usage</div>
-        <div class="mono" style="font-size:20px;font-weight:700;">${usage.toFixed(1)} ${state.settings.unit === "mi" ? "MPG" : "L/100km"}</div>
-      </div>` : ""}
+      <div class="toggle2" id="dashSupPaceToggle"><span class="${paceUnit === "day" ? "on" : ""}" data-paceunit="day">Per Day</span><span class="${paceUnit === "week" ? "on" : ""}" data-paceunit="week">Per Week</span></div>
     </div>
-    ${renderLineChart(series, overlaySeries)}
-    ${overlaySeries ? `<p style="font-size:10px;color:var(--muted);margin:6px 0 0;">— current &nbsp;&nbsp; ┄ previous ${DASHBOARD_PERIODS[period].replace("This ", "").toLowerCase()}</p>` : ""}
+
+    <div class="divider"></div>
+
+    <div class="pill-row">
+      <div class="hdr">Day Hours</div>
+      <div class="pill-track"><div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div><span class="pill-count" style="color:var(--amber);">${formatHM((sup.hours - sup.nightHours) * 60)} / ${totalTarget}h</span></div>
+    </div>
+    <div class="pill-row">
+      <div class="hdr">Night Hours</div>
+      <div class="pill-track"><div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div><span class="pill-count" style="color:var(--cost);">${formatHM(sup.nightHours * 60)} / ${nightTarget}h</span></div>
+    </div>
+
+    <div class="divider"></div>
+
+    ${dashSegAndNav("sup", period, offset, range)}
+    ${renderBarChart("sup", buckets, seriesA, seriesB, avgA, avgB, "var(--amber)", "var(--cost)", 90, state.dashSupTipIndex)}
+    ${range.unit === "day" && period === "week" ? `<div class="daylabels">${buckets.map(b => `<span>${b.label}</span>`).join("")}</div>` : ""}
+    <div class="legend2">
+      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
+      <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Night hours</span><span class="avgval mono">${formatHM(avgB * 60)} avg</span></div>
+    </div>
   </div>`;
 }
-function renderDashboardCards() {
-  const cards = ["week", "month", "year"].filter(p => state.settings[`dashboardShow${p.charAt(0).toUpperCase()}${p.slice(1)}`]);
-  return cards.map(renderDashboardCard).join("");
+// --- Normal Driving card -----------------------------------------------------
+function renderNormalDashboardCard() {
+  const perKm = state.settings.dashboardShowFuelStats ? fuelCostPerKm() : null;
+  const period = state.dashNormPeriod, offset = state.dashNormOffset;
+  const range = dashRange(period, offset);
+  const buckets = dashBuckets(period, range);
+  const bucketData = buckets.map(b => dashNormalBucketData(b, perKm));
+  const seriesA = bucketData.map(d => kmToDisplay(d.distanceKm));
+  const seriesB = perKm != null ? bucketData.map(d => d.cost) : buckets.map(() => null);
+  buckets.forEach((b, i) => {
+    b.tip = perKm != null
+      ? `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}  ·  ${formatCurrency(seriesB[i])}`
+      : `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}`;
+  });
+  const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
+  const totalCost = perKm != null ? bucketData.reduce((s, d) => s + (d.cost || 0), 0) : null;
+  const days = daysInRange(range);
+  const avgDistPerDay = kmToDisplay(totalDistanceKm) / days;
+  const avgCostPerDay = totalCost != null ? totalCost / days : null;
+
+  return `
+  <div class="card" style="padding:14px 16px;">
+    <p class="settings-title" style="margin:0 0 10px;">Normal Driving</p>
+    ${dashSegAndNav("norm", period, offset, range)}
+    ${renderBarChart("norm", buckets, seriesA, seriesB, avgDistPerDay * days / buckets.length, avgCostPerDay != null ? (avgCostPerDay * days / buckets.length) : 0, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex)}
+    ${range.unit === "day" && period === "week" ? `<div class="daylabels">${buckets.map(b => `<span>${b.label}</span>`).join("")}</div>` : ""}
+    <div class="legend2">
+      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
+      ${avgCostPerDay != null ? `<div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Cost</span><span class="avgval mono">${formatCurrency(avgCostPerDay)}/day</span></div>` : ""}
+    </div>
+  </div>`;
+}
+function renderDashboardSection() {
+  if (state.settings.showDashboard === false) return "";
+  return `${renderSupervisedDashboardCard()}${renderNormalDashboardCard()}`;
 }
 
 // --- Supervised (learner) licence hour tracking -----------------------------
@@ -1870,55 +2055,11 @@ function renderApp() {
   </div>`;
 }
 
-function formatHoursMinutes(totalMins) {
-  const h = Math.floor(totalMins / 60), m = totalMins % 60;
-  return `${h}<span style="margin-left:2px;">h</span><span style="margin-left:2px;">${m}</span><span style="margin-left:2px;">m</span>`;
-}
-
 function renderLogTab() {
   const a = state.active;
   return `
   ${state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : ""}
-  <div class="card">
-    ${(() => {
-      const sup = supervisedTotals();
-      if (state.settings.driveType !== "supervised") return "";
-      const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
-      const nightTarget = state.settings.supervisedNightHoursTarget || 15;
-      const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
-      return `
-    <div style="padding-bottom:7px;margin-bottom:7px;border-bottom:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <label class="field-label" style="margin:0;">Supervised Driving</label>
-        ${completed ? `<span class="connected-pill">Completed</span>` : ""}
-      </div>
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(sup.distance).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
-        <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono" style="font-size:13px;font-weight:600;color:var(--muted);">${formatHoursMinutes(sup.nightMinutes)}</span>
-          <span class="mono" style="font-size:22px;font-weight:600;">${formatHoursMinutes(sup.minutes)}</span>
-        </div>
-      </div>
-    </div>`;
-    })()}
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
-      <div>
-        <label class="field-label">This week</label>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(weekTotal()).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
-      </div>
-      <div style="text-align:right;">
-        <label class="field-label">&nbsp;</label>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatHoursMinutes(weekMinutes())}</p>
-      </div>
-    </div>
-    ${(() => { const cost = weekFuelCost(); return cost != null ? `
-    <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
-      <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
-    </div>` : ""; })()}
-  </div>
-
-  ${renderDashboardCards()}
+  ${renderDashboardSection()}
 
   ${!a ? `
   <div class="card">
@@ -2157,6 +2298,26 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
+    <p class="settings-title" style="margin:0 0 4px;">${icons.route} Appearance</p>
+    <div class="switch-row" style="margin:10px 0 0;">
+      <span class="settings-desc" style="margin:0;">Dark Mode</span>
+      <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin:10px 0 0;">
+      <span class="settings-desc" style="margin:0;">Show Dashboard</span>
+      <div id="showDashboardSwitch" class="switch ${state.settings.showDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin:10px 0 0;">
+      <span class="settings-desc" style="margin:0;">Show Saved Addresses</span>
+      <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin:10px 0 0;">
+      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
+      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -2190,6 +2351,10 @@ function renderSettingsTab() {
       </div>
 
       <p class="settings-desc" style="margin:10px 0 0;">Compulsory hours as per government agency. Notification upon completion.</p>
+
+      <label class="field-label" style="margin-top:12px;">Target Completion Date</label>
+      <input id="supTargetDateInput" type="date" class="input mono" value="${escAttr(state.settings.supervisedTargetDate || "")}" />
+      <p class="settings-desc" style="margin-top:6px;">Optional — leave blank and the dashboard will project a completion date from your current average pace instead.</p>
     </div>
     ` : ""}
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
@@ -2204,10 +2369,7 @@ function renderSettingsTab() {
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
       <p class="settings-title" style="margin:0;">${icons.pin} Saved Addresses</p>
-      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
-        <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
-      </div>
+      ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
     </div>
     <label class="field-label">Home</label>
     <div class="input-icon" style="margin-bottom:14px;">
@@ -2335,31 +2497,6 @@ function renderSettingsTab() {
       ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
     `}
     `}
-  </div>
-
-  <div class="card">
-    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Dashboard</p>
-    <p class="settings-desc" style="margin-bottom:10px;">Choose which period summaries show on the Log screen, each with a distance graph.</p>
-    <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">This Week</span>
-      <div id="dashboardWeekSwitch" class="switch ${state.settings.dashboardShowWeek ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">This Month</span>
-      <div id="dashboardMonthSwitch" class="switch ${state.settings.dashboardShowMonth ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">This Year</span>
-      <div id="dashboardYearSwitch" class="switch ${state.settings.dashboardShowYear ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row" style="margin-bottom:10px;padding-top:9px;border-top:1px solid var(--border);">
-      <span class="settings-desc" style="margin:0;">Show Fuel Usage &amp; Cost</span>
-      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    <div class="switch-row">
-      <span class="settings-desc" style="margin:0;">Overlay Previous Period</span>
-      <div id="dashboardOverlaySwitch" class="switch ${state.settings.dashboardOverlayPrevious ? "on" : ""}"><div class="knob"></div></div>
-    </div>
   </div>
 
   <div class="card">
@@ -3192,6 +3329,35 @@ function attachAppHandlers() {
   if (settingsBtn) settingsBtn.onclick = () => { state.tab = "settings"; render(); };
 
   if (state.tab === "log") {
+    const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
+    if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
+      btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
+    });
+    document.querySelectorAll(".dashperiod").forEach(btn => {
+      btn.onclick = () => {
+        const chart = btn.dataset.chart, period = btn.dataset.period;
+        if (chart === "sup") { state.dashSupPeriod = period; state.dashSupOffset = 0; state.dashSupTipIndex = null; }
+        else { state.dashNormPeriod = period; state.dashNormOffset = 0; state.dashNormTipIndex = null; }
+        render();
+      };
+    });
+    document.querySelectorAll(".dashnav").forEach(btn => {
+      btn.onclick = () => {
+        const chart = btn.dataset.chart, dir = parseInt(btn.dataset.dir, 10);
+        if (chart === "sup") { state.dashSupOffset += dir; state.dashSupTipIndex = null; }
+        else { state.dashNormOffset += dir; state.dashNormTipIndex = null; }
+        render();
+      };
+    });
+    document.querySelectorAll(".col").forEach(col => {
+      col.onclick = () => {
+        const chart = col.dataset.chart, i = parseInt(col.dataset.i, 10);
+        if (chart === "sup") state.dashSupTipIndex = state.dashSupTipIndex === i ? null : i;
+        else state.dashNormTipIndex = state.dashNormTipIndex === i ? null : i;
+        render();
+      };
+    });
+
     const logFillupBtnLog = document.getElementById("logFillupBtnLog");
     if (logFillupBtnLog) logFillupBtnLog.onclick = () => {
       state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
@@ -3454,11 +3620,8 @@ function attachAppHandlers() {
       render();
     };
     [
-      ["dashboardWeekSwitch", "dashboardShowWeek"],
-      ["dashboardMonthSwitch", "dashboardShowMonth"],
-      ["dashboardYearSwitch", "dashboardShowYear"],
       ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
-      ["dashboardOverlaySwitch", "dashboardOverlayPrevious"],
+      ["showDashboardSwitch", "showDashboard"],
     ].forEach(([id, key]) => {
       const el = document.getElementById(id);
       if (el) el.onclick = async () => {
@@ -3467,6 +3630,22 @@ function attachAppHandlers() {
         render();
       };
     });
+
+    const darkModeSwitch = document.getElementById("darkModeSwitch");
+    if (darkModeSwitch) darkModeSwitch.onclick = async () => {
+      state.settings.darkMode = state.settings.darkMode === false;
+      applyTheme();
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    const supTargetDateInput = document.getElementById("supTargetDateInput");
+    if (supTargetDateInput) supTargetDateInput.onchange = async (e) => {
+      state.settings.supervisedTargetDate = e.target.value;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
     const odometerRemindersSwitch = document.getElementById("odometerRemindersSwitch");
     if (odometerRemindersSwitch) odometerRemindersSwitch.onclick = async () => {
       state.settings.odometerReminders = state.settings.odometerReminders === false;
