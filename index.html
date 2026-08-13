@@ -815,10 +815,10 @@ const state = {
     supervisedTargetDate: "",
     dashboardShowFuelStats: true, darkMode: true, themeColor: "amber",
     showSupervisedDashboard: true, showNormalDashboard: true, showDistanceTimeDashboard: true,
+    dashShowDistance: true, dashShowTime: false, dashShowCost: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
   dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
-  dashTimePeriod: "week", dashTimeOffset: 0, dashTimeTipIndex: null,
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -1461,6 +1461,13 @@ async function loadData() {
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
   if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
+  // Derived once from the older separate distance/cost/time dashboard
+  // toggles (read before those get their own defaults below) so upgrading
+  // users keep whatever was already visible, while brand-new profiles fall
+  // through to the plain defaults on the right of each `!==`/`===` check.
+  if (state.settings.dashShowDistance === undefined) state.settings.dashShowDistance = state.settings.showNormalDashboard !== false;
+  if (state.settings.dashShowTime === undefined) state.settings.dashShowTime = state.settings.showDistanceTimeDashboard === true;
+  if (state.settings.dashShowCost === undefined) state.settings.dashShowCost = state.settings.dashboardShowFuelStats !== false;
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
   if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
   if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
@@ -1745,38 +1752,44 @@ function renderChartLabels(buckets, layout, period) {
   }).join("");
   return `<div class="daylabels">${items}</div>`;
 }
-// Two-series overlay bar chart: both series share the same column, drawn
-// from the same baseline. Series B is scaled by `bFactor` (< 1 shrinks it
-// relative to its own max) so it reads as visually "smaller" than A rather
-// than risking an exact-height match — and whichever of the two is shorter
-// for a given bucket is drawn last (in front) so it always stays visible,
-// even on the rare bucket where the shrink still isn't enough.
-function renderBarChart(chartId, buckets, seriesA, seriesB, avgA, avgB, colorA, colorB, height, tipIndex, bFactor) {
+// N-series overlay bar chart: every series shares the same column, drawn
+// from the same baseline. Each series' `bFactor` (< 1 shrinks it relative to
+// its own max) lets it read as visually "smaller" than the others rather
+// than risking an exact-height match — and for each bucket, series are drawn
+// tallest-to-shortest so the shorter ones end up on top/in front and always
+// stay visible, even on the rare bucket where the shrink still isn't enough.
+// `series` is an array of { data, avg, color, bFactor }.
+function renderBarChart(chartId, buckets, series, height, tipIndex) {
   const padTop = 10, padBottom = 10;
   const plotH = height - padTop - padBottom;
   const n = buckets.length;
   const { w, barW, xs } = dashColumnLayout(n);
-  const factor = bFactor || 1;
-  const maxA = Math.max(1, ...seriesA);
-  const maxB = Math.max(1, ...seriesB.map(v => v || 0));
   const baseline = height - padBottom;
-  const yAvgA = baseline - (avgA / maxA) * plotH;
-  const yAvgB = baseline - (avgB / maxB) * plotH * factor;
+  const prepared = series.map(s => ({
+    ...s,
+    factor: s.bFactor || 1,
+    max: Math.max(1, ...s.data.map(v => v || 0)),
+  }));
   let tip = "";
   const cols = buckets.map((b, i) => {
     const x = xs[i];
-    const va = seriesA[i] || 0, vb = seriesB[i];
-    const hA = (va / maxA) * plotH, hB = vb != null ? (vb / maxB) * plotH * factor : 0;
-    const yA = baseline - hA, yB = baseline - hB;
-    const rectA = `<rect x="${x.toFixed(1)}" y="${yA.toFixed(1)}" width="${barW.toFixed(1)}" height="${hA.toFixed(1)}" rx="3" fill="${colorA}"/>`;
-    const rectB = vb != null ? `<rect x="${x.toFixed(1)}" y="${yB.toFixed(1)}" width="${barW.toFixed(1)}" height="${hB.toFixed(1)}" rx="3" fill="${colorB}"/>` : "";
-    const ordered = vb != null && hA <= hB ? rectB + rectA : rectA + rectB;
-    if (i === tipIndex) tip = renderChartTip(x + barW / 2, Math.min(yA, vb != null ? yB : yA), b.tip, w);
-    return `<g class="col" data-i="${i}" data-chart="${chartId}">${ordered}</g>`;
+    const bars = prepared.map(s => {
+      const v = s.data[i];
+      if (v == null) return null;
+      const h = (v / s.max) * plotH * s.factor;
+      return { h, y: baseline - h, color: s.color };
+    }).filter(Boolean);
+    bars.sort((p, q) => q.h - p.h);
+    const rects = bars.map(bar => `<rect x="${x.toFixed(1)}" y="${bar.y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bar.h.toFixed(1)}" rx="3" fill="${bar.color}"/>`).join("");
+    if (i === tipIndex) tip = renderChartTip(x + barW / 2, bars.length ? Math.min(...bars.map(p => p.y)) : baseline, b.tip, w);
+    return `<g class="col" data-i="${i}" data-chart="${chartId}">${rects}</g>`;
+  }).join("");
+  const avgLines = prepared.map(s => {
+    const yAvg = baseline - (s.avg / s.max) * plotH * s.factor;
+    return `<line x1="0" y1="${yAvg.toFixed(1)}" x2="${w}" y2="${yAvg.toFixed(1)}" stroke="${s.color}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
-    <line x1="0" y1="${yAvgA.toFixed(1)}" x2="${w}" y2="${yAvgA.toFixed(1)}" stroke="${colorA}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>
-    <line x1="0" y1="${yAvgB.toFixed(1)}" x2="${w}" y2="${yAvgB.toFixed(1)}" stroke="${colorB}" stroke-width="1" stroke-dasharray="3,4" opacity=".65"/>
+    ${avgLines}
     <g class="cols">${cols}</g>
     ${tip}
   </svg>`;
@@ -1897,7 +1910,10 @@ function renderSupervisedDashboardCard() {
     <div class="divider"></div>
 
     ${dashSegAndNav("sup", period, offset, range, earliestTripDateFor("supervised"))}
-    ${renderBarChart("sup", buckets, seriesA, seriesB, avgA, avgB, "var(--amber)", "var(--cost)", 90, state.dashSupTipIndex)}
+    ${renderBarChart("sup", buckets, [
+      { data: seriesA, avg: avgA, color: "var(--amber)" },
+      { data: seriesB, avg: avgB, color: "var(--cost)" },
+    ], 90, state.dashSupTipIndex)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
@@ -1905,12 +1921,18 @@ function renderSupervisedDashboardCard() {
     </div>
   </div>`;
 }
-// --- All Driving card ---------------------------------------------------------
-function renderNormalDashboardCard() {
-  const showFull = state.settings.showNormalDashboard !== false;
-  const perKm = state.settings.dashboardShowFuelStats ? fuelCostPerKm() : null;
-  const showCostOnly = !showFull && perKm != null;
-  if (!showFull && !showCostOnly) return "";
+// --- Driving metrics card (Distance / Time / Fuel Cost — any combination) --
+// The three metrics are independently toggled in Settings and overlaid on
+// one chart. Each has a fixed role factor so that if two metrics happen to
+// be exactly proportional (e.g. estimated cost = distance × rate), they
+// still render at different bar heights instead of collapsing into one.
+const DRIVING_METRIC_ROLE_FACTOR = { distance: 1, time: 0.82, cost: 0.64 };
+function renderDrivingMetricsCard() {
+  const wantDistance = state.settings.dashShowDistance !== false;
+  const wantTime = !!state.settings.dashShowTime;
+  const perKm = state.settings.dashShowCost !== false ? fuelCostPerKm() : null;
+  const wantCost = perKm != null;
+  if (!wantDistance && !wantTime && !wantCost) return "";
 
   const period = state.dashNormPeriod, offset = state.dashNormOffset;
   const range = dashRange(period, offset);
@@ -1918,87 +1940,56 @@ function renderNormalDashboardCard() {
   const bucketData = buckets.map(b => dashNormalBucketData(b, perKm));
   const elapsedDays = Math.max(1, daysElapsedInRange(range));
 
-  if (showCostOnly) {
-    const seriesCost = bucketData.map(d => d.cost || 0);
-    const emptySeries = buckets.map(() => null);
-    buckets.forEach((b, i) => { b.tip = `${b.label}  ·  ${formatCurrency(seriesCost[i])}`; });
-    const totalCost = bucketData.reduce((s, d) => s + (d.cost || 0), 0);
-    const avgCostPerDay = totalCost / elapsedDays;
-    const avgBucketCost = elapsedBucketAvg(buckets, seriesCost);
-    return `
-    <div class="card" style="padding:12px 10px;">
-      <p class="settings-title" style="margin:0 0 10px;">Fuel Cost</p>
-      ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
-      ${renderBarChart("norm", buckets, seriesCost, emptySeries, avgBucketCost, 0, "var(--cost)", "var(--cost)", 110, state.dashNormTipIndex)}
-      ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
-      <div class="legend2">
-        <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Cost</span><span class="avgval mono">${formatCurrency(avgCostPerDay)}/day</span></div>
-      </div>
-    </div>`;
-  }
-
-  const seriesA = bucketData.map(d => kmToDisplay(d.distanceKm));
-  const seriesB = perKm != null ? bucketData.map(d => d.cost) : buckets.map(() => null);
-  buckets.forEach((b, i) => {
-    b.tip = perKm != null
-      ? `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}  ·  ${formatCurrency(seriesB[i])}`
-      : `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}`;
+  const metrics = [];
+  if (wantDistance) metrics.push({
+    key: "distance", label: "Distance", color: "var(--amber)",
+    data: bucketData.map(d => kmToDisplay(d.distanceKm)),
+    fmtTip: v => `${v.toFixed(1)} ${unitLabel()}`,
+    fmtLegend: avg => `${avg.toFixed(1)} ${unitLabel()}/day`,
   });
-  const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
-  const totalCost = perKm != null ? bucketData.reduce((s, d) => s + (d.cost || 0), 0) : null;
-  const avgDistPerDay = kmToDisplay(totalDistanceKm) / elapsedDays;
-  const avgCostPerDay = totalCost != null ? totalCost / elapsedDays : null;
-  const avgBucketA = elapsedBucketAvg(buckets, seriesA);
-  const avgBucketB = elapsedBucketAvg(buckets, seriesB);
+  if (wantTime) metrics.push({
+    key: "time", label: "Time", color: "var(--time)",
+    data: bucketData.map(d => d.minutes),
+    fmtTip: v => formatHM(v),
+    fmtLegend: avg => `${formatHM(avg)}/day`,
+  });
+  if (wantCost) metrics.push({
+    key: "cost", label: "Fuel Cost", color: "var(--cost)",
+    data: bucketData.map(d => d.cost || 0),
+    fmtTip: v => formatCurrency(v),
+    fmtLegend: avg => `${formatCurrency(avg)}/day`,
+  });
+
+  const multi = metrics.length > 1;
+  const series = metrics.map(m => ({
+    ...m,
+    bFactor: multi ? DRIVING_METRIC_ROLE_FACTOR[m.key] : 1,
+    avgBucket: elapsedBucketAvg(buckets, m.data),
+    avgDay: m.data.reduce((s, v) => s + v, 0) / elapsedDays,
+  }));
+
+  buckets.forEach((b, i) => {
+    b.tip = `${b.label}  ·  ${series.map(s => s.fmtTip(s.data[i])).join("  ·  ")}`;
+  });
+
+  const labels = series.map(s => s.label);
+  const title = labels.length <= 1 ? labels.join("")
+    : labels.length === 2 ? labels.join(" & ")
+    : `${labels.slice(0, -1).join(", ")} & ${labels[labels.length - 1]}`;
 
   return `
   <div class="card" style="padding:12px 10px;">
-    <p class="settings-title" style="margin:0 0 10px;">Distance and Fuel Cost</p>
+    <p class="settings-title" style="margin:0 0 10px;">${title}</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
-    ${renderBarChart("norm", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--cost)", 110, state.dashNormTipIndex, 0.65)}
+    ${renderBarChart("norm", buckets, series.map(s => ({ data: s.data, avg: s.avgBucket, color: s.color, bFactor: s.bFactor })), 110, state.dashNormTipIndex)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
-      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
-      ${avgCostPerDay != null ? `<div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Cost</span><span class="avgval mono">${formatCurrency(avgCostPerDay)}/day</span></div>` : ""}
-    </div>
-  </div>`;
-}
-// --- Distance and Time card -------------------------------------------------
-function renderDistanceTimeDashboardCard() {
-  if (state.settings.showDistanceTimeDashboard === false) return "";
-
-  const period = state.dashTimePeriod, offset = state.dashTimeOffset;
-  const range = dashRange(period, offset);
-  const buckets = dashBuckets(period, range);
-  const bucketData = buckets.map(b => dashNormalBucketData(b, null));
-  const elapsedDays = Math.max(1, daysElapsedInRange(range));
-
-  const seriesA = bucketData.map(d => kmToDisplay(d.distanceKm));
-  const seriesB = bucketData.map(d => d.minutes / 60);
-  buckets.forEach((b, i) => {
-    b.tip = `${b.label}  ·  ${seriesA[i].toFixed(1)} ${unitLabel()}  ·  ${formatHM(seriesB[i] * 60)}`;
-  });
-  const totalDistanceKm = bucketData.reduce((s, d) => s + d.distanceKm, 0);
-  const totalMinutes = bucketData.reduce((s, d) => s + d.minutes, 0);
-  const avgDistPerDay = kmToDisplay(totalDistanceKm) / elapsedDays;
-  const avgTimePerDay = totalMinutes / elapsedDays;
-  const avgBucketA = elapsedBucketAvg(buckets, seriesA);
-  const avgBucketB = elapsedBucketAvg(buckets, seriesB);
-
-  return `
-  <div class="card" style="padding:12px 10px;">
-    <p class="settings-title" style="margin:0 0 10px;">Distance and Time</p>
-    ${dashSegAndNav("time", period, offset, range, earliestTripDateFor("normal"))}
-    ${renderBarChart("time", buckets, seriesA, seriesB, avgBucketA, avgBucketB, "var(--amber)", "var(--time)", 110, state.dashTimeTipIndex, 0.65)}
-    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
-    <div class="legend2">
-      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Distance</span><span class="avgval mono">${avgDistPerDay.toFixed(1)} ${unitLabel()}/day</span></div>
-      <div class="item"><span class="sw" style="background:var(--time);"></span><span class="lbl">Time</span><span class="avgval mono">${formatHM(avgTimePerDay)}/day</span></div>
+      ${series.map(s => `<div class="item"><span class="sw" style="background:${s.color};"></span><span class="lbl">${s.label}</span><span class="avgval mono">${s.fmtLegend(s.avgDay)}</span></div>`).join("")}
     </div>
   </div>`;
 }
 function renderDashboardSection() {
-  return `${renderSupervisedDashboardCard()}${renderNormalDashboardCard()}${renderDistanceTimeDashboardCard()}`;
+  return `${renderSupervisedDashboardCard()}${renderDrivingMetricsCard()}`;
 }
 
 // --- Supervised (learner) licence hour tracking -----------------------------
@@ -2497,17 +2488,18 @@ function renderSettingsTab() {
 
   <div class="card">
     <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
+    <p class="settings-desc" style="margin:0 0 8px;">Pick any combination — they overlay on one chart.</p>
     <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Distance and Fuel Cost</span>
-      <div id="showNormalDashboardSwitch" class="switch ${state.settings.showNormalDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+      <span class="settings-desc" style="margin:0;">Distance</span>
+      <div id="dashShowDistanceSwitch" class="switch ${state.settings.dashShowDistance !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <div class="switch-row" style="margin-bottom:10px;">
-      <span class="settings-desc" style="margin:0;">Show Fuel Cost</span>
-      <div id="dashboardFuelStatsSwitch" class="switch ${state.settings.dashboardShowFuelStats ? "on" : ""}"><div class="knob"></div></div>
+      <span class="settings-desc" style="margin:0;">Time</span>
+      <div id="dashShowTimeSwitch" class="switch ${state.settings.dashShowTime ? "on" : ""}"><div class="knob"></div></div>
     </div>
     <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "10px" : "0"};">
-      <span class="settings-desc" style="margin:0;">Show Distance and Time</span>
-      <div id="showDistanceTimeDashboardSwitch" class="switch ${state.settings.showDistanceTimeDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+      <span class="settings-desc" style="margin:0;">Fuel Cost</span>
+      <div id="dashShowCostSwitch" class="switch ${state.settings.dashShowCost !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     ${state.settings.driveType === "supervised" ? `
     <div class="switch-row" style="margin-bottom:0;">
@@ -3540,7 +3532,6 @@ function attachAppHandlers() {
     const dashChartKeys = {
       sup: { period: "dashSupPeriod", offset: "dashSupOffset", tip: "dashSupTipIndex" },
       norm: { period: "dashNormPeriod", offset: "dashNormOffset", tip: "dashNormTipIndex" },
-      time: { period: "dashTimePeriod", offset: "dashTimeOffset", tip: "dashTimeTipIndex" },
     };
     document.querySelectorAll(".dashperiod").forEach(btn => {
       btn.onclick = () => {
@@ -3829,10 +3820,10 @@ function attachAppHandlers() {
       render();
     };
     [
-      ["dashboardFuelStatsSwitch", "dashboardShowFuelStats"],
       ["showSupervisedDashboardSwitch", "showSupervisedDashboard"],
-      ["showNormalDashboardSwitch", "showNormalDashboard"],
-      ["showDistanceTimeDashboardSwitch", "showDistanceTimeDashboard"],
+      ["dashShowDistanceSwitch", "dashShowDistance"],
+      ["dashShowTimeSwitch", "dashShowTime"],
+      ["dashShowCostSwitch", "dashShowCost"],
     ].forEach(([id, key]) => {
       const el = document.getElementById(id);
       if (el) el.onclick = async () => {
