@@ -17,25 +17,28 @@
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#29B6C7;
+    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#F7CB89;
   }
   html[data-theme="light"]{
     --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
-    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#147885;
+    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#85540B;
   }
   /* Accent theme colors — override --amber (primary) / --cost (secondary
-     series) only; amber's own values above are the "amber" accent default.
-     --amber-rgb mirrors --amber as bare R,G,B channels so tint backgrounds
-     (rgba(var(--amber-rgb), .14) etc.) can react to the accent too. */
-  html[data-theme="dark"][data-accent="green"]{--amber:#3ECF8E; --amber-rgb:62,207,142; --cost:#197E4F;}
-  html[data-theme="light"][data-accent="green"]{--amber:#1C8F5B; --amber-rgb:28,143,91; --cost:#0F5C34;}
-  html[data-theme="dark"][data-accent="blue"]{--amber:#4C9FF2; --amber-rgb:76,159,242; --cost:#2B6FC2;}
-  html[data-theme="light"][data-accent="blue"]{--amber:#2568C4; --amber-rgb:37,104,196; --cost:#1A4C8C;}
-  html[data-theme="dark"][data-accent="purple"]{--amber:#7E3FF2; --amber-rgb:126,63,242; --cost:#5A2BB0;}
-  html[data-theme="light"][data-accent="purple"]{--amber:#6425C7; --amber-rgb:100,37,199; --cost:#431A87;}
-  html[data-theme="dark"][data-accent="red"]{--amber:#F2453B; --amber-rgb:242,69,59; --cost:#A82920;}
-  html[data-theme="light"][data-accent="red"]{--amber:#C2261C; --amber-rgb:194,38,28; --cost:#7A1810;}
+     series) / --time (third series) only; amber's own values above are the
+     "amber" accent default. --time is a lighter tint of --amber on dark
+     backgrounds and a darker shade of it on light backgrounds, so all three
+     dashboard series colors always read as one hue family, whichever accent
+     is picked. --amber-rgb mirrors --amber as bare R,G,B channels so tint
+     backgrounds (rgba(var(--amber-rgb), .14) etc.) can react to the accent too. */
+  html[data-theme="dark"][data-accent="green"]{--amber:#3ECF8E; --amber-rgb:62,207,142; --cost:#197E4F; --time:#8BE2BB;}
+  html[data-theme="light"][data-accent="green"]{--amber:#1C8F5B; --amber-rgb:28,143,91; --cost:#0F5C34; --time:#146742;}
+  html[data-theme="dark"][data-accent="blue"]{--amber:#4C9FF2; --amber-rgb:76,159,242; --cost:#2B6FC2; --time:#94C5F7;}
+  html[data-theme="light"][data-accent="blue"]{--amber:#2568C4; --amber-rgb:37,104,196; --cost:#1A4C8C; --time:#1B4B8D;}
+  html[data-theme="dark"][data-accent="purple"]{--amber:#7E3FF2; --amber-rgb:126,63,242; --cost:#5A2BB0; --time:#B28CF7;}
+  html[data-theme="light"][data-accent="purple"]{--amber:#6425C7; --amber-rgb:100,37,199; --cost:#431A87; --time:#481B8F;}
+  html[data-theme="dark"][data-accent="red"]{--amber:#F2453B; --amber-rgb:242,69,59; --cost:#A82920; --time:#F78F89;}
+  html[data-theme="light"][data-accent="red"]{--amber:#C2261C; --amber-rgb:194,38,28; --cost:#7A1810; --time:#8C1B14;}
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text);
@@ -178,7 +181,7 @@
   svg.chart{width:100%;display:block;overflow:visible;}
   .daylabels{position:relative;height:13px;margin-top:2px;}
   .daylabels span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--faint);white-space:nowrap;}
-  .legend2{display:flex;gap:20px;margin-top:6px;flex-wrap:wrap;}
+  .legend2{display:flex;row-gap:4px;column-gap:20px;margin-top:6px;flex-wrap:wrap;}
   .legend2 .item{display:flex;align-items:baseline;gap:6px;}
   .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
   .legend2 .lbl{font-size:11px;color:var(--muted);}
