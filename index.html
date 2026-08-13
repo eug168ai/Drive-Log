@@ -211,6 +211,18 @@
   .swatch-btn{flex:1;min-width:0;border:1px solid var(--c);border-radius:8px;padding:8px 2px;font-size:10.5px;font-weight:700;text-align:center;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;background:rgba(var(--c-rgb),.14);color:var(--c);}
   .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
 
+  .planner-stop-row{display:flex;align-items:flex-start;gap:8px;padding:8px 0;}
+  .planner-stop-marker{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(var(--amber-rgb),.16);
+    color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:22px;}
+  .planner-stop-marker svg{width:11px;height:11px;}
+  .planner-connector{width:1px;height:10px;background:var(--border);margin:0 0 0 19px;}
+  .planner-leg-row{padding:8px 0;}
+  .planner-leg-info{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+  .planner-leg-route{font-size:13px;font-weight:600;color:var(--text);}
+  .planner-leg-meta{font-size:12px;color:var(--muted);}
+  .planner-leg-tags .toggle{padding:7px;font-size:13px;}
+  .planner-route-card{cursor:pointer;}
+
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
   }
@@ -230,6 +242,7 @@ const SUPERVISORS_KEY = "driving-log:supervisors";
 const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
 const FUEL_FILLUPS_KEY = "driving-log:fuel-fillups";
+const PLANNED_ROUTES_KEY = "driving-log:planned-routes";
 const GOOGLE_TOKEN_KEY = "driving-log:google-token";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
@@ -785,6 +798,8 @@ const state = {
   tab: "log",
   trips: [],
   active: null,
+  plannedRoutes: [],
+  planner: null,
   pendingTag: "normal",
   startPointInput: "",
   startCoords: null,
@@ -810,7 +825,7 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: true, showSavedAddresses: true,
+    unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 300,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
@@ -1348,6 +1363,341 @@ async function runPreTripEstimate(origin, destination) {
   render();
 }
 
+// --- Trip Planner: multi-stop routing, per-leg tagging, proximity auto-tag -
+// Cached DirectionsResult from the last successful Preview. Kept outside
+// `state` (and therefore outside localStorage) since it's a rich Google
+// Maps object graph, not plain data — the map is re-created on every
+// render() while the Plan tab is open (innerHTML replaces its canvas node
+// each time), so this cache lets it redraw the route instantly without
+// re-hitting the Directions API on every unrelated re-render.
+let plannerDirectionsResult = null;
+
+async function forwardGeocode(address) {
+  const libraryPromise = getGeocodingLibrary();
+  if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
+  const { Geocoder } = await libraryPromise;
+  const geocoder = new Geocoder();
+  let response;
+  try {
+    response = await geocoder.geocode({ address });
+  } catch (e) {
+    const detail = (e && (e.message || e.status || e.code)) || (e ? JSON.stringify(e) : "unknown error");
+    throw new Error(`Couldn't locate that address (${detail}).`);
+  }
+  const results = response && response.results;
+  if (!results || !results.length) throw new Error("Couldn't locate that address.");
+  const loc = results[0].geometry.location;
+  return { lat: loc.lat(), lng: loc.lng(), formattedAddress: results[0].formatted_address };
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+// Suggests a Personal/Business tag for a start->end pair from geographic
+// proximity alone (within routeMatchRadius metres of both endpoints),
+// rather than an exact address match — a search result, a dropped pin, and
+// a "use my location" fix for the same real-world spot are all slightly
+// different strings/coordinates. Distinct from suggestRouteTag() (the
+// quick-log suggestion), which matches on exact address text plus a same
+// time-of-day window; this one only needs the two points to be close.
+function suggestTagForCoords(startLat, startLng, endLat, endLng) {
+  if (!state.settings.learnRoutes) return null;
+  if (startLat == null || endLat == null) return null;
+  const radius = Number(state.settings.routeMatchRadius) || 300;
+  const candidates = [];
+  state.trips.forEach(t => {
+    if (t.startLat == null || t.endLat == null || !t.tag) return;
+    candidates.push({ startLat: t.startLat, startLng: t.startLng, endLat: t.endLat, endLng: t.endLng, tag: t.tag });
+  });
+  state.plannedRoutes.forEach(r => {
+    r.legs.forEach(leg => {
+      const from = r.stops[leg.fromIdx], to = r.stops[leg.toIdx];
+      if (!from || !to || from.lat == null || to.lat == null || !leg.tag) return;
+      candidates.push({ startLat: from.lat, startLng: from.lng, endLat: to.lat, endLng: to.lng, tag: leg.tag });
+    });
+  });
+  const matches = candidates.filter(c =>
+    haversineMeters(startLat, startLng, c.startLat, c.startLng) <= radius &&
+    haversineMeters(endLat, endLng, c.endLat, c.endLng) <= radius
+  );
+  if (!matches.length) return null;
+  const counts = {};
+  matches.forEach(m => { counts[m.tag] = (counts[m.tag] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "" }; }
+function newPlannerLeg() { return { tag: null, tagSource: null, distanceKm: null, durationMin: null }; }
+
+function startPlanner() {
+  state.planner = {
+    stops: [newPlannerStop(), newPlannerStop()],
+    legs: [newPlannerLeg()],
+    stage: "build",
+    previewing: false,
+    previewError: "",
+  };
+  plannerDirectionsResult = null;
+  render();
+}
+
+function cancelPlanner() {
+  state.planner = null;
+  plannerDirectionsResult = null;
+  render();
+}
+
+// New stops are inserted just before the destination, matching the usual
+// "start -> add stops -> destination" flow — reordering isn't supported yet.
+function plannerAddStop() {
+  const p = state.planner;
+  const insertAt = p.stops.length - 1;
+  p.stops.splice(insertAt, 0, newPlannerStop());
+  p.legs.splice(insertAt, 0, newPlannerLeg());
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.stage = "build";
+  plannerDirectionsResult = null;
+  render();
+}
+
+function plannerRemoveStop(idx) {
+  const p = state.planner;
+  if (idx === 0 || idx === p.stops.length - 1 || p.stops.length <= 2) return;
+  p.stops.splice(idx, 1);
+  p.legs.splice(idx - 1, 1);
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.stage = "build";
+  plannerDirectionsResult = null;
+  render();
+}
+
+// Called after a stop's address is set (autocomplete pick, map click, or a
+// manually typed address on blur). `coords` is passed when already known
+// (autocomplete place / map click); otherwise it's resolved by geocoding.
+async function plannerResolveStop(stop, address, coords) {
+  stop.address = address;
+  stop.resolveError = "";
+  if (coords) {
+    stop.lat = coords.lat; stop.lng = coords.lng;
+  } else {
+    stop.lat = null; stop.lng = null;
+    if (!address.trim()) { render(); return; }
+    stop.resolving = true;
+    render();
+    try {
+      const geo = await forwardGeocode(address);
+      if (!state.planner || !state.planner.stops.includes(stop) || stop.address !== address) return;
+      stop.lat = geo.lat; stop.lng = geo.lng;
+    } catch (e) {
+      if (!state.planner || !state.planner.stops.includes(stop)) return;
+      stop.resolveError = e.message || "Couldn't locate that address.";
+    }
+    stop.resolving = false;
+  }
+  autoSuggestPlannerTags();
+  render();
+}
+
+// Fills in any untagged leg whose two endpoints both have coordinates,
+// per the proximity match — runs as soon as those coordinates are known
+// (stop resolved) and again after Preview fills in the rest.
+function autoSuggestPlannerTags() {
+  const p = state.planner;
+  if (!p) return;
+  p.legs.forEach((leg, i) => {
+    if (leg.tag) return;
+    const a = p.stops[i], b = p.stops[i + 1];
+    if (!a || !b || a.lat == null || b.lat == null) return;
+    const suggestion = suggestTagForCoords(a.lat, a.lng, b.lat, b.lng);
+    if (suggestion) { leg.tag = suggestion; leg.tagSource = "auto"; }
+  });
+}
+
+function plannerSetLegTag(idx, tag) {
+  const leg = state.planner.legs[idx];
+  leg.tag = tag;
+  leg.tagSource = "manual";
+  render();
+}
+
+async function runPlannerPreview() {
+  const p = state.planner;
+  if (!mapsConfigured()) { p.previewError = "Maps isn't set up for this app yet."; render(); return; }
+  if (p.stops.some(s => !s.address.trim())) { p.previewError = "Set every stop's location first."; render(); return; }
+  p.previewing = true; p.previewError = ""; render();
+  try {
+    const libraryPromise = getRoutesLibrary();
+    if (!libraryPromise) throw new Error("Directions service isn't ready yet — try again in a moment.");
+    const { DirectionsService } = await libraryPromise;
+    const service = new DirectionsService();
+    const locFor = (s) => s.lat != null ? { lat: s.lat, lng: s.lng } : resolveSavedAddress(s.address);
+    const origin = locFor(p.stops[0]);
+    const destination = locFor(p.stops[p.stops.length - 1]);
+    const waypoints = p.stops.slice(1, -1).map(s => ({ location: locFor(s), stopover: true }));
+    const result = await new Promise((resolve, reject) => {
+      service.route({
+        origin, destination, waypoints,
+        travelMode: google.maps.TravelMode.DRIVING,
+      }, (res, status) => {
+        if (status !== "OK") { reject(new Error(`Couldn't calculate that route (${status}).`)); return; }
+        resolve(res);
+      });
+    });
+    plannerDirectionsResult = result;
+    const route = result.routes[0];
+    route.legs.forEach((leg, i) => {
+      p.legs[i].distanceKm = leg.distance.value / 1000;
+      p.legs[i].durationMin = Math.max(1, Math.round(leg.duration.value / 60));
+    });
+    p.stage = "preview";
+    autoSuggestPlannerTags();
+  } catch (e) {
+    p.previewError = e.message || "Couldn't calculate that route.";
+  }
+  p.previewing = false;
+  render();
+}
+
+async function savePlannedRoute() {
+  const p = state.planner;
+  const route = {
+    id: uid(), createdAt: Date.now(),
+    stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
+    legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
+  };
+  state.plannedRoutes = [route, ...state.plannedRoutes];
+  await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  state.planner = null;
+  plannerDirectionsResult = null;
+  render();
+}
+
+async function deletePlannedRoute(id) {
+  state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== id);
+  await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  render();
+}
+
+// Reopens a saved route so it can be edited, re-previewed, or driven again.
+function openSavedRouteInPlanner(route) {
+  state.planner = {
+    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "" })),
+    legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
+    stage: route.legs.every(l => l.distanceKm != null) ? "preview" : "build",
+    previewing: false,
+    previewError: "",
+  };
+  plannerDirectionsResult = null; // re-Preview redraws the map line; leg data itself still shows without it
+  render();
+}
+
+function minutesToTimeStr(totalMinutes) {
+  const m = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Commits every leg as a logged trip, back-to-back starting now (this app
+// has no per-stop GPS check-in outside the Planner, so each leg's estimated
+// Directions duration stands in for its actual drive time).
+async function startDrivingPlannedRoute() {
+  const p = state.planner;
+  if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
+  const date = todayStr();
+  const now = new Date();
+  let cursor = now.getHours() * 60 + now.getMinutes();
+  const trips = [];
+  for (let i = 0; i < p.legs.length; i++) {
+    const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
+    const startTime = minutesToTimeStr(cursor);
+    cursor += leg.durationMin || 1;
+    const endTime = minutesToTimeStr(cursor);
+    const trip = {
+      id: uid(), date, startTime, endTime,
+      distance: leg.distanceKm || 0,
+      startPoint: from.address.trim() || "Unspecified",
+      endPoint: to.address.trim() || "Unspecified",
+      tag: leg.tag,
+    };
+    if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
+    if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
+    trips.push(trip);
+  }
+  for (const trip of trips) await finalizeTrip(trip);
+  state.planner = null;
+  plannerDirectionsResult = null;
+  state.tab = "history";
+  render();
+}
+
+let mapsLibraryPromise = null;
+function getMapsLibrary() {
+  if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
+  if (!mapsLibraryPromise) mapsLibraryPromise = google.maps.importLibrary("maps");
+  return mapsLibraryPromise;
+}
+
+function plannerNextEmptyStopIndex() {
+  if (!state.planner) return null;
+  const idx = state.planner.stops.findIndex(s => !s.address.trim());
+  return idx === -1 ? null : idx;
+}
+
+let plannerMapInstance = null;
+let plannerMapClickListener = null;
+let plannerDirectionsRenderer = null;
+
+// The whole #app subtree is replaced via innerHTML on every render(), which
+// destroys any live google.maps.Map bound to the old canvas node — so this
+// re-creates the map against the fresh canvas every time the Plan tab
+// renders with an active planning session, restoring the click listener and
+// redrawing the last-computed route from the cached plannerDirectionsResult
+// (see above) rather than re-hitting the Directions API.
+async function ensurePlannerMap() {
+  const canvas = document.getElementById("plannerMapCanvas");
+  if (plannerMapClickListener) { google.maps.event.removeListener(plannerMapClickListener); plannerMapClickListener = null; }
+  plannerDirectionsRenderer = null;
+  plannerMapInstance = null;
+  if (!canvas || !mapsConfigured()) return;
+  const libraryPromise = getMapsLibrary();
+  if (!libraryPromise) return;
+  let Map;
+  try { ({ Map } = await libraryPromise); } catch { return; }
+  if (document.getElementById("plannerMapCanvas") !== canvas) return; // superseded by a newer render while this was loading
+
+  const p = state.planner;
+  const firstStop = p && p.stops.find(s => s.lat != null);
+  plannerMapInstance = new Map(canvas, {
+    center: firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 },
+    zoom: firstStop ? 12 : 2,
+    disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
+  });
+
+  plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
+    const targetIdx = plannerNextEmptyStopIndex();
+    if (targetIdx == null) return;
+    const stop = state.planner.stops[targetIdx];
+    const lat = e.latLng.lat(), lng = e.latLng.lng();
+    let address;
+    try { address = await reverseGeocode(lat, lng); }
+    catch { address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
+    if (!state.planner || state.planner.stops[targetIdx] !== stop) return;
+    await plannerResolveStop(stop, address, { lat, lng });
+  });
+
+  if (plannerDirectionsResult) {
+    try {
+      const { DirectionsRenderer } = await getRoutesLibrary();
+      if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      plannerDirectionsRenderer = new DirectionsRenderer({ map: plannerMapInstance, suppressMarkers: false });
+      plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
+    } catch { /* map still usable without the route line */ }
+  }
+}
+
 const hasClaudeStorage = typeof window.storage !== "undefined" && !!window.storage;
 
 async function storageGet(key) {
@@ -1447,6 +1797,7 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
+  state.plannedRoutes = (await storageGet(PLANNED_ROUTES_KEY)) || [];
   state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
@@ -1455,6 +1806,7 @@ async function loadData() {
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
+  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 300;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
@@ -2184,6 +2536,120 @@ function sortHistoryRows(rows) {
   return sorted;
 }
 
+// --- Trip Planner tab --------------------------------------------------------
+function plannerStopLabel(idx, total) {
+  if (idx === 0) return "Start";
+  if (idx === total - 1) return "Destination";
+  return `Stop ${idx}`;
+}
+
+function renderPlannerStopRow(stop, idx, total) {
+  const label = plannerStopLabel(idx, total);
+  const removable = idx !== 0 && idx !== total - 1;
+  const marker = idx === 0 ? icons.play : idx === total - 1 ? icons.pin : String(idx);
+  return `
+  <div class="planner-stop-row" data-stopidx="${idx}">
+    <div class="planner-stop-marker">${marker}</div>
+    <div style="flex:1;min-width:0;">
+      <label class="field-label" style="margin-bottom:4px;">${label}</label>
+      <div class="input-icon">
+        ${icons.pin}
+        <input class="plannerStopInput" data-stopidx="${idx}" placeholder="Search or tap the map" value="${escAttr(stop.address)}" autocomplete="off" />
+      </div>
+      ${stop.resolving ? `<p class="settings-desc" style="margin:4px 0 0;">Locating…</p>` : ""}
+      ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 0 0;">${escAttr(stop.resolveError)}</p>` : ""}
+    </div>
+    <button type="button" class="icon-btn plannerLocateStopBtn" data-stopidx="${idx}" title="Use my location" style="margin-top:20px;">${icons.locate}</button>
+    ${removable ? `<button type="button" class="icon-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop" style="margin-top:20px;">${icons.trash}</button>` : ""}
+  </div>`;
+}
+
+function renderPlannerLegRow(leg, idx, stops) {
+  const fromLabel = plannerStopLabel(idx, stops.length);
+  const toLabel = plannerStopLabel(idx + 1, stops.length);
+  const hasDistance = leg.distanceKm != null;
+  return `
+  <div class="planner-leg-row">
+    <div class="planner-leg-info">
+      <span class="planner-leg-route">${fromLabel} → ${toLabel}</span>
+      <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
+    </div>
+    <div class="toggle-row planner-leg-tags">
+      <button type="button" class="toggle normal ${leg.tag === "normal" ? "on" : ""}" data-legidx="${idx}" data-legtag="normal">Personal</button>
+      <button type="button" class="toggle work ${leg.tag === "work" ? "on" : ""}" data-legidx="${idx}" data-legtag="work">Business</button>
+    </div>
+    ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route — tap to change</p>` : ""}
+  </div>`;
+}
+
+function renderSavedRoutesList() {
+  if (!state.plannedRoutes.length) {
+    return `<div class="card"><p class="settings-desc" style="margin:0;">No saved routes yet. Plan a multi-stop drive and save it here to reuse later.</p></div>`;
+  }
+  return state.plannedRoutes.map(r => {
+    const totalKm = r.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
+    const totalMin = r.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+    const stopCount = r.stops.length - 2;
+    const untagged = r.legs.some(l => !l.tag);
+    return `
+    <div class="card">
+      <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.stops[0].address || "Start")} → ${escAttr(r.stops[r.stops.length - 1].address || "Destination")}</p>
+      <p class="settings-desc" style="margin:0 0 10px;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Driving</button>
+        <button type="button" class="icon-btn plannerEditSavedBtn" data-routeid="${r.id}" title="Edit">${icons.edit}</button>
+        <button type="button" class="icon-btn plannerDeleteSavedBtn" data-routeid="${r.id}" title="Delete">${icons.trash}</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function renderPlanTab() {
+  const p = state.planner;
+  if (!p) {
+    return `
+    <div class="card">
+      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner</p>
+      <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
+      <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
+    </div>
+    ${renderSavedRoutesList()}`;
+  }
+
+  const n = p.stops.length;
+  return `
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div id="plannerMapCanvas" style="width:100%;height:200px;background:var(--bg);"></div>
+    ${!mapsConfigured() ? `<p class="settings-desc" style="margin:10px 12px;">Map preview isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 4px;">${icons.route} Plan Route</p>
+    ${p.stops.map((s, i) => renderPlannerStopRow(s, i, n)).join(`<div class="planner-connector"></div>`)}
+    <button type="button" id="plannerAddStopBtn" class="chip" style="margin-top:6px;">+ Add Stop</button>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 4px;">Legs</p>
+    ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+  </div>
+
+  ${p.previewError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${escAttr(p.previewError)}</p></div>` : ""}
+
+  <div class="card">
+    <div style="display:flex;gap:8px;">
+      <button type="button" id="plannerCancelBtn" class="btn btn-ghost" style="width:auto;flex:1;">Cancel</button>
+      <button type="button" id="plannerPreviewBtn" class="btn ${p.stage === "preview" ? "btn-ghost" : "btn-amber"}" style="width:auto;flex:2;" ${p.previewing ? "disabled" : ""}>${p.previewing ? "Calculating…" : `${icons.route} ${p.stage === "preview" ? "Refresh Route" : "Preview Route"}`}</button>
+    </div>
+    ${p.stage === "preview" ? `
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button type="button" id="plannerSaveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.check} Save Route</button>
+      <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:2;">${icons.play} Start Driving</button>
+    </div>
+    ` : ""}
+  </div>`;
+}
+
 function renderApp() {
   return `
   <div class="wrap">
@@ -2207,10 +2673,11 @@ function renderApp() {
 
     <div class="tabs">
       <button class="tab-btn ${state.tab === "log" ? "active" : ""}" data-tab="log">Log</button>
+      <button class="tab-btn ${state.tab === "plan" ? "active" : ""}" data-tab="plan">Plan</button>
       <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
     </div>
 
-    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : renderSettingsTab()}
+    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "plan" ? renderPlanTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
@@ -2559,6 +3026,16 @@ function renderSettingsTab() {
         <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
       </div>
       <p class="settings-desc" style="margin:0;">Learns repeated routes to suggest a Drive Type.</p>
+      ${state.settings.learnRoutes ? `
+      <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span class="settings-desc" style="margin:0;">Route match radius</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <input id="routeMatchRadiusInput" class="input mono" type="number" min="50" max="2000" step="50" value="${state.settings.routeMatchRadius}" style="width:80px;padding:6px 8px;text-align:right;" />
+          <span class="settings-desc" style="margin:0;">m</span>
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:4px 0 0;">How close a Trip Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
+      ` : ""}
     </div>
   </div>
 
@@ -3749,6 +4226,86 @@ function attachAppHandlers() {
     }
   }
 
+  if (state.tab === "plan") {
+    const newRouteBtn = document.getElementById("newPlannerRouteBtn");
+    if (newRouteBtn) newRouteBtn.onclick = startPlanner;
+
+    document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
+      btn.onclick = async () => {
+        const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
+        if (route) { openSavedRouteInPlanner(route); await startDrivingPlannedRoute(); }
+      };
+    });
+    document.querySelectorAll(".plannerEditSavedBtn").forEach(btn => {
+      btn.onclick = () => {
+        const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
+        if (route) openSavedRouteInPlanner(route);
+      };
+    });
+    document.querySelectorAll(".plannerDeleteSavedBtn").forEach(btn => {
+      btn.onclick = () => deletePlannedRoute(btn.dataset.routeid);
+    });
+
+    const p = state.planner;
+    if (p) {
+      const cancelBtn = document.getElementById("plannerCancelBtn");
+      if (cancelBtn) cancelBtn.onclick = cancelPlanner;
+
+      const addStopBtn = document.getElementById("plannerAddStopBtn");
+      if (addStopBtn) addStopBtn.onclick = plannerAddStop;
+
+      document.querySelectorAll(".plannerRemoveStopBtn").forEach(btn => {
+        btn.onclick = () => plannerRemoveStop(parseInt(btn.dataset.stopidx, 10));
+      });
+
+      document.querySelectorAll(".plannerLocateStopBtn").forEach(btn => {
+        btn.onclick = async () => {
+          const idx = parseInt(btn.dataset.stopidx, 10);
+          const stop = p.stops[idx];
+          if (!mapsConfigured()) { stop.resolveError = "Location lookup isn't set up for this app yet."; render(); return; }
+          try {
+            const coords = await getCurrentPosition();
+            const address = await reverseGeocode(coords.latitude, coords.longitude);
+            await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude });
+          } catch (e) {
+            stop.resolveError = e.message || "Couldn't get your location.";
+            render();
+          }
+        };
+      });
+
+      document.querySelectorAll(".plannerStopInput").forEach(input => {
+        const idx = parseInt(input.dataset.stopidx, 10);
+        const stop = p.stops[idx];
+        input.oninput = (e) => { stop.address = e.target.value; stop.lat = null; stop.lng = null; };
+        input.onblur = () => {
+          if (stop.address.trim() && stop.address !== input.dataset.lastResolved) {
+            input.dataset.lastResolved = stop.address;
+            plannerResolveStop(stop, stop.address.trim(), null);
+          }
+        };
+        attachPlacesAutocomplete(input, (desc) => {
+          input.value = desc;
+          input.dataset.lastResolved = desc;
+          plannerResolveStop(stop, desc, null);
+        });
+      });
+
+      document.querySelectorAll(".planner-leg-tags [data-legtag]").forEach(btn => {
+        btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
+      });
+
+      const previewBtn = document.getElementById("plannerPreviewBtn");
+      if (previewBtn) previewBtn.onclick = runPlannerPreview;
+      const saveBtn = document.getElementById("plannerSaveBtn");
+      if (saveBtn) saveBtn.onclick = savePlannedRoute;
+      const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
+      if (startDrivingBtn) startDrivingBtn.onclick = startDrivingPlannedRoute;
+    }
+
+    ensurePlannerMap();
+  }
+
   if (state.tab === "settings") {
     document.querySelectorAll("[data-drivetype]").forEach(btn => {
       btn.onclick = async () => {
@@ -3796,6 +4353,14 @@ function attachAppHandlers() {
       state.settings.learnRoutes = !state.settings.learnRoutes;
       await storageSet(SETTINGS_KEY, state.settings);
       render();
+    };
+
+    const routeMatchRadiusInput = document.getElementById("routeMatchRadiusInput");
+    if (routeMatchRadiusInput) routeMatchRadiusInput.onchange = async (e) => {
+      const val = Math.max(50, Math.min(2000, parseInt(e.target.value, 10) || 300));
+      state.settings.routeMatchRadius = val;
+      e.target.value = val;
+      await storageSet(SETTINGS_KEY, state.settings);
     };
 
     const showSavedAddressesSwitch = document.getElementById("showSavedAddressesSwitch");
