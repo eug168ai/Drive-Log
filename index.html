@@ -47,6 +47,7 @@
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .wrap{max-width:640px;margin:0 auto;padding:12px 16px 12px;}
   .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .header:active{opacity:.7;}
   .stats-row{display:flex;align-items:flex-start;gap:8px;}
   .stat-block{display:flex;flex-direction:column;align-items:center;}
   .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px;
@@ -2653,7 +2654,7 @@ function renderPlanTab() {
 function renderApp() {
   return `
   <div class="wrap">
-    <div class="header">
+    <div id="appHomeBtn" class="header" style="cursor:pointer;" title="Go to Dashboard">
       <div class="brand" style="align-items:flex-start;">
         <img src="icons/icon-192.png?v=2" alt="Drive Log" style="width:34px;height:34px;border-radius:9px;flex-shrink:0;" />
         <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
@@ -2673,11 +2674,11 @@ function renderApp() {
 
     <div class="tabs">
       <button class="tab-btn ${state.tab === "log" ? "active" : ""}" data-tab="log">Log</button>
-      <button class="tab-btn ${state.tab === "plan" ? "active" : ""}" data-tab="plan">Plan</button>
+      <button class="tab-btn ${state.tab === "drive" ? "active" : ""}" data-tab="drive">Drive</button>
       <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
     </div>
 
-    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "plan" ? renderPlanTab() : renderSettingsTab()}
+    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
@@ -3971,6 +3972,9 @@ function attachAppHandlers() {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
   });
 
+  const appHomeBtn = document.getElementById("appHomeBtn");
+  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "log"; render(); };
+
   function applySavedAddressSelection(targetId, address) {
     const el = document.getElementById(targetId);
     if (el) el.value = address;
@@ -4006,7 +4010,7 @@ function attachAppHandlers() {
   });
 
   const settingsBtn = document.getElementById("settingsBtn");
-  if (settingsBtn) settingsBtn.onclick = () => { state.tab = "settings"; render(); };
+  if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
 
   if (state.tab === "log") {
     const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
@@ -4226,7 +4230,7 @@ function attachAppHandlers() {
     }
   }
 
-  if (state.tab === "plan") {
+  if (state.tab === "drive") {
     const newRouteBtn = document.getElementById("newPlannerRouteBtn");
     if (newRouteBtn) newRouteBtn.onclick = startPlanner;
 
