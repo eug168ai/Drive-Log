@@ -796,7 +796,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
 const state = {
   profile: null,
   loadingProfile: true,
-  tab: "log",
+  tab: "dashboard",
   trips: [],
   active: null,
   plannedRoutes: [],
@@ -1916,7 +1916,7 @@ function checkSyncReminderDue() {
 let tickerId = null;
 function startTicker() {
   if (tickerId) return;
-  tickerId = setInterval(() => { if (state.tab === "log" && state.active) renderTimerOnly(); }, 1000);
+  tickerId = setInterval(() => { if (state.tab === "drive" && state.active) renderTimerOnly(); }, 1000);
 }
 function stopTicker() { if (tickerId) { clearInterval(tickerId); tickerId = null; } }
 
@@ -2605,20 +2605,119 @@ function renderSavedRoutesList() {
   }).join("");
 }
 
+// Single A-to-B drive: search or tap the map for a start/end (no waypoints),
+// then start a real live-timed drive right now. This is the quick path —
+// anything with a stop in between goes through the Trip Planner below.
+function renderQuickDriveSection() {
+  const a = state.active;
+  if (a) {
+    return `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
+        <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
+
+      <label class="field-label">End Location</label>
+      ${renderSavedAddressChips("endPointInput")}
+      <div class="input-icon" style="margin-bottom:10px;">
+        ${icons.pin}<div class="loc-field-wrap">
+          <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
+          <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+        </div>
+        <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
+      </div>
+      ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
+        <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
+          ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
+        </button>
+        ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
+      </div>
+      ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
+
+      <label class="field-label">Distance (${unitLabel()})</label>
+      <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
+      <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
+
+      <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
+    </div>
+    ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
+  }
+
+  return `
+  <div class="card">
+    ${state.settings.showDriveTypeOnLog ? `
+    <label class="field-label">Drive Type</label>
+    <div class="toggle-row" style="margin-bottom:16px;">
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
+      <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
+    </div>
+    ` : ""}
+    <label class="field-label">Start Location</label>
+    ${renderSavedAddressChips("startPointInput")}
+    <div class="input-icon" style="margin-bottom:16px;">
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
+      <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
+    </div>
+    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
+
+    <label class="field-label">End Location</label>
+    ${renderSavedAddressChips("preTripEndInput")}
+    <div class="input-icon" style="margin-bottom:10px;">
+      ${icons.pin}<div class="loc-field-wrap">
+        <input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
+        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+      </div>
+    </div>
+
+    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
+      <div class="pretrip-row">
+        <button id="preTripEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;" ${state.preTripEstimating ? "disabled" : ""}>
+          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
+        </button>
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono pretrip-values">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
+        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip pretrip-log-btn" type="button" style="white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
+      </div>
+      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
+    </div>
+    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Blank to skip or enter to estimate drive.</p>
+
+    ${(() => { const sug = suggestRouteTag(); return sug ? `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
+      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${labelFor(DRIVE_TYPES, sug.tag)}</b> for this route</span>
+      <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
+    </div>` : ""; })()}
+
+    <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
+  </div>
+  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
+}
+
 function renderPlanTab() {
   const p = state.planner;
+  const mapsError = state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : "";
+
   if (!p) {
-    return `
+    const plannerEntry = state.active ? "" : `
     <div class="card">
       <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner</p>
       <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
       <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
     </div>
     ${renderSavedRoutesList()}`;
+    return `${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
   }
 
   const n = p.stops.length;
   return `
+  ${mapsError}
   <div class="card" style="padding:0;overflow:hidden;">
     <div id="plannerMapCanvas" style="width:100%;height:200px;background:var(--bg);"></div>
     ${!mapsConfigured() ? `<p class="settings-desc" style="margin:10px 12px;">Map preview isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
@@ -2673,12 +2772,12 @@ function renderApp() {
     </div>
 
     <div class="tabs">
-      <button class="tab-btn ${state.tab === "log" ? "active" : ""}" data-tab="log">Log</button>
       <button class="tab-btn ${state.tab === "drive" ? "active" : ""}" data-tab="drive">Drive</button>
+      <button class="tab-btn ${state.tab === "dashboard" ? "active" : ""}" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
     </div>
 
-    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
+    ${state.tab === "dashboard" ? renderDashboardTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
@@ -2699,98 +2798,9 @@ function renderApp() {
   </div>`;
 }
 
-function renderLogTab() {
-  const a = state.active;
+function renderDashboardTab() {
   return `
-  ${state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : ""}
   ${renderDashboardSection()}
-
-  ${!a ? `
-  <div class="card">
-    ${state.settings.showDriveTypeOnLog ? `
-    <label class="field-label">Drive Type</label>
-    <div class="toggle-row" style="margin-bottom:16px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
-      <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
-    </div>
-    ` : ""}
-    <label class="field-label">Start Location</label>
-    ${renderSavedAddressChips("startPointInput")}
-    <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-      </div>
-      <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
-    </div>
-    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
-
-    <label class="field-label">End Location</label>
-    ${renderSavedAddressChips("preTripEndInput")}
-    <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-      </div>
-    </div>
-
-    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div class="pretrip-row">
-        <button id="preTripEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;" ${state.preTripEstimating ? "disabled" : ""}>
-          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
-        </button>
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono pretrip-values">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip pretrip-log-btn" type="button" style="white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
-      </div>
-      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
-    </div>
-    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Blank to skip or enter to estimate drive.</p>
-
-    ${(() => { const sug = suggestRouteTag(); return sug ? `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
-      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${labelFor(DRIVE_TYPES, sug.tag)}</b> for this route</span>
-      <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
-    </div>` : ""; })()}
-
-    <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
-  </div>
-  ` : `
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
-      <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
-    </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
-
-    <label class="field-label">End Location</label>
-    ${renderSavedAddressChips("endPointInput")}
-    <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-      </div>
-      <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
-    </div>
-    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
-
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
-      <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
-        ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
-      </button>
-      ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
-    </div>
-    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
-
-    <label class="field-label">Distance (${unitLabel()})</label>
-    <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
-    <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
-
-    <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
-  </div>`}
-  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
-  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>
-  ` : ""}
   `;
 }
 
@@ -2985,7 +2995,7 @@ function renderSettingsTab() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="settings-desc">Show in Log Screen</span>
+        <span class="settings-desc">Show on Drive Screen</span>
         <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
       </div>
     </div>
@@ -3973,7 +3983,7 @@ function attachAppHandlers() {
   });
 
   const appHomeBtn = document.getElementById("appHomeBtn");
-  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "log"; render(); };
+  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "dashboard"; render(); };
 
   function applySavedAddressSelection(targetId, address) {
     const el = document.getElementById(targetId);
@@ -4012,7 +4022,7 @@ function attachAppHandlers() {
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
 
-  if (state.tab === "log") {
+  if (state.tab === "dashboard") {
     const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
     if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
       btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
@@ -4045,14 +4055,18 @@ function attachAppHandlers() {
         render();
       };
     });
+  }
 
+  if (state.tab === "drive") {
     const logFillupBtnLog = document.getElementById("logFillupBtnLog");
     if (logFillupBtnLog) logFillupBtnLog.onclick = () => {
       state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
 
-    if (!state.active) {
+    if (state.planner) {
+      // Builder UI is shown instead — its own handlers are wired below.
+    } else if (!state.active) {
       document.querySelectorAll("[data-drivetype]").forEach(btn => {
         btn.onclick = async () => {
           state.settings.driveType = btn.dataset.drivetype;
@@ -4228,9 +4242,7 @@ function attachAppHandlers() {
       setupLocationMarquee("endPointInput");
       if (state.endLocArmed) armLocationMarquee("endPointInput");
     }
-  }
 
-  if (state.tab === "drive") {
     const newRouteBtn = document.getElementById("newPlannerRouteBtn");
     if (newRouteBtn) newRouteBtn.onclick = startPlanner;
 
