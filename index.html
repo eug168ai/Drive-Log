@@ -796,7 +796,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
 const state = {
   profile: null,
   loadingProfile: true,
-  tab: "dashboard",
+  tab: "drive",
   trips: [],
   active: null,
   plannedRoutes: [],
@@ -2707,12 +2707,12 @@ function renderPlanTab() {
   if (!p) {
     const plannerEntry = state.active ? "" : `
     <div class="card">
-      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner</p>
+      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="beta-tag">Beta</span></p>
       <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
       <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
     </div>
     ${renderSavedRoutesList()}`;
-    return `${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
+    return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
   }
 
   const n = p.stops.length;
@@ -2753,7 +2753,7 @@ function renderPlanTab() {
 function renderApp() {
   return `
   <div class="wrap">
-    <div id="appHomeBtn" class="header" style="cursor:pointer;" title="Go to Dashboard">
+    <div id="appHomeBtn" class="header" style="cursor:pointer;" title="Go to Drive">
       <div class="brand" style="align-items:flex-start;">
         <img src="icons/icon-192.png?v=2" alt="Drive Log" style="width:34px;height:34px;border-radius:9px;flex-shrink:0;" />
         <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
@@ -2773,11 +2773,10 @@ function renderApp() {
 
     <div class="tabs">
       <button class="tab-btn ${state.tab === "drive" ? "active" : ""}" data-tab="drive">Drive</button>
-      <button class="tab-btn ${state.tab === "dashboard" ? "active" : ""}" data-tab="dashboard">Dashboard</button>
-      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
+      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">Log</button>
     </div>
 
-    ${state.tab === "dashboard" ? renderDashboardTab() : state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
+    ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
@@ -2796,12 +2795,6 @@ function renderApp() {
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
     </datalist>
   </div>`;
-}
-
-function renderDashboardTab() {
-  return `
-  ${renderDashboardSection()}
-  `;
 }
 
 function renderHistoryTab() {
@@ -3983,7 +3976,7 @@ function attachAppHandlers() {
   });
 
   const appHomeBtn = document.getElementById("appHomeBtn");
-  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "dashboard"; render(); };
+  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "drive"; render(); };
 
   function applySavedAddressSelection(targetId, address) {
     const el = document.getElementById(targetId);
@@ -4022,7 +4015,7 @@ function attachAppHandlers() {
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
 
-  if (state.tab === "dashboard") {
+  if (state.tab === "drive") {
     const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
     if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
       btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
