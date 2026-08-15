@@ -2,24 +2,53 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Drive Log</title>
+<link rel="manifest" href="manifest.json?v=2" />
+<link rel="icon" href="icons/favicon-32.png?v=2" type="image/png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png?v=2" />
+<meta id="themeColorMeta" name="theme-color" content="#14171C" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Drive Log" />
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2;
+    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#F7CB89;
   }
+  html[data-theme="light"]{
+    --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
+    --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
+    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#85540B;
+  }
+  /* Accent theme colors — override --amber (primary) / --cost (secondary
+     series) / --time (third series) only; amber's own values above are the
+     "amber" accent default. --time is a lighter tint of --amber on dark
+     backgrounds and a darker shade of it on light backgrounds, so all three
+     dashboard series colors always read as one hue family, whichever accent
+     is picked. --amber-rgb mirrors --amber as bare R,G,B channels so tint
+     backgrounds (rgba(var(--amber-rgb), .14) etc.) can react to the accent too. */
+  html[data-theme="dark"][data-accent="green"]{--amber:#3ECF8E; --amber-rgb:62,207,142; --cost:#197E4F; --time:#8BE2BB;}
+  html[data-theme="light"][data-accent="green"]{--amber:#1C8F5B; --amber-rgb:28,143,91; --cost:#0F5C34; --time:#146742;}
+  html[data-theme="dark"][data-accent="blue"]{--amber:#4C9FF2; --amber-rgb:76,159,242; --cost:#2B6FC2; --time:#94C5F7;}
+  html[data-theme="light"][data-accent="blue"]{--amber:#2568C4; --amber-rgb:37,104,196; --cost:#1A4C8C; --time:#1B4B8D;}
+  html[data-theme="dark"][data-accent="purple"]{--amber:#7E3FF2; --amber-rgb:126,63,242; --cost:#5A2BB0; --time:#B28CF7;}
+  html[data-theme="light"][data-accent="purple"]{--amber:#6425C7; --amber-rgb:100,37,199; --cost:#431A87; --time:#481B8F;}
+  html[data-theme="dark"][data-accent="red"]{--amber:#F2453B; --amber-rgb:242,69,59; --cost:#A82920; --time:#F78F89;}
+  html[data-theme="light"][data-accent="red"]{--amber:#C2261C; --amber-rgb:194,38,28; --cost:#7A1810; --time:#8C1B14;}
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   }
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-  .wrap{max-width:640px;margin:0 auto;padding:24px 16px 48px;}
+  .wrap{max-width:640px;margin:0 auto;padding:12px 16px 12px;}
   .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
-  .stats-row{display:flex;align-items:flex-end;gap:8px;}
+  .header:active{opacity:.7;}
+  .stats-row{display:flex;align-items:flex-start;gap:8px;}
   .stat-block{display:flex;flex-direction:column;align-items:center;}
   .icon-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;padding:4px;
             display:flex;align-items:center;justify-content:center;}
@@ -36,7 +65,7 @@
   .odo{display:inline-flex;background:#0B0D10;border:1px solid var(--border);border-radius:8px;
        padding:5px 6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);}
   .odo span{font-size:16px;font-weight:600;color:var(--amber);width:0.85ch;text-align:center;
-            text-shadow:0 0 8px rgba(242,169,59,.45);}
+            text-shadow:0 0 8px rgba(var(--amber-rgb),.45);}
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;
                   justify-content:center;padding:20px;z-index:50;}
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
@@ -51,8 +80,8 @@
   .field-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
   .date-compact{width:150px;flex-shrink:0;}
   .time-compact{width:84px;flex-shrink:0;text-align:center;font-variant-numeric:tabular-nums;}
-  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px;margin-bottom:14px;}
-  .tab-btn{flex:1;padding:8px;border:none;background:transparent;border-radius:7px;font-size:14px;
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;margin-bottom:14px;}
+  .tab-btn{flex:1;padding:6px 0;border:none;background:transparent;border-radius:10px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:6px 10px;margin-bottom:11px;}
@@ -89,7 +118,7 @@
   .tag.normal{background:rgba(76,159,112,.15);color:var(--normal);border:1px solid rgba(76,159,112,.3);}
   .tag.supervised{background:rgba(76,159,242,.15);color:var(--blue);border:1px solid rgba(76,159,242,.3);}
   .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
-            background:rgba(242,169,59,.18);color:var(--amber);border:1px solid rgba(242,169,59,.35);
+            background:rgba(var(--amber-rgb),.18);color:var(--amber);border:1px solid rgba(var(--amber-rgb),.35);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
@@ -121,6 +150,7 @@
   .timer{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:18px;font-weight:600;}
   .hidden{display:none !important;}
   .icon{width:15px;height:15px;flex-shrink:0;}
+  .icon-fuel{width:.9em;height:.9em;}
   .switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
   .switch{position:relative;width:44px;height:24px;flex-shrink:0;background:var(--bg);border:1px solid var(--border);
           border-radius:999px;cursor:pointer;transition:background .15s,border-color .15s;}
@@ -140,6 +170,60 @@
   .pretrip-values{margin-left:auto;white-space:nowrap;font-size:12px;color:var(--muted);}
   /* History action chips: icon-only on narrow (phone) screens so they always stay in line with the Filters label. */
   .history-actions .chip{padding:5px 8px;}
+
+  /* Log-tab dashboard (bar-chart cards) */
+  .divider{height:1px;background:var(--border);margin:7px 0;}
+  .seg{display:flex;gap:5px;margin-bottom:8px;}
+  .seg button{flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
+  .seg button.on{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
+  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px;}
+  .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
+  .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
+  svg.chart{width:100%;display:block;overflow:visible;}
+  .daylabels{position:relative;height:13px;margin-top:2px;}
+  .daylabels span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--faint);white-space:nowrap;}
+  .legend2{display:flex;row-gap:4px;column-gap:20px;margin-top:6px;flex-wrap:wrap;}
+  .legend2 .item{display:flex;align-items:baseline;gap:6px;}
+  .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
+  .legend2 .lbl{font-size:11px;color:var(--muted);}
+  .legend2 .avgval{font-size:11px;color:var(--text);font-weight:600;}
+  .pill-row{margin-bottom:7px;}
+  .pill-row:last-child{margin-bottom:0;}
+  .pill-row .hdr{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 3px;}
+  .pill-track{position:relative;height:22px;border-radius:999px;background:var(--bg);border:1px solid var(--border);overflow:hidden;padding:3px 10px;display:flex;align-items:center;isolation:isolate;}
+  .pill-fill{position:absolute;inset:0;border-radius:999px;}
+  .pill-left{position:relative;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
+  .pill-count{position:relative;margin-left:auto;font-size:11px;font-weight:700;letter-spacing:.04em;color:#fff;mix-blend-mode:difference;}
+  .kv-line{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;margin-bottom:2px;}
+  .kv-line .k{color:var(--muted);}
+  .kv-line .v{color:var(--text);font-weight:600;}
+  .kv-sub{font-size:10.5px;color:var(--faint);margin:0 0 6px;}
+  .pacerow{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .pace-card{flex:1;min-width:0;border-radius:10px;padding:8px 11px;border:1px solid;display:flex;align-items:center;justify-content:center;text-align:center;}
+  .pace-card .txt b{display:block;font-size:12.5px;}
+  .pace-card .txt span{font-size:10.5px;opacity:.85;display:block;margin-top:1px;}
+  .toggle2{display:flex;flex-direction:column;border:1px solid var(--border);border-radius:8px;overflow:hidden;font-size:10.5px;flex-shrink:0;align-self:stretch;cursor:pointer;}
+  .toggle2 span{padding:4px 10px;color:var(--muted);white-space:nowrap;display:flex;align-items:center;flex:1;}
+  .toggle2 span.on{background:rgba(var(--amber-rgb),.14);color:var(--amber);font-weight:600;}
+  .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
+  .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
+  .col{cursor:pointer;}
+  .swatch-row{display:flex;gap:5px;}
+  .swatch-btn{flex:1;min-width:0;border:1px solid var(--c);border-radius:8px;padding:8px 2px;font-size:10.5px;font-weight:700;text-align:center;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;background:rgba(var(--c-rgb),.14);color:var(--c);}
+  .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
+
+  .planner-stop-row{display:flex;align-items:flex-start;gap:8px;padding:8px 0;}
+  .planner-stop-marker{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(var(--amber-rgb),.16);
+    color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:22px;}
+  .planner-stop-marker svg{width:11px;height:11px;}
+  .planner-connector{width:1px;height:10px;background:var(--border);margin:0 0 0 19px;}
+  .planner-leg-row{padding:8px 0;}
+  .planner-leg-info{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
+  .planner-leg-route{font-size:13px;font-weight:600;color:var(--text);}
+  .planner-leg-meta{font-size:12px;color:var(--muted);}
+  .planner-leg-tags .toggle{padding:7px;font-size:13px;}
+  .planner-route-card{cursor:pointer;}
+
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
   }
@@ -159,6 +243,7 @@ const SUPERVISORS_KEY = "driving-log:supervisors";
 const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
 const FUEL_FILLUPS_KEY = "driving-log:fuel-fillups";
+const PLANNED_ROUTES_KEY = "driving-log:planned-routes";
 const GOOGLE_TOKEN_KEY = "driving-log:google-token";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
@@ -693,7 +778,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
   const token = await getFreshGoogleToken();
   const row = [[
     trip.date, trip.startTime, trip.endTime, Number(trip.distance).toFixed(1),
-    trip.startPoint, trip.endPoint, trip.tag === "work" ? "Work" : trip.tag === "supervised" ? "Supervised" : "Normal",
+    trip.startPoint, trip.endPoint, labelFor(DRIVE_TYPES, trip.tag),
     trip.timeOfDay ? (trip.timeOfDay === "day" ? "Daytime" : "Nighttime") : "",
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
@@ -711,9 +796,11 @@ async function appendTripToSheet(spreadsheetId, trip) {
 const state = {
   profile: null,
   loadingProfile: true,
-  tab: "log",
+  tab: "drive",
   trips: [],
   active: null,
+  plannedRoutes: [],
+  planner: null,
   pendingTag: "normal",
   startPointInput: "",
   startCoords: null,
@@ -739,12 +826,18 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: false, showSavedAddresses: true,
+    unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 300,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
-    fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true,
+    fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
+    supervisedTargetDate: "",
+    dashboardShowFuelStats: true, darkMode: true, themeColor: "amber",
+    showSupervisedDashboard: true, showNormalDashboard: true, showDistanceTimeDashboard: true,
+    dashShowDistance: true, dashShowTime: false, dashShowCost: true,
   },
+  dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
+  dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
   sheetLink: null,
   googleBusy: false,
   syncingNow: false,
@@ -781,9 +874,11 @@ const state = {
   syncReminderPrompt: null,
   fuelFillups: [],
   fuelFillupForm: null,
+  fuelPriceAvgPeriod: "all",
   reportForm: null,
   reportGenerating: false,
   addDrives: null,
+  carLookupForm: null,
 };
 
 const icons = {
@@ -804,7 +899,196 @@ const icons = {
   trash: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>`,
   close: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>`,
   check: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6 9 17l-5-5"/></svg>`,
+  search: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>`,
+  fuelPump: `<svg class="icon icon-fuel" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="15" y2="22"/><line x1="4" y1="9" x2="14" y2="9"/><path d="M14 22V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v18"/><path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 2 2 2 2 0 0 0 2-2V9.8a2 2 0 0 0-.6-1.4L18 6"/></svg>`,
+  moon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
+  chart: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="14" width="4" height="6" rx="1"/></svg>`,
+  palette: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 0-18c4.5 0 8 3 8 6.5 0 2-1.5 3.5-3.5 3.5H15a1.5 1.5 0 0 0-1 2.6c.4.4.6.9.6 1.4a3 3 0 0 1-2.6 3z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>`,
 };
+
+// Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
+// models outside the US, where no free live lookup API exists. Not pulled from a
+// live official database (VCA/Green Vehicle Guide/EEA) — treat as a starting
+// estimate; real-world figures vary by trim, drivetrain and model year.
+const CAR_FUEL_DATA = [
+  { region: "uk", make: "Ford", model: "Puma 1.0 EcoBoost Hybrid", l100km: 5.0 },
+  { region: "uk", make: "Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
+  { region: "uk", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", l100km: 6.2 },
+  { region: "uk", make: "MINI", model: "Hatch Cooper", l100km: 5.5 },
+  { region: "uk", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
+  { region: "uk", make: "Kia", model: "Sportage 1.6 Hybrid", l100km: 5.6 },
+  { region: "uk", make: "Toyota", model: "Yaris Hybrid", l100km: 3.8 },
+  { region: "uk", make: "Ford", model: "Focus 1.0 EcoBoost", l100km: 5.9 },
+  { region: "uk", make: "Hyundai", model: "Tucson 1.6 Hybrid", l100km: 5.5 },
+  { region: "uk", make: "Audi", model: "A3 1.5 TFSI", l100km: 5.9 },
+  // Australia: the 15 highest-volume manufacturers (VFACTS-style ranking), covering
+  // every distinct petrol/diesel/PHEV nameplate each has sold in Australia over the
+  // last ~20 years. A few brands (Isuzu Ute, BYD, GWM, MG) genuinely don't have 20
+  // separate models on the AU market — their real lineup is listed in full rather
+  // than padded with invented trims. Newer entrants only list years they've
+  // actually been on sale here.
+  { region: "au", make: "Toyota", model: "HiLux 2.8L Turbo-Diesel 4x4", yearFrom: 2015, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Toyota", model: "HiLux 2.7L Petrol 4x2", yearFrom: 2015, yearTo: null, l100km: 8.9 },
+  { region: "au", make: "Toyota", model: "Corolla Hybrid", yearFrom: 2019, yearTo: null, l100km: 4.2 },
+  { region: "au", make: "Toyota", model: "Corolla 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.0 },
+  { region: "au", make: "Toyota", model: "Corolla Cross Hybrid", yearFrom: 2022, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Toyota", model: "RAV4 Hybrid AWD", yearFrom: 2019, yearTo: null, l100km: 4.8 },
+  { region: "au", make: "Toyota", model: "RAV4 2.0L Petrol", yearFrom: 2013, yearTo: 2019, l100km: 7.3 },
+  { region: "au", make: "Toyota", model: "Camry Hybrid", yearFrom: 2011, yearTo: null, l100km: 4.5 },
+  { region: "au", make: "Toyota", model: "Kluger Hybrid AWD", yearFrom: 2021, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Toyota", model: "LandCruiser Prado 2.8L Diesel", yearFrom: 2011, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Toyota", model: "LandCruiser 300 Series Diesel", yearFrom: 2021, yearTo: null, l100km: 8.9 },
+  { region: "au", make: "Toyota", model: "Yaris Cross Hybrid", yearFrom: 2020, yearTo: null, l100km: 3.8 },
+  { region: "au", make: "Toyota", model: "C-HR Hybrid", yearFrom: 2017, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Toyota", model: "Fortuner 2.8L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Toyota", model: "Prius Hybrid", yearFrom: 2011, yearTo: null, l100km: 3.4 },
+  { region: "au", make: "Ford", model: "Ranger 2.0L Bi-Turbo Diesel", yearFrom: 2022, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Ranger 3.2L Diesel", yearFrom: 2011, yearTo: 2022, l100km: 8.9 },
+  { region: "au", make: "Ford", model: "Everest 2.0L Bi-Turbo Diesel", yearFrom: 2022, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Ford", model: "Territory 4-cyl Petrol", yearFrom: 2011, yearTo: 2016, l100km: 10.4 },
+  { region: "au", make: "Ford", model: "Focus 1.5T Petrol", yearFrom: 2011, yearTo: 2018, l100km: 6.7 },
+  { region: "au", make: "Ford", model: "Escape 2.0T Petrol", yearFrom: 2020, yearTo: null, l100km: 8.6 },
+  { region: "au", make: "Ford", model: "Mustang 2.3L EcoBoost", yearFrom: 2015, yearTo: null, l100km: 9.5 },
+  { region: "au", make: "Ford", model: "Mustang 5.0L V8 GT", yearFrom: 2015, yearTo: null, l100km: 12.6 },
+  { region: "au", make: "Mazda", model: "CX-5 2.5L Petrol", yearFrom: 2012, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Mazda", model: "CX-3 2.0L Petrol", yearFrom: 2015, yearTo: null, l100km: 6.1 },
+  { region: "au", make: "Mazda", model: "CX-30 2.0L Petrol", yearFrom: 2020, yearTo: null, l100km: 6.5 },
+  { region: "au", make: "Mazda", model: "CX-9 2.5L Turbo Petrol", yearFrom: 2016, yearTo: null, l100km: 9.0 },
+  { region: "au", make: "Mazda", model: "CX-60 3.3L Diesel", yearFrom: 2023, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Mazda", model: "Mazda2 1.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Mazda", model: "Mazda3 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Mazda", model: "Mazda6 2.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Mazda", model: "BT-50 3.0L Diesel", yearFrom: 2020, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Kia", model: "Sportage 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Kia", model: "Cerato 2.0L Petrol", yearFrom: 2013, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Kia", model: "Seltos 2.0L Petrol", yearFrom: 2019, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Kia", model: "Sorento 2.2L Diesel", yearFrom: 2011, yearTo: null, l100km: 6.1 },
+  { region: "au", make: "Kia", model: "Carnival 3.5L V6 Petrol", yearFrom: 2011, yearTo: null, l100km: 10.9 },
+  { region: "au", make: "Kia", model: "Picanto 1.2L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Kia", model: "Stonic 1.4L Petrol", yearFrom: 2021, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Kia", model: "Niro Hybrid", yearFrom: 2017, yearTo: null, l100km: 4.4 },
+  { region: "au", make: "Kia", model: "Niro PHEV", yearFrom: 2018, yearTo: 2022, l100km: 1.4 },
+  { region: "au", make: "Kia", model: "Rio 1.4L Petrol", yearFrom: 2011, yearTo: 2022, l100km: 6.0 },
+  { region: "au", make: "Mitsubishi", model: "Triton 2.4L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.7 },
+  { region: "au", make: "Mitsubishi", model: "Outlander PHEV", yearFrom: 2013, yearTo: null, l100km: 1.9 },
+  { region: "au", make: "Mitsubishi", model: "Outlander 2.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Mitsubishi", model: "ASX 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Mitsubishi", model: "Eclipse Cross 1.5T Petrol", yearFrom: 2018, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "Mitsubishi", model: "Pajero Sport 2.4L Diesel", yearFrom: 2015, yearTo: null, l100km: 8.0 },
+  { region: "au", make: "Mitsubishi", model: "Mirage 1.2L Petrol", yearFrom: 2011, yearTo: 2024, l100km: 4.9 },
+  { region: "au", make: "Hyundai", model: "i30 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Hyundai", model: "Tucson 2.0L Petrol", yearFrom: 2015, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Hyundai", model: "Kona 2.0L Petrol", yearFrom: 2017, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Hyundai", model: "Santa Fe 2.2L Diesel", yearFrom: 2011, yearTo: null, l100km: 6.3 },
+  { region: "au", make: "Hyundai", model: "Venue 1.6L Petrol", yearFrom: 2019, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "Hyundai", model: "i20 1.2L Petrol", yearFrom: 2011, yearTo: 2020, l100km: 5.9 },
+  { region: "au", make: "Hyundai", model: "Palisade 3.8L V6 Petrol", yearFrom: 2020, yearTo: null, l100km: 10.7 },
+  { region: "au", make: "Hyundai", model: "Staria 2.2L Diesel", yearFrom: 2021, yearTo: null, l100km: 7.5 },
+  { region: "au", make: "Hyundai", model: "Ioniq Hybrid", yearFrom: 2016, yearTo: null, l100km: 3.9 },
+  { region: "au", make: "Isuzu", model: "D-MAX 3.0L Diesel", yearFrom: 2011, yearTo: null, l100km: 8.3 },
+  { region: "au", make: "Isuzu", model: "MU-X 3.0L Diesel", yearFrom: 2013, yearTo: null, l100km: 8.3 },
+  { region: "au", make: "MG", model: "MG3 1.5L Petrol", yearFrom: 2011, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "MG", model: "ZS 1.5L Petrol", yearFrom: 2017, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "MG", model: "HS 1.5T Petrol", yearFrom: 2019, yearTo: null, l100km: 7.7 },
+  { region: "au", make: "MG", model: "MG5 1.5L Petrol", yearFrom: 2021, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "MG", model: "GS 2.0T Petrol", yearFrom: 2017, yearTo: 2019, l100km: 8.5 },
+  { region: "au", make: "GWM", model: "Haval Jolion 1.5T Petrol", yearFrom: 2021, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "GWM", model: "Haval H6 1.5T Petrol", yearFrom: 2021, yearTo: null, l100km: 7.9 },
+  { region: "au", make: "GWM", model: "Haval H9 2.0T Petrol", yearFrom: 2015, yearTo: null, l100km: 10.4 },
+  { region: "au", make: "GWM", model: "Cannon Ute 2.0L Diesel", yearFrom: 2020, yearTo: null, l100km: 8.5 },
+  { region: "au", make: "GWM", model: "Tank 300 2.0T Petrol", yearFrom: 2023, yearTo: null, l100km: 9.8 },
+  { region: "au", make: "Nissan", model: "X-Trail 2.5L Petrol", yearFrom: 2013, yearTo: null, l100km: 8.1 },
+  { region: "au", make: "Nissan", model: "Navara 2.3L Diesel", yearFrom: 2015, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Nissan", model: "Qashqai 1.3 Mild Hybrid", yearFrom: 2021, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Nissan", model: "Juke 1.0T Petrol", yearFrom: 2020, yearTo: null, l100km: 5.8 },
+  { region: "au", make: "Nissan", model: "Patrol 5.6L V8 Petrol", yearFrom: 2011, yearTo: null, l100km: 14.4 },
+  { region: "au", make: "Nissan", model: "Pathfinder 3.5L V6 Petrol", yearFrom: 2013, yearTo: null, l100km: 9.9 },
+  { region: "au", make: "Subaru", model: "Forester 2.5L Petrol", yearFrom: 2013, yearTo: null, l100km: 7.4 },
+  { region: "au", make: "Subaru", model: "Outback 2.5L Petrol", yearFrom: 2014, yearTo: null, l100km: 7.3 },
+  { region: "au", make: "Subaru", model: "Crosstrek 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Subaru", model: "Impreza 2.0L Petrol", yearFrom: 2011, yearTo: null, l100km: 7.2 },
+  { region: "au", make: "Subaru", model: "WRX 2.4L Turbo Petrol", yearFrom: 2011, yearTo: null, l100km: 9.9 },
+  { region: "au", make: "Subaru", model: "BRZ 2.4L Petrol", yearFrom: 2012, yearTo: null, l100km: 8.7 },
+  { region: "au", make: "Subaru", model: "Levorg 1.8T Petrol", yearFrom: 2015, yearTo: 2021, l100km: 8.2 },
+  { region: "au", make: "Volkswagen", model: "Golf 1.5 TSI", yearFrom: 2011, yearTo: null, l100km: 5.7 },
+  { region: "au", make: "Volkswagen", model: "Tiguan 1.5 TSI", yearFrom: 2016, yearTo: null, l100km: 6.7 },
+  { region: "au", make: "Volkswagen", model: "Amarok 2.0L Diesel", yearFrom: 2011, yearTo: null, l100km: 7.8 },
+  { region: "au", make: "Volkswagen", model: "Polo 1.0 TSI", yearFrom: 2011, yearTo: null, l100km: 5.0 },
+  { region: "au", make: "Volkswagen", model: "T-Roc 1.4T Petrol", yearFrom: 2020, yearTo: null, l100km: 6.4 },
+  { region: "au", make: "Volkswagen", model: "Touareg 3.0 V6 Diesel", yearFrom: 2011, yearTo: null, l100km: 7.0 },
+  { region: "au", make: "Volkswagen", model: "Passat 2.0 TDI", yearFrom: 2011, yearTo: null, l100km: 5.4 },
+  { region: "au", make: "BYD", model: "Shark 6 PHEV Ute", yearFrom: 2024, yearTo: null, l100km: 2.9 },
+  { region: "au", make: "Suzuki", model: "Vitara 1.6L Petrol", yearFrom: 2015, yearTo: null, l100km: 6.5 },
+  { region: "au", make: "Suzuki", model: "Swift 1.2L Petrol", yearFrom: 2011, yearTo: null, l100km: 5.5 },
+  { region: "au", make: "Suzuki", model: "Jimny 1.5L Petrol", yearFrom: 2018, yearTo: null, l100km: 6.9 },
+  { region: "au", make: "Suzuki", model: "S-Cross 1.4T Petrol", yearFrom: 2013, yearTo: null, l100km: 6.2 },
+  { region: "au", make: "Suzuki", model: "Baleno 1.4L Petrol", yearFrom: 2016, yearTo: null, l100km: 5.8 },
+  { region: "au", make: "Suzuki", model: "Ignis 1.2L Petrol", yearFrom: 2017, yearTo: null, l100km: 5.6 },
+  { region: "au", make: "Honda", model: "CR-V 1.5T Petrol", yearFrom: 2017, yearTo: null, l100km: 7.6 },
+  { region: "au", make: "Honda", model: "Civic 1.5T Petrol", yearFrom: 2016, yearTo: null, l100km: 6.4 },
+  { region: "au", make: "Honda", model: "HR-V e:HEV Hybrid", yearFrom: 2021, yearTo: null, l100km: 4.3 },
+  { region: "au", make: "Honda", model: "Accord Euro 2.4L Petrol", yearFrom: 2003, yearTo: 2015, l100km: 9.4 },
+  { region: "au", make: "Honda", model: "Accord 1.5T Petrol", yearFrom: 2019, yearTo: 2021, l100km: 7.3 },
+  { region: "au", make: "Honda", model: "Jazz 1.5L Hybrid", yearFrom: 2020, yearTo: null, l100km: 3.8 },
+  { region: "eu", make: "Volkswagen", model: "Golf 1.5 TSI", l100km: 5.7 },
+  { region: "eu", make: "Renault", model: "Clio 1.0 TCe", l100km: 5.3 },
+  { region: "eu", make: "Peugeot", model: "208 1.2 PureTech", l100km: 5.5 },
+  { region: "eu", make: "Volkswagen", model: "Tiguan 1.5 TSI", l100km: 6.7 },
+  { region: "eu", make: "Dacia", model: "Sandero 1.0 TCe", l100km: 5.5 },
+  { region: "eu", make: "Skoda", model: "Octavia 1.5 TSI", l100km: 5.8 },
+  { region: "eu", make: "BMW", model: "3 Series 320i", l100km: 6.3 },
+  { region: "eu", make: "Mercedes-Benz", model: "A-Class A200", l100km: 6.1 },
+  { region: "eu", make: "Fiat", model: "500 Hybrid", l100km: 4.7 },
+  { region: "eu", make: "Opel/Vauxhall", model: "Corsa 1.2", l100km: 5.7 },
+];
+// Best-effort region guess so the lookup modal opens with a sensible default
+// instead of forcing a manual pick every time. Built on getDeviceRegionCode(),
+// which checks the device's actual timezone before falling back to browser
+// locale — language alone is unreliable (a phone set to "English" often
+// reports en-US regardless of which country it's actually in).
+const EU_LOCALE_COUNTRIES = ["DE","FR","ES","IT","NL","BE","AT","PT","IE","PL","SE","DK","FI","GR","CZ","HU","RO","SK","BG","HR","SI","LT","LV","EE","LU","MT","CY"];
+function detectRegion() {
+  const code = (getDeviceRegionCode() || "").toUpperCase();
+  if (code === "US") return "us";
+  if (code === "GB") return "uk";
+  if (code === "AU") return "au";
+  if (EU_LOCALE_COUNTRIES.includes(code)) return "eu";
+  return "";
+}
+// mpg is always US gallons for the "us" region (matches fueleconomy.gov) and
+// imperial gallons for uk/au/eu, matching how MPG is conventionally quoted there.
+function usMpgToL100(mpg) { return 235.215 / mpg; }
+function l100ToUsMpg(l100) { return 235.215 / l100; }
+function impMpgToL100(mpg) { return 282.481 / mpg; }
+function l100ToImpMpg(l100) { return 282.481 / l100; }
+async function fegMenu(path, params) {
+  const qs = params ? "?" + new URLSearchParams(params).toString() : "";
+  const res = await fetch(`https://www.fueleconomy.gov/ws/rest/vehicle/menu/${path}${qs}`);
+  if (!res.ok) throw new Error("menu lookup failed");
+  const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
+  return Array.from(doc.getElementsByTagName("menuItem")).map(el => ({
+    text: el.getElementsByTagName("text")[0]?.textContent || "",
+    value: el.getElementsByTagName("value")[0]?.textContent || "",
+  }));
+}
+async function fegVehicle(id) {
+  const res = await fetch(`https://www.fueleconomy.gov/ws/rest/vehicle/${id}`);
+  if (!res.ok) throw new Error("vehicle lookup failed");
+  const doc = new DOMParser().parseFromString(await res.text(), "text/xml");
+  const comb08 = parseFloat(doc.getElementsByTagName("comb08")[0]?.textContent || "");
+  if (!comb08 || isNaN(comb08)) throw new Error("no combined MPG for this vehicle");
+  return comb08;
+}
+async function loadFegYears(f) {
+  try { f.years = await fegMenu("year"); }
+  catch { f.error = "Couldn't reach fueleconomy.gov. Check your connection or enter the figure manually."; }
+}
+function newCarLookupForm(region) {
+  return {
+    region: region || "", years: [], year: "", makes: [], make: "", models: [], model: "",
+    trims: [], trimId: "", nonUsMake: "", nonUsModel: "", result: null, error: "",
+  };
+}
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 function formatDateForDisplay(dateStr) {
@@ -1080,6 +1364,341 @@ async function runPreTripEstimate(origin, destination) {
   render();
 }
 
+// --- Trip Planner: multi-stop routing, per-leg tagging, proximity auto-tag -
+// Cached DirectionsResult from the last successful Preview. Kept outside
+// `state` (and therefore outside localStorage) since it's a rich Google
+// Maps object graph, not plain data — the map is re-created on every
+// render() while the Plan tab is open (innerHTML replaces its canvas node
+// each time), so this cache lets it redraw the route instantly without
+// re-hitting the Directions API on every unrelated re-render.
+let plannerDirectionsResult = null;
+
+async function forwardGeocode(address) {
+  const libraryPromise = getGeocodingLibrary();
+  if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
+  const { Geocoder } = await libraryPromise;
+  const geocoder = new Geocoder();
+  let response;
+  try {
+    response = await geocoder.geocode({ address });
+  } catch (e) {
+    const detail = (e && (e.message || e.status || e.code)) || (e ? JSON.stringify(e) : "unknown error");
+    throw new Error(`Couldn't locate that address (${detail}).`);
+  }
+  const results = response && response.results;
+  if (!results || !results.length) throw new Error("Couldn't locate that address.");
+  const loc = results[0].geometry.location;
+  return { lat: loc.lat(), lng: loc.lng(), formattedAddress: results[0].formatted_address };
+}
+
+function haversineMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000, toRad = d => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+// Suggests a Personal/Business tag for a start->end pair from geographic
+// proximity alone (within routeMatchRadius metres of both endpoints),
+// rather than an exact address match — a search result, a dropped pin, and
+// a "use my location" fix for the same real-world spot are all slightly
+// different strings/coordinates. Distinct from suggestRouteTag() (the
+// quick-log suggestion), which matches on exact address text plus a same
+// time-of-day window; this one only needs the two points to be close.
+function suggestTagForCoords(startLat, startLng, endLat, endLng) {
+  if (!state.settings.learnRoutes) return null;
+  if (startLat == null || endLat == null) return null;
+  const radius = Number(state.settings.routeMatchRadius) || 300;
+  const candidates = [];
+  state.trips.forEach(t => {
+    if (t.startLat == null || t.endLat == null || !t.tag) return;
+    candidates.push({ startLat: t.startLat, startLng: t.startLng, endLat: t.endLat, endLng: t.endLng, tag: t.tag });
+  });
+  state.plannedRoutes.forEach(r => {
+    r.legs.forEach(leg => {
+      const from = r.stops[leg.fromIdx], to = r.stops[leg.toIdx];
+      if (!from || !to || from.lat == null || to.lat == null || !leg.tag) return;
+      candidates.push({ startLat: from.lat, startLng: from.lng, endLat: to.lat, endLng: to.lng, tag: leg.tag });
+    });
+  });
+  const matches = candidates.filter(c =>
+    haversineMeters(startLat, startLng, c.startLat, c.startLng) <= radius &&
+    haversineMeters(endLat, endLng, c.endLat, c.endLng) <= radius
+  );
+  if (!matches.length) return null;
+  const counts = {};
+  matches.forEach(m => { counts[m.tag] = (counts[m.tag] || 0) + 1; });
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "" }; }
+function newPlannerLeg() { return { tag: null, tagSource: null, distanceKm: null, durationMin: null }; }
+
+function startPlanner() {
+  state.planner = {
+    stops: [newPlannerStop(), newPlannerStop()],
+    legs: [newPlannerLeg()],
+    stage: "build",
+    previewing: false,
+    previewError: "",
+  };
+  plannerDirectionsResult = null;
+  render();
+}
+
+function cancelPlanner() {
+  state.planner = null;
+  plannerDirectionsResult = null;
+  render();
+}
+
+// New stops are inserted just before the destination, matching the usual
+// "start -> add stops -> destination" flow — reordering isn't supported yet.
+function plannerAddStop() {
+  const p = state.planner;
+  const insertAt = p.stops.length - 1;
+  p.stops.splice(insertAt, 0, newPlannerStop());
+  p.legs.splice(insertAt, 0, newPlannerLeg());
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.stage = "build";
+  plannerDirectionsResult = null;
+  render();
+}
+
+function plannerRemoveStop(idx) {
+  const p = state.planner;
+  if (idx === 0 || idx === p.stops.length - 1 || p.stops.length <= 2) return;
+  p.stops.splice(idx, 1);
+  p.legs.splice(idx - 1, 1);
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.stage = "build";
+  plannerDirectionsResult = null;
+  render();
+}
+
+// Called after a stop's address is set (autocomplete pick, map click, or a
+// manually typed address on blur). `coords` is passed when already known
+// (autocomplete place / map click); otherwise it's resolved by geocoding.
+async function plannerResolveStop(stop, address, coords) {
+  stop.address = address;
+  stop.resolveError = "";
+  if (coords) {
+    stop.lat = coords.lat; stop.lng = coords.lng;
+  } else {
+    stop.lat = null; stop.lng = null;
+    if (!address.trim()) { render(); return; }
+    stop.resolving = true;
+    render();
+    try {
+      const geo = await forwardGeocode(address);
+      if (!state.planner || !state.planner.stops.includes(stop) || stop.address !== address) return;
+      stop.lat = geo.lat; stop.lng = geo.lng;
+    } catch (e) {
+      if (!state.planner || !state.planner.stops.includes(stop)) return;
+      stop.resolveError = e.message || "Couldn't locate that address.";
+    }
+    stop.resolving = false;
+  }
+  autoSuggestPlannerTags();
+  render();
+}
+
+// Fills in any untagged leg whose two endpoints both have coordinates,
+// per the proximity match — runs as soon as those coordinates are known
+// (stop resolved) and again after Preview fills in the rest.
+function autoSuggestPlannerTags() {
+  const p = state.planner;
+  if (!p) return;
+  p.legs.forEach((leg, i) => {
+    if (leg.tag) return;
+    const a = p.stops[i], b = p.stops[i + 1];
+    if (!a || !b || a.lat == null || b.lat == null) return;
+    const suggestion = suggestTagForCoords(a.lat, a.lng, b.lat, b.lng);
+    if (suggestion) { leg.tag = suggestion; leg.tagSource = "auto"; }
+  });
+}
+
+function plannerSetLegTag(idx, tag) {
+  const leg = state.planner.legs[idx];
+  leg.tag = tag;
+  leg.tagSource = "manual";
+  render();
+}
+
+async function runPlannerPreview() {
+  const p = state.planner;
+  if (!mapsConfigured()) { p.previewError = "Maps isn't set up for this app yet."; render(); return; }
+  if (p.stops.some(s => !s.address.trim())) { p.previewError = "Set every stop's location first."; render(); return; }
+  p.previewing = true; p.previewError = ""; render();
+  try {
+    const libraryPromise = getRoutesLibrary();
+    if (!libraryPromise) throw new Error("Directions service isn't ready yet — try again in a moment.");
+    const { DirectionsService } = await libraryPromise;
+    const service = new DirectionsService();
+    const locFor = (s) => s.lat != null ? { lat: s.lat, lng: s.lng } : resolveSavedAddress(s.address);
+    const origin = locFor(p.stops[0]);
+    const destination = locFor(p.stops[p.stops.length - 1]);
+    const waypoints = p.stops.slice(1, -1).map(s => ({ location: locFor(s), stopover: true }));
+    const result = await new Promise((resolve, reject) => {
+      service.route({
+        origin, destination, waypoints,
+        travelMode: google.maps.TravelMode.DRIVING,
+      }, (res, status) => {
+        if (status !== "OK") { reject(new Error(`Couldn't calculate that route (${status}).`)); return; }
+        resolve(res);
+      });
+    });
+    plannerDirectionsResult = result;
+    const route = result.routes[0];
+    route.legs.forEach((leg, i) => {
+      p.legs[i].distanceKm = leg.distance.value / 1000;
+      p.legs[i].durationMin = Math.max(1, Math.round(leg.duration.value / 60));
+    });
+    p.stage = "preview";
+    autoSuggestPlannerTags();
+  } catch (e) {
+    p.previewError = e.message || "Couldn't calculate that route.";
+  }
+  p.previewing = false;
+  render();
+}
+
+async function savePlannedRoute() {
+  const p = state.planner;
+  const route = {
+    id: uid(), createdAt: Date.now(),
+    stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
+    legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
+  };
+  state.plannedRoutes = [route, ...state.plannedRoutes];
+  await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  state.planner = null;
+  plannerDirectionsResult = null;
+  render();
+}
+
+async function deletePlannedRoute(id) {
+  state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== id);
+  await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  render();
+}
+
+// Reopens a saved route so it can be edited, re-previewed, or driven again.
+function openSavedRouteInPlanner(route) {
+  state.planner = {
+    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "" })),
+    legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
+    stage: route.legs.every(l => l.distanceKm != null) ? "preview" : "build",
+    previewing: false,
+    previewError: "",
+  };
+  plannerDirectionsResult = null; // re-Preview redraws the map line; leg data itself still shows without it
+  render();
+}
+
+function minutesToTimeStr(totalMinutes) {
+  const m = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Commits every leg as a logged trip, back-to-back starting now (this app
+// has no per-stop GPS check-in outside the Planner, so each leg's estimated
+// Directions duration stands in for its actual drive time).
+async function startDrivingPlannedRoute() {
+  const p = state.planner;
+  if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
+  const date = todayStr();
+  const now = new Date();
+  let cursor = now.getHours() * 60 + now.getMinutes();
+  const trips = [];
+  for (let i = 0; i < p.legs.length; i++) {
+    const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
+    const startTime = minutesToTimeStr(cursor);
+    cursor += leg.durationMin || 1;
+    const endTime = minutesToTimeStr(cursor);
+    const trip = {
+      id: uid(), date, startTime, endTime,
+      distance: leg.distanceKm || 0,
+      startPoint: from.address.trim() || "Unspecified",
+      endPoint: to.address.trim() || "Unspecified",
+      tag: leg.tag,
+    };
+    if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
+    if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
+    trips.push(trip);
+  }
+  for (const trip of trips) await finalizeTrip(trip);
+  state.planner = null;
+  plannerDirectionsResult = null;
+  state.tab = "history";
+  render();
+}
+
+let mapsLibraryPromise = null;
+function getMapsLibrary() {
+  if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
+  if (!mapsLibraryPromise) mapsLibraryPromise = google.maps.importLibrary("maps");
+  return mapsLibraryPromise;
+}
+
+function plannerNextEmptyStopIndex() {
+  if (!state.planner) return null;
+  const idx = state.planner.stops.findIndex(s => !s.address.trim());
+  return idx === -1 ? null : idx;
+}
+
+let plannerMapInstance = null;
+let plannerMapClickListener = null;
+let plannerDirectionsRenderer = null;
+
+// The whole #app subtree is replaced via innerHTML on every render(), which
+// destroys any live google.maps.Map bound to the old canvas node — so this
+// re-creates the map against the fresh canvas every time the Plan tab
+// renders with an active planning session, restoring the click listener and
+// redrawing the last-computed route from the cached plannerDirectionsResult
+// (see above) rather than re-hitting the Directions API.
+async function ensurePlannerMap() {
+  const canvas = document.getElementById("plannerMapCanvas");
+  if (plannerMapClickListener) { google.maps.event.removeListener(plannerMapClickListener); plannerMapClickListener = null; }
+  plannerDirectionsRenderer = null;
+  plannerMapInstance = null;
+  if (!canvas || !mapsConfigured()) return;
+  const libraryPromise = getMapsLibrary();
+  if (!libraryPromise) return;
+  let Map;
+  try { ({ Map } = await libraryPromise); } catch { return; }
+  if (document.getElementById("plannerMapCanvas") !== canvas) return; // superseded by a newer render while this was loading
+
+  const p = state.planner;
+  const firstStop = p && p.stops.find(s => s.lat != null);
+  plannerMapInstance = new Map(canvas, {
+    center: firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 },
+    zoom: firstStop ? 12 : 2,
+    disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
+  });
+
+  plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
+    const targetIdx = plannerNextEmptyStopIndex();
+    if (targetIdx == null) return;
+    const stop = state.planner.stops[targetIdx];
+    const lat = e.latLng.lat(), lng = e.latLng.lng();
+    let address;
+    try { address = await reverseGeocode(lat, lng); }
+    catch { address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
+    if (!state.planner || state.planner.stops[targetIdx] !== stop) return;
+    await plannerResolveStop(stop, address, { lat, lng });
+  });
+
+  if (plannerDirectionsResult) {
+    try {
+      const { DirectionsRenderer } = await getRoutesLibrary();
+      if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      plannerDirectionsRenderer = new DirectionsRenderer({ map: plannerMapInstance, suppressMarkers: false });
+      plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
+    } catch { /* map still usable without the route line */ }
+  }
+}
+
 const hasClaudeStorage = typeof window.storage !== "undefined" && !!window.storage;
 
 async function storageGet(key) {
@@ -1105,7 +1724,22 @@ async function storageDelete(key) {
   } catch {}
 }
 
+const THEME_COLORS = [
+  { key: "amber", label: "Amber", swatch: "#F2A93B", rgb: "242,169,59" },
+  { key: "green", label: "Green", swatch: "#3ECF8E", rgb: "62,207,142" },
+  { key: "blue", label: "Blue", swatch: "#4C9FF2", rgb: "76,159,242" },
+  { key: "purple", label: "Purple", swatch: "#7E3FF2", rgb: "126,63,242" },
+  { key: "red", label: "Red", swatch: "#F2453B", rgb: "242,69,59" },
+];
+function applyTheme() {
+  const isLight = state.settings.darkMode === false;
+  document.documentElement.setAttribute("data-theme", isLight ? "light" : "dark");
+  document.documentElement.setAttribute("data-accent", state.settings.themeColor || "amber");
+  const themeMeta = document.getElementById("themeColorMeta");
+  if (themeMeta) themeMeta.setAttribute("content", isLight ? "#EEF0F3" : "#14171C");
+}
 function render() {
+  applyTheme();
   const app = document.getElementById("app");
   if (state.loadingProfile) { app.innerHTML = `<div class="login-screen"><span style="color:var(--muted)">Loading…</span></div>`; return; }
   if (!state.profile) { app.innerHTML = renderLogin(); attachLoginHandlers(); return; }
@@ -1164,6 +1798,7 @@ function attachLoginHandlers() {
 async function loadData() {
   state.trips = (await storageGet(TRIPS_KEY)) || [];
   state.active = await storageGet(ACTIVE_KEY);
+  state.plannedRoutes = (await storageGet(PLANNED_ROUTES_KEY)) || [];
   state.settings = (await storageGet(SETTINGS_KEY)) || { driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false };
   if (state.settings.driveType === undefined) {
     state.settings.driveType = state.settings.recordConditions ? "supervised" : (state.settings.tripType === "work" ? "work" : "normal");
@@ -1171,7 +1806,8 @@ async function loadData() {
   if (state.settings.showDriveTypeOnLog === undefined) state.settings.showDriveTypeOnLog = false;
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
-  if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = false;
+  if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
+  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 300;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
@@ -1180,6 +1816,21 @@ async function loadData() {
   if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
   if (state.settings.fuelRate === undefined) state.settings.fuelRate = "";
   if (state.settings.fuelPrice === undefined) state.settings.fuelPrice = "";
+  if (state.settings.selectedVehicle === undefined) state.settings.selectedVehicle = null;
+  // Derived once from the older separate distance/cost/time dashboard
+  // toggles (read before those get their own defaults below) so upgrading
+  // users keep whatever was already visible, while brand-new profiles fall
+  // through to the plain defaults on the right of each `!==`/`===` check.
+  if (state.settings.dashShowDistance === undefined) state.settings.dashShowDistance = state.settings.showNormalDashboard !== false;
+  if (state.settings.dashShowTime === undefined) state.settings.dashShowTime = state.settings.showDistanceTimeDashboard === true;
+  if (state.settings.dashShowCost === undefined) state.settings.dashShowCost = state.settings.dashboardShowFuelStats !== false;
+  if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
+  if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
+  if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
+  if (state.settings.showDistanceTimeDashboard === undefined) state.settings.showDistanceTimeDashboard = true;
+  if (state.settings.darkMode === undefined) state.settings.darkMode = true;
+  if (state.settings.themeColor === undefined) state.settings.themeColor = "amber";
+  if (state.settings.supervisedTargetDate === undefined) state.settings.supervisedTargetDate = "";
   if (!state.settings.syncReminderFrequency || state.settings.syncReminderFrequency === "off") state.settings.syncReminderFrequency = "weekly";
   state.settings.syncRemindersEnabled = true; // toggle removed from UI — reminders are always on now
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
@@ -1207,18 +1858,28 @@ async function loadData() {
 
 // --- Odometer reconciliation reminders -----------------------------------
 const ODOMETER_FREQUENCY_DAYS = { monthly: 30, quarterly: 91, biannual: 182, yearly: 365 };
+// Most recent odometer reading from either an explicit "Enter Now" entry or
+// a refuel log's odometer field — whichever is more recent counts as the
+// last reconciliation, so a logged refuel resets the reminder clock too.
+function lastKnownOdometerDate() {
+  let latest = (state.settings.lastOdometerReading && state.settings.lastOdometerReading.date) || null;
+  state.fuelFillups.forEach(f => {
+    if (f.odometer != null && !isNaN(f.odometer) && (!latest || f.date > latest)) latest = f.date;
+  });
+  return latest;
+}
 function odometerDueDate() {
-  const last = state.settings.lastOdometerReading;
-  if (!last || !last.date) return null; // never entered — due immediately
+  const lastDate = lastKnownOdometerDate();
+  if (!lastDate) return null; // never entered — due immediately
   const days = ODOMETER_FREQUENCY_DAYS[state.settings.odometerFrequency] || 91;
-  const due = new Date(`${last.date}T00:00:00`);
+  const due = new Date(`${lastDate}T00:00:00`);
   due.setDate(due.getDate() + days);
   return due;
 }
 function checkOdometerDue() {
   if (state.settings.odometerReminders === false) return;
-  const last = state.settings.lastOdometerReading;
-  if (!last) {
+  const lastDate = lastKnownOdometerDate();
+  if (!lastDate) {
     // Never entered a reading — don't nag a brand-new install with zero drives yet.
     if (state.trips.length === 0) return;
     state.odometerPrompt = { value: "" };
@@ -1255,7 +1916,7 @@ function checkSyncReminderDue() {
 let tickerId = null;
 function startTicker() {
   if (tickerId) return;
-  tickerId = setInterval(() => { if (state.tab === "log" && state.active) renderTimerOnly(); }, 1000);
+  tickerId = setInterval(() => { if (state.tab === "drive" && state.active) renderTimerOnly(); }, 1000);
 }
 function stopTicker() { if (tickerId) { clearInterval(tickerId); tickerId = null; } }
 
@@ -1311,24 +1972,381 @@ function tripMinutes(t) {
 function totalMinutes() { return state.trips.reduce((s, t) => s + tripMinutes(t), 0); }
 function formatDuration(mins) {
   const h = Math.floor(mins / 60), m = mins % 60;
-  return `${h}h ${m}m`;
+  return h === 0 ? `${m}m` : `${h}h ${m}m`;
 }
-function weekTotal() {
+
+// --- Log-screen dashboard (Supervised Driving / All Driving bar charts) --
+function toDateStr(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function dashRange(period, offset) {
   const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance, 0);
+  if (period === "week") {
+    const start = new Date(now); start.setDate(now.getDate() - ((now.getDay() + 6) % 7) + offset * 7); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    return { start, end, unit: "day", count: 7 };
+  }
+  if (period === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0);
+    return { start, end, unit: "day", count: end.getDate() };
+  }
+  if (period === "quarter") {
+    const totalQ = now.getFullYear() * 4 + Math.floor(now.getMonth() / 3) + offset;
+    const year = Math.floor(totalQ / 4), qIdx = ((totalQ % 4) + 4) % 4;
+    const start = new Date(year, qIdx * 3, 1);
+    const end = new Date(year, qIdx * 3 + 3, 0);
+    return { start, end, unit: "month", count: 3 };
+  }
+  const year = now.getFullYear() + offset;
+  const start = new Date(year, 0, 1);
+  const end = new Date(year, 11, 31);
+  return { start, end, unit: "month", count: 12 };
 }
-function weekMinutes() {
-  const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + tripMinutes(t), 0);
+function daysInRange(range) { return Math.round((range.end - range.start) / 86400000) + 1; }
+// Calendar days actually elapsed within a range (clamped to today), so an
+// average doesn't get diluted by future days/buckets that haven't happened
+// yet — e.g. viewing "this year" in August shouldn't average distance over
+// the whole 365 days when only ~225 of them have occurred.
+function daysElapsedInRange(range) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const end = range.end < today ? range.end : today;
+  if (end < range.start) return 0;
+  return Math.round((end - range.start) / 86400000) + 1;
 }
-function weekFuelCost() {
-  const perKm = fuelCostPerKm();
-  if (perKm == null) return null;
-  const now = new Date();
-  const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
-  return state.trips.filter(t => new Date(t.date) >= start).reduce((s, t) => s + t.distance * perKm, 0);
+// Same idea at bucket granularity: average only over FULLY-elapsed buckets
+// (to <= today). For day buckets (week/month view) that still includes
+// today, since a day's own "to" date is today. For month buckets
+// (quarter/year view) it excludes the current in-progress month, whose
+// partial total would otherwise drag the average down as if it were a
+// complete month's worth of data.
+function elapsedBucketAvg(buckets, series) {
+  const todayStr = toDateStr(new Date());
+  let sum = 0, n = 0;
+  buckets.forEach((b, i) => { if (b.to <= todayStr) { sum += series[i]; n++; } });
+  return sum / Math.max(1, n);
+}
+function dashRangeLabel(period, range) {
+  if (period === "week" || period === "month" && range.count <= 7)
+    return `${range.start.toLocaleDateString(undefined, { day: "numeric", month: "short" })} – ${range.end.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`;
+  if (period === "month") return range.start.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  if (period === "quarter") return `Q${Math.floor(range.start.getMonth() / 3) + 1} ${range.start.getFullYear()}`;
+  return `${range.start.getFullYear()}`;
+}
+function dashBuckets(period, range) {
+  const buckets = [];
+  if (range.unit === "day") {
+    for (let i = 0; i < range.count; i++) {
+      const d = new Date(range.start); d.setDate(range.start.getDate() + i);
+      const ds = toDateStr(d);
+      buckets.push({ from: ds, to: ds, label: period === "week" ? "MTWTFSS"[(d.getDay() + 6) % 7] : String(d.getDate()) });
+    }
+  } else {
+    for (let i = 0; i < range.count; i++) {
+      const d = new Date(range.start.getFullYear(), range.start.getMonth() + i, 1);
+      const dEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+      buckets.push({ from: toDateStr(d), to: toDateStr(dEnd), label: d.toLocaleDateString(undefined, { month: "short" }) });
+    }
+  }
+  return buckets;
+}
+function dashSupervisedBucketData(bucket) {
+  let minutes = 0, nightMinutes = 0;
+  state.trips.forEach(t => {
+    if (t.tag !== "supervised" || t.date < bucket.from || t.date > bucket.to) return;
+    const m = tripMinutes(t);
+    minutes += m;
+    if (t.timeOfDay === "night") nightMinutes += m;
+  });
+  return { dayHours: (minutes - nightMinutes) / 60, nightHours: nightMinutes / 60 };
+}
+function dashNormalBucketData(bucket, perKm) {
+  let distanceKm = 0, minutes = 0;
+  state.trips.forEach(t => {
+    if (t.tag === "supervised" || t.date < bucket.from || t.date > bucket.to) return;
+    distanceKm += t.distance;
+    minutes += tripMinutes(t);
+  });
+  return { distanceKm, cost: perKm != null ? distanceKm * perKm : null, minutes };
+}
+function formatHM(mins) {
+  const m = Math.max(0, Math.round(mins));
+  const h = Math.floor(m / 60);
+  return h === 0 ? `${m % 60}m` : `${h}h ${m % 60}m`;
+}
+// Server-rendered (no DOM measurement) click-to-reveal tooltip: estimates its
+// own text width from character count so it can be positioned purely from
+// the string that will be shown, matching the bar it was clicked on.
+function renderChartTip(x, topY, text, w) {
+  const padX = 8, padY = 5, fontSize = 10;
+  const textW = text.length * 6.1 + padX * 2;
+  const h = fontSize + padY * 2 + 2;
+  let tx = Math.max(2, Math.min(w - textW - 2, x - textW / 2));
+  const ty = Math.max(2, topY - h - 6);
+  return `<g class="tip"><rect class="tip-bg" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${textW.toFixed(1)}" height="${h}" rx="5"/><text class="tip-text" x="${(tx + padX).toFixed(1)}" y="${(ty + padY + fontSize - 1).toFixed(1)}">${escAttr(text)}</text></g>`;
+}
+// Shared x-position math for both the bars and their labels, so the two
+// always line up exactly regardless of bucket count. Bar width is capped so
+// a handful of buckets (e.g. a 3-bar quarter view) doesn't turn into a few
+// giant slabs — instead the capped bars spread out evenly across the width.
+function dashColumnLayout(n) {
+  const w = 390, sidePad = 6, maxBarW = 56;
+  const minGap = n > 15 ? 1 : n > 8 ? 2 : 5;
+  const availW = w - sidePad * 2;
+  const barW = Math.min(maxBarW, (availW - minGap * Math.max(0, n - 1)) / n);
+  const gap = n > 1 ? Math.max(minGap, (availW - n * barW) / (n - 1)) : 0;
+  const xs = Array.from({ length: n }, (_, i) => sidePad + i * (barW + gap));
+  return { w, barW, xs };
+}
+// Bucket labels positioned as absolute spans aligned to each bar's exact
+// horizontal center (not flexbox spacing, which can't match capped/spread
+// bar positions once bucket counts get uneven).
+function renderChartLabels(buckets, layout, period) {
+  const n = buckets.length;
+  const thin = period === "month" ? Math.ceil(n / 10) : 1;
+  const items = buckets.map((b, i) => {
+    if (i % thin !== 0) return "";
+    const pct = ((layout.xs[i] + layout.barW / 2) / layout.w) * 100;
+    return `<span style="left:${pct.toFixed(2)}%;">${b.label}</span>`;
+  }).join("");
+  return `<div class="daylabels">${items}</div>`;
+}
+// N-series overlay bar chart: every series shares the same column, drawn
+// from the same baseline. Each series' `bFactor` (< 1 shrinks it relative to
+// its own max) lets it read as visually "smaller" than the others rather
+// than risking an exact-height match — and for each bucket, series are drawn
+// tallest-to-shortest so the shorter ones end up on top/in front and always
+// stay visible, even on the rare bucket where the shrink still isn't enough.
+// `series` is an array of { data, avg, color, bFactor }.
+function renderBarChart(chartId, buckets, series, height, tipIndex) {
+  const padTop = 10, padBottom = 10;
+  const plotH = height - padTop - padBottom;
+  const n = buckets.length;
+  const { w, barW, xs } = dashColumnLayout(n);
+  const baseline = height - padBottom;
+  const prepared = series.map(s => ({
+    ...s,
+    factor: s.bFactor || 1,
+    max: Math.max(1, ...s.data.map(v => v || 0)),
+  }));
+  let tip = "";
+  const cols = buckets.map((b, i) => {
+    const x = xs[i];
+    const bars = prepared.map(s => {
+      const v = s.data[i];
+      if (v == null) return null;
+      const h = (v / s.max) * plotH * s.factor;
+      return { h, y: baseline - h, color: s.color };
+    }).filter(Boolean);
+    bars.sort((p, q) => q.h - p.h);
+    const rects = bars.map(bar => `<rect x="${x.toFixed(1)}" y="${bar.y.toFixed(1)}" width="${barW.toFixed(1)}" height="${bar.h.toFixed(1)}" rx="3" fill="${bar.color}"/>`).join("");
+    if (i === tipIndex) tip = renderChartTip(x + barW / 2, bars.length ? Math.min(...bars.map(p => p.y)) : baseline, b.tip, w);
+    return `<g class="col" data-i="${i}" data-chart="${chartId}">${rects}</g>`;
+  }).join("");
+  const avgLines = prepared.map(s => {
+    const yAvg = baseline - (s.avg / s.max) * plotH * s.factor;
+    return `<line x1="0" y1="${yAvg.toFixed(1)}" x2="${w}" y2="${yAvg.toFixed(1)}" stroke="${s.color}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>`;
+  }).join("");
+  return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
+    ${avgLines}
+    <g class="cols">${cols}</g>
+    ${tip}
+  </svg>`;
+}
+// Earliest logged-drive date for a chart's trip subset, so range navigation
+// can't page back into history with no drives in it at all.
+function earliestTripDateFor(tag) {
+  const trips = tag === "supervised" ? state.trips.filter(t => t.tag === "supervised") : state.trips.filter(t => t.tag !== "supervised");
+  if (!trips.length) return null;
+  return trips.reduce((min, t) => (t.date < min ? t.date : min), trips[0].date);
+}
+function dashSegAndNav(chartId, period, offset, range, earliestDate) {
+  const prevDisabled = earliestDate != null && toDateStr(range.start) <= earliestDate;
+  return `
+    <div class="seg">
+      ${["week", "month", "quarter", "year"].map(p => `<button class="dashperiod ${p === period ? "on" : ""}" data-chart="${chartId}" data-period="${p}">${p.charAt(0).toUpperCase()}${p.slice(1)}</button>`).join("")}
+    </div>
+    <div class="rangenav">
+      <button class="dashnav" data-chart="${chartId}" data-dir="-1" ${prevDisabled ? "disabled" : ""}>‹</button>
+      <span class="range">${dashRangeLabel(period, range)}</span>
+      <button class="dashnav" data-chart="${chartId}" data-dir="1" ${offset >= 0 ? "disabled" : ""}>›</button>
+    </div>`;
+}
+// --- Supervised Driving card -------------------------------------------------
+function supervisedFirstTripDate() {
+  const dates = state.trips.filter(t => t.tag === "supervised").map(t => t.date).sort();
+  return dates.length ? dates[0] : null;
+}
+function supervisedPaceInfo() {
+  const sup = supervisedTotals();
+  const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+  const remainingHours = Math.max(0, totalTarget - sup.hours);
+  const targetDateStr = state.settings.supervisedTargetDate;
+  let label, dateDisplay, sub, ratePerDayMin = null;
+  if (targetDateStr) {
+    label = "Target Completion Date";
+    const targetDate = new Date(`${targetDateStr}T00:00:00`);
+    dateDisplay = targetDate.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+    const daysLeft = Math.ceil((targetDate - new Date()) / 86400000);
+    if (remainingHours <= 0) sub = "Hours requirement already met";
+    else if (daysLeft <= 0) sub = "Target date has passed";
+    else { ratePerDayMin = (remainingHours * 60) / daysLeft; sub = `Steady effort required to hit ${dateDisplay}`; }
+  } else {
+    label = "Projected Completion Date";
+    const firstDate = supervisedFirstTripDate();
+    const daysActive = firstDate ? Math.max(1, Math.round((new Date() - new Date(`${firstDate}T00:00:00`)) / 86400000)) : 0;
+    const avgPerDayMin = daysActive ? sup.minutes / daysActive : 0;
+    if (remainingHours <= 0) { dateDisplay = "—"; sub = "Hours requirement already met"; }
+    else if (avgPerDayMin > 0) {
+      const daysNeeded = Math.ceil((remainingHours * 60) / avgPerDayMin);
+      const projected = new Date(); projected.setDate(projected.getDate() + daysNeeded);
+      dateDisplay = projected.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+      ratePerDayMin = avgPerDayMin;
+      sub = "No target date set — projected from your current average pace";
+    } else { dateDisplay = "—"; sub = "Log a few supervised drives to see a projection"; }
+  }
+  return { label, dateDisplay, sub, ratePerDayMin, remainingHours };
+}
+function renderSupervisedDashboardCard() {
+  if (state.settings.driveType !== "supervised") return "";
+  if (state.settings.showSupervisedDashboard === false) return "";
+  const sup = supervisedTotals();
+  const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
+  const nightTarget = state.settings.supervisedNightHoursTarget || 15;
+  const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
+  const pace = supervisedPaceInfo();
+  const paceUnit = state.dashSupPaceUnit;
+  const rateMin = pace.ratePerDayMin != null ? (paceUnit === "week" ? pace.ratePerDayMin * 7 : pace.ratePerDayMin) : null;
+  const dayPct = totalTarget ? Math.min(100, ((sup.hours - sup.nightHours) / totalTarget) * 100) : 0;
+  const nightPct = nightTarget ? Math.min(100, (sup.nightHours / nightTarget) * 100) : 0;
+
+  const period = state.dashSupPeriod, offset = state.dashSupOffset;
+  const range = dashRange(period, offset);
+  const buckets = dashBuckets(period, range);
+  const dayData = buckets.map(b => dashSupervisedBucketData(b));
+  const seriesA = dayData.map(d => d.dayHours), seriesB = dayData.map(d => d.nightHours);
+  buckets.forEach((b, i) => { b.tip = `${b.label}  ·  Day ${formatHM(seriesA[i] * 60)}  ·  Night ${formatHM(seriesB[i] * 60)}`; });
+  const avgA = elapsedBucketAvg(buckets, seriesA);
+  const avgB = elapsedBucketAvg(buckets, seriesB);
+
+  return `
+  <div class="card" style="padding:12px 10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">Supervised Driving</p>
+      ${completed ? `<span class="connected-pill">Completed</span>` : ""}
+    </div>
+
+    <div class="kv-line"><span class="k">${pace.label}</span><span class="v mono">${pace.dateDisplay}</span></div>
+    <div class="kv-sub">${pace.sub}</div>
+    <div class="pacerow">
+      <div class="pace-card" style="background:${rateMin != null ? "rgba(var(--amber-rgb),.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(var(--amber-rgb),.35)" : "var(--border)"};">
+        <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
+          <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
+        </span>
+      </div>
+      <div class="toggle2" id="dashSupPaceToggle"><span class="${paceUnit === "day" ? "on" : ""}" data-paceunit="day">Per Day</span><span class="${paceUnit === "week" ? "on" : ""}" data-paceunit="week">Per Week</span></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="pill-row">
+      <div class="hdr">Day Hours</div>
+      <div class="pill-track">
+        <div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div>
+        <span class="pill-left">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
+        <span class="pill-count">${Math.round(dayPct)}%</span>
+      </div>
+    </div>
+    <div class="pill-row">
+      <div class="hdr">Night Hours</div>
+      <div class="pill-track">
+        <div class="pill-fill" style="width:${nightPct}%;background:var(--cost);"></div>
+        <span class="pill-left">${formatHM(Math.max(0, nightTarget - sup.nightHours) * 60)} left</span>
+        <span class="pill-count">${Math.round(nightPct)}%</span>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    ${dashSegAndNav("sup", period, offset, range, earliestTripDateFor("supervised"))}
+    ${renderBarChart("sup", buckets, [
+      { data: seriesA, avg: avgA, color: "var(--amber)" },
+      { data: seriesB, avg: avgB, color: "var(--cost)" },
+    ], 90, state.dashSupTipIndex)}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
+    <div class="legend2">
+      <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
+      <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Night hours</span><span class="avgval mono">${formatHM(avgB * 60)} avg</span></div>
+    </div>
+  </div>`;
+}
+// --- Driving metrics card (Distance / Time / Fuel Cost — any combination) --
+// The three metrics are independently toggled in Settings and overlaid on
+// one chart. Each has a fixed role factor so that if two metrics happen to
+// be exactly proportional (e.g. estimated cost = distance × rate), they
+// still render at different bar heights instead of collapsing into one.
+const DRIVING_METRIC_ROLE_FACTOR = { distance: 1, time: 0.82, cost: 0.64 };
+function renderDrivingMetricsCard() {
+  const wantDistance = state.settings.dashShowDistance !== false;
+  const wantTime = !!state.settings.dashShowTime;
+  const perKm = state.settings.dashShowCost !== false ? fuelCostPerKm() : null;
+  const wantCost = perKm != null;
+  if (!wantDistance && !wantTime && !wantCost) return "";
+
+  const period = state.dashNormPeriod, offset = state.dashNormOffset;
+  const range = dashRange(period, offset);
+  const buckets = dashBuckets(period, range);
+  const bucketData = buckets.map(b => dashNormalBucketData(b, perKm));
+  const elapsedDays = Math.max(1, daysElapsedInRange(range));
+
+  const metrics = [];
+  if (wantDistance) metrics.push({
+    key: "distance", label: "Distance", color: "var(--amber)",
+    data: bucketData.map(d => kmToDisplay(d.distanceKm)),
+    fmtTip: v => `${v.toFixed(1)} ${unitLabel()}`,
+    fmtLegend: avg => `${avg.toFixed(1)} ${unitLabel()}/day`,
+  });
+  if (wantTime) metrics.push({
+    key: "time", label: "Time", color: "var(--time)",
+    data: bucketData.map(d => d.minutes),
+    fmtTip: v => formatHM(v),
+    fmtLegend: avg => `${formatHM(avg)}/day`,
+  });
+  if (wantCost) metrics.push({
+    key: "cost", label: "Fuel Cost", color: "var(--cost)",
+    data: bucketData.map(d => d.cost || 0),
+    fmtTip: v => formatCurrency(v),
+    fmtLegend: avg => `${formatCurrency(avg)}/day`,
+  });
+
+  const multi = metrics.length > 1;
+  const series = metrics.map(m => ({
+    ...m,
+    bFactor: multi ? DRIVING_METRIC_ROLE_FACTOR[m.key] : 1,
+    avgBucket: elapsedBucketAvg(buckets, m.data),
+    avgDay: m.data.reduce((s, v) => s + v, 0) / elapsedDays,
+  }));
+
+  buckets.forEach((b, i) => {
+    b.tip = `${b.label}  ·  ${series.map(s => s.fmtTip(s.data[i])).join("  ·  ")}`;
+  });
+
+  const labels = series.map(s => s.label);
+  const title = labels.length <= 1 ? labels.join("")
+    : labels.length === 2 ? labels.join(" & ")
+    : `${labels.slice(0, -1).join(", ")} & ${labels[labels.length - 1]}`;
+
+  return `
+  <div class="card" style="padding:12px 10px;">
+    <p class="settings-title" style="margin:0 0 10px;">${title}</p>
+    ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
+    ${renderBarChart("norm", buckets, series.map(s => ({ data: s.data, avg: s.avgBucket, color: s.color, bFactor: s.bFactor })), 110, state.dashNormTipIndex)}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
+    <div class="legend2">
+      ${series.map(s => `<div class="item"><span class="sw" style="background:${s.color};"></span><span class="lbl">${s.label}</span><span class="avgval mono">${s.fmtLegend(s.avgDay)}</span></div>`).join("")}
+    </div>
+  </div>`;
+}
+function renderDashboardSection() {
+  return `${renderSupervisedDashboardCard()}${renderDrivingMetricsCard()}`;
 }
 
 // --- Supervised (learner) licence hour tracking -----------------------------
@@ -1364,19 +2382,80 @@ function checkSupervisedLicenceComplete() {
 }
 
 // --- Fuel cost -------------------------------------------------------------
-// "Accurate" mode: average spend per unit distance, derived from logged
-// fill-ups against the distance driven over the same period (earliest
-// fill-up date through now). Returns null if there isn't enough data yet.
+function monthsAgoStr(monthsBack) {
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - monthsBack);
+  return cutoff.toISOString().slice(0, 10);
+}
+// Consecutive full-tank-to-full-tank intervals, built from refuels that have
+// an odometer reading (sorted by odometer, not date — protects against
+// refuels logged out of order). The fuel added at the *later* refuel of each
+// pair is what was actually consumed traveling between the two readings, so
+// this is real usage, independent of whether every trip in between got
+// logged in the app.
+function fuelIntervals() {
+  const withOdo = state.fuelFillups
+    .filter(f => f.odometer != null && !isNaN(f.odometer))
+    .slice()
+    .sort((a, b) => a.odometer - b.odometer);
+  const intervals = [];
+  for (let i = 1; i < withOdo.length; i++) {
+    const prev = withOdo[i - 1], cur = withOdo[i];
+    const distance = cur.odometer - prev.odometer;
+    if (distance <= 0) continue; // bad/duplicate reading — skip rather than corrupt the average
+    intervals.push({ date: cur.date, distance, amount: Number(cur.amount) || 0, price: Number(cur.price) || 0 });
+  }
+  return intervals;
+}
+// "Accurate" mode's $/km rate. Prefers real odometer-interval data — exact
+// distance per dollar spent, unaffected by gaps in trip logging. Falls back
+// to the old trip-distance method (spend since earliest refuel vs. logged
+// trip distance since then) when there isn't yet a full odometer interval.
 function accurateFuelCostPerKm() {
   if (!state.fuelFillups.length) return null;
+  const intervals = fuelIntervals();
+  if (intervals.length) {
+    const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
+    const totalPrice = intervals.reduce((s, iv) => s + iv.price, 0);
+    if (!totalDistance) return null;
+    const totalDistanceKm = state.settings.unit === "mi" ? totalDistance / 0.621371 : totalDistance;
+    return totalPrice / totalDistanceKm;
+  }
   const dates = state.fuelFillups.map(f => f.date).sort();
   const from = dates[0];
   const totalSpend = state.fuelFillups.reduce((s, f) => s + (Number(f.price) || 0), 0);
   const distanceKm = state.trips.filter(t => t.date >= from).reduce((s, t) => s + t.distance, 0);
   if (!distanceKm) return null;
-  // fuel price entries are already in the user's chosen unit's currency-per-volume;
-  // distance is tracked internally in km, so convert spend/km -> spend/display-unit at display time.
   return totalSpend / distanceKm;
+}
+// Real fuel usage (L/100km or MPG, matching the current unit) from odometer
+// intervals — not an estimate, the actual litres burned per km covered.
+// Returns null until there's at least one complete odometer-to-odometer
+// interval (i.e. at least two refuels logged with an odometer reading).
+function accurateFuelUsage(monthsBack) {
+  let intervals = fuelIntervals();
+  if (monthsBack != null) {
+    const cutoffStr = monthsAgoStr(monthsBack);
+    intervals = intervals.filter(iv => iv.date >= cutoffStr);
+  }
+  const totalDistance = intervals.reduce((s, iv) => s + iv.distance, 0);
+  const totalAmount = intervals.reduce((s, iv) => s + iv.amount, 0);
+  if (!totalDistance || !totalAmount) return null;
+  return state.settings.unit === "mi" ? totalDistance / totalAmount : (totalAmount / totalDistance) * 100;
+}
+// Average price paid per litre/gallon over a trailing window, from logged
+// refuels. Weighted by volume (total spend / total volume) rather than a
+// simple mean of each refuel's unit price, so bigger fill-ups count more.
+function avgFuelPriceForPeriod(monthsBack) {
+  let refuels = state.fuelFillups;
+  if (monthsBack != null) {
+    const cutoffStr = monthsAgoStr(monthsBack);
+    refuels = refuels.filter(f => f.date >= cutoffStr);
+  }
+  const totalAmount = refuels.reduce((s, f) => s + (Number(f.amount) || 0), 0);
+  if (!totalAmount) return null;
+  const totalPrice = refuels.reduce((s, f) => s + (Number(f.price) || 0), 0);
+  return totalPrice / totalAmount;
 }
 function estimatedFuelCostPerKm() {
   const rate = parseFloat(state.settings.fuelRate);
@@ -1458,107 +2537,123 @@ function sortHistoryRows(rows) {
   return sorted;
 }
 
-function renderApp() {
+// --- Trip Planner tab --------------------------------------------------------
+function plannerStopLabel(idx, total) {
+  if (idx === 0) return "Start";
+  if (idx === total - 1) return "Destination";
+  return `Stop ${idx}`;
+}
+
+function renderPlannerStopRow(stop, idx, total) {
+  const label = plannerStopLabel(idx, total);
+  const removable = idx !== 0 && idx !== total - 1;
+  const marker = idx === 0 ? icons.play : idx === total - 1 ? icons.pin : String(idx);
   return `
-  <div class="wrap">
-    <div class="header">
-      <div class="brand" style="align-items:flex-start;">
-        <span style="display:inline-flex;width:18px;height:18px;color:#FFFFFF;flex-shrink:0;">${icons.steeringWheel.replace('class="icon"', 'style="width:18px;height:18px;"')}</span>
-        <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
+  <div class="planner-stop-row" data-stopidx="${idx}">
+    <div class="planner-stop-marker">${marker}</div>
+    <div style="flex:1;min-width:0;">
+      <label class="field-label" style="margin-bottom:4px;">${label}</label>
+      <div class="input-icon">
+        ${icons.pin}
+        <input class="plannerStopInput" data-stopidx="${idx}" placeholder="Search or tap the map" value="${escAttr(stop.address)}" autocomplete="off" />
       </div>
-      <div class="stats-row">
-        <div class="stat-block">
-          <p class="odo-label">Total distance</p>
-          ${odometer(kmToDisplay(totalMiles()))}
-        </div>
-        <div class="stat-block">
-          <p class="odo-label">Total time</p>
-          ${odometerTime(totalMinutes())}
-        </div>
-        <button id="settingsBtn" class="icon-btn" style="padding:4px 4px 0 4px;align-self:flex-start;margin-top:-14px;" title="Settings">${icons.gear}</button>
-      </div>
+      ${stop.resolving ? `<p class="settings-desc" style="margin:4px 0 0;">Locating…</p>` : ""}
+      ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 0 0;">${escAttr(stop.resolveError)}</p>` : ""}
     </div>
-
-    <div class="tabs">
-      <button class="tab-btn ${state.tab === "log" ? "active" : ""}" data-tab="log">Log</button>
-      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
-    </div>
-
-    ${state.tab === "log" ? renderLogTab() : state.tab === "history" ? renderHistoryTab() : renderSettingsTab()}
-    ${state.pendingTrip ? renderConditionsModal() : ""}
-    ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
-    ${state.editingTrip ? renderEditTripModal() : ""}
-    ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
-    ${state.logEstimateForm ? renderLogEstimateModal() : ""}
-    ${state.splittingTrip ? renderSplitTripModal() : ""}
-    ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
-    ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
-    ${state.supervisedCompletionPrompt ? renderSupervisedCompletionModal() : ""}
-    ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
-    ${state.reportForm ? renderReportModal() : ""}
-    ${state.addDrives ? renderAddDrivesModal() : ""}
-    <datalist id="recentLocations">
-      ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
-      ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
-    </datalist>
+    <button type="button" class="icon-btn plannerLocateStopBtn" data-stopidx="${idx}" title="Use my location" style="margin-top:20px;">${icons.locate}</button>
+    ${removable ? `<button type="button" class="icon-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop" style="margin-top:20px;">${icons.trash}</button>` : ""}
   </div>`;
 }
 
-function formatHoursMinutes(totalMins) {
-  const h = Math.floor(totalMins / 60), m = totalMins % 60;
-  return `${h}<span style="margin-left:2px;">h</span><span style="margin-left:2px;">${m}</span><span style="margin-left:2px;">m</span>`;
+function renderPlannerLegRow(leg, idx, stops) {
+  const fromLabel = plannerStopLabel(idx, stops.length);
+  const toLabel = plannerStopLabel(idx + 1, stops.length);
+  const hasDistance = leg.distanceKm != null;
+  return `
+  <div class="planner-leg-row">
+    <div class="planner-leg-info">
+      <span class="planner-leg-route">${fromLabel} → ${toLabel}</span>
+      <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
+    </div>
+    <div class="toggle-row planner-leg-tags">
+      <button type="button" class="toggle normal ${leg.tag === "normal" ? "on" : ""}" data-legidx="${idx}" data-legtag="normal">Personal</button>
+      <button type="button" class="toggle work ${leg.tag === "work" ? "on" : ""}" data-legidx="${idx}" data-legtag="work">Business</button>
+    </div>
+    ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route — tap to change</p>` : ""}
+  </div>`;
 }
 
-function renderLogTab() {
-  const a = state.active;
-  return `
-  ${state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : ""}
-  <div class="card">
-    ${(() => {
-      const sup = supervisedTotals();
-      if (sup.minutes <= 0 && state.settings.driveType !== "supervised") return "";
-      const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
-      const nightTarget = state.settings.supervisedNightHoursTarget || 15;
-      const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
-      return `
-    <div style="padding-bottom:7px;margin-bottom:7px;border-bottom:1px solid var(--border);">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <label class="field-label" style="margin:0;">Supervised Driving</label>
-        ${completed ? `<span class="connected-pill">Completed</span>` : ""}
-      </div>
-      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(sup.distance).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
-        <div style="display:flex;align-items:baseline;gap:8px;">
-          <span class="mono" style="font-size:13px;font-weight:600;color:var(--muted);">${formatHoursMinutes(sup.nightMinutes)}</span>
-          <span class="mono" style="font-size:22px;font-weight:600;">${formatHoursMinutes(sup.minutes)}</span>
-        </div>
+function renderSavedRoutesList() {
+  if (!state.plannedRoutes.length) {
+    return `<div class="card"><p class="settings-desc" style="margin:0;">No saved routes yet. Plan a multi-stop drive and save it here to reuse later.</p></div>`;
+  }
+  return state.plannedRoutes.map(r => {
+    const totalKm = r.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
+    const totalMin = r.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+    const stopCount = r.stops.length - 2;
+    const untagged = r.legs.some(l => !l.tag);
+    return `
+    <div class="card">
+      <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.stops[0].address || "Start")} → ${escAttr(r.stops[r.stops.length - 1].address || "Destination")}</p>
+      <p class="settings-desc" style="margin:0 0 10px;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Driving</button>
+        <button type="button" class="icon-btn plannerEditSavedBtn" data-routeid="${r.id}" title="Edit">${icons.edit}</button>
+        <button type="button" class="icon-btn plannerDeleteSavedBtn" data-routeid="${r.id}" title="Delete">${icons.trash}</button>
       </div>
     </div>`;
-    })()}
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;">
-      <div>
-        <label class="field-label">This week</label>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${kmToDisplay(weekTotal()).toFixed(1)}<span style="margin-left:2px;">${unitLabel()}</span></p>
-      </div>
-      <div style="text-align:right;">
-        <label class="field-label">&nbsp;</label>
-        <p class="mono" style="font-size:22px;font-weight:600;margin:0;">${formatHoursMinutes(weekMinutes())}</p>
-      </div>
-    </div>
-    ${(() => { const cost = weekFuelCost(); return cost != null ? `
-    <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-      <span class="settings-desc" style="margin:0;line-height:1.2;">Estimated Fuel Cost</span>
-      <span class="mono" style="font-size:14px;font-weight:600;">${formatCurrency(cost)}</span>
-    </div>` : ""; })()}
-  </div>
+  }).join("");
+}
 
-  ${!a ? `
+// Single A-to-B drive: search or tap the map for a start/end (no waypoints),
+// then start a real live-timed drive right now. This is the quick path —
+// anything with a stop in between goes through the Trip Planner below.
+function renderQuickDriveSection() {
+  const a = state.active;
+  if (a) {
+    return `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
+        <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
+      </div>
+      <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
+
+      <label class="field-label">End Location</label>
+      ${renderSavedAddressChips("endPointInput")}
+      <div class="input-icon" style="margin-bottom:10px;">
+        ${icons.pin}<div class="loc-field-wrap">
+          <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
+          <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+        </div>
+        <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
+      </div>
+      ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
+
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
+        <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
+          ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
+        </button>
+        ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
+      </div>
+      ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
+
+      <label class="field-label">Distance (${unitLabel()})</label>
+      <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
+      <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
+
+      <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
+    </div>
+    ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
+  }
+
+  return `
   <div class="card">
     ${state.settings.showDriveTypeOnLog ? `
     <label class="field-label">Drive Type</label>
     <div class="toggle-row" style="margin-bottom:16px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
     ` : ""}
@@ -1596,49 +2691,111 @@ function renderLogTab() {
 
     ${(() => { const sug = suggestRouteTag(); return sug ? `
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
-      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${sug.tag}</b> for this route</span>
+      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${labelFor(DRIVE_TYPES, sug.tag)}</b> for this route</span>
       <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
     </div>` : ""; })()}
 
     <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
   </div>
-  ` : `
+  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
+}
+
+function renderPlanTab() {
+  const p = state.planner;
+  const mapsError = state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : "";
+
+  if (!p) {
+    const plannerEntry = state.active ? "" : `
+    <div class="card">
+      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="beta-tag">Beta</span></p>
+      <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
+      <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
+    </div>
+    ${renderSavedRoutesList()}`;
+    return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
+  }
+
+  const n = p.stops.length;
+  return `
+  ${renderDashboardSection()}
+  ${mapsError}
+  <div class="card" style="padding:0;overflow:hidden;">
+    <div id="plannerMapCanvas" style="width:100%;height:200px;background:var(--bg);"></div>
+    ${!mapsConfigured() ? `<p class="settings-desc" style="margin:10px 12px;">Map preview isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
+  </div>
+
   <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <span class="tag ${a.tag}">${a.tag}</span>
-      <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
-    </div>
-    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
+    <p class="settings-title" style="margin:0 0 4px;">${icons.route} Plan Route</p>
+    ${p.stops.map((s, i) => renderPlannerStopRow(s, i, n)).join(`<div class="planner-connector"></div>`)}
+    <button type="button" id="plannerAddStopBtn" class="chip" style="margin-top:6px;">+ Add Stop</button>
+  </div>
 
-    <label class="field-label">End Location</label>
-    ${renderSavedAddressChips("endPointInput")}
-    <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 4px;">Legs</p>
+    ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+  </div>
+
+  ${p.previewError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${escAttr(p.previewError)}</p></div>` : ""}
+
+  <div class="card">
+    <div style="display:flex;gap:8px;">
+      <button type="button" id="plannerCancelBtn" class="btn btn-ghost" style="width:auto;flex:1;">Cancel</button>
+      <button type="button" id="plannerPreviewBtn" class="btn ${p.stage === "preview" ? "btn-ghost" : "btn-amber"}" style="width:auto;flex:2;" ${p.previewing ? "disabled" : ""}>${p.previewing ? "Calculating…" : `${icons.route} ${p.stage === "preview" ? "Refresh Route" : "Preview Route"}`}</button>
+    </div>
+    ${p.stage === "preview" ? `
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      <button type="button" id="plannerSaveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.check} Save Route</button>
+      <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:2;">${icons.play} Start Driving</button>
+    </div>
+    ` : ""}
+  </div>`;
+}
+
+function renderApp() {
+  return `
+  <div class="wrap">
+    <div id="appHomeBtn" class="header" style="cursor:pointer;" title="Go to Drive">
+      <div class="brand" style="align-items:flex-start;">
+        <img src="icons/icon-192.png?v=2" alt="Drive Log" style="width:34px;height:34px;border-radius:9px;flex-shrink:0;" />
+        <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
       </div>
-      <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
+      <div class="stats-row">
+        <div class="stat-block">
+          <p class="odo-label">Total distance</p>
+          ${odometer(kmToDisplay(totalMiles()))}
+        </div>
+        <div class="stat-block">
+          <p class="odo-label">Total time</p>
+          ${odometerTime(totalMinutes())}
+        </div>
+        <button id="settingsBtn" class="icon-btn" style="padding:0;" title="Settings">${icons.gear}</button>
+      </div>
     </div>
-    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
 
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
-      <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
-        ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
-      </button>
-      ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
+    <div class="tabs">
+      <button class="tab-btn ${state.tab === "drive" ? "active" : ""}" data-tab="drive">Drive</button>
+      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
     </div>
-    ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
 
-    <label class="field-label">Distance (${unitLabel()})</label>
-    <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
-    <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
-
-    <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
-  </div>`}
-  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `
-  <button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
-  ` : ""}
-  `;
+    ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
+    ${state.pendingTrip ? renderConditionsModal() : ""}
+    ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
+    ${state.editingTrip ? renderEditTripModal() : ""}
+    ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
+    ${state.logEstimateForm ? renderLogEstimateModal() : ""}
+    ${state.splittingTrip ? renderSplitTripModal() : ""}
+    ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
+    ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
+    ${state.supervisedCompletionPrompt ? renderSupervisedCompletionModal() : ""}
+    ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
+    ${state.carLookupForm ? renderCarLookupModal() : ""}
+    ${state.reportForm ? renderReportModal() : ""}
+    ${state.addDrives ? renderAddDrivesModal() : ""}
+    <datalist id="recentLocations">
+      ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
+      ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
+    </datalist>
+  </div>`;
 }
 
 function renderHistoryTab() {
@@ -1663,7 +2820,7 @@ function renderHistoryTab() {
       </div>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">
-      ${["all","work","normal","supervised"].map(tg => `<button class="chip ${state.filterTag===tg?"active":""}" data-filtertag="${tg}">${tg}</button>`).join("")}
+      ${[{ v: "all", l: "All" }, ...DRIVE_TYPES].map(tg => `<button class="chip ${state.filterTag===tg.v?"active":""}" data-filtertag="${tg.v}">${tg.l}</button>`).join("")}
     </div>
     <div class="row-2" style="margin-bottom:10px;">
       <input type="date" id="filterFrom" class="input" value="${state.filterFrom}" style="font-size:12px;" />
@@ -1714,7 +2871,33 @@ function renderHistoryTab() {
         </tbody>
       </table>
     </div>
-  </div>`;
+  </div>
+
+  ${state.settings.fuelTrackingEnabled !== false ? `
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.fuelPump} Refuels</p>
+      <button id="logFillupBtnHistory" class="chip" title="Log a Refuel">${icons.locate} <span class="chip-label">Log a Refuel</span></button>
+    </div>
+    ${state.fuelFillups.length ? `
+      <div class="table-scroll" style="max-height:260px;">
+        <table>
+          <thead><tr><th>Date</th><th style="text-align:right;">Odo</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
+          <tbody>
+            ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
+              <tr>
+                <td>${formatDateForDisplay(f.date)}</td>
+                <td class="mono" style="text-align:right;">${f.odometer != null ? Number(f.odometer).toLocaleString() : "—"}</td>
+                <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
+                <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
+                <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
+              </tr>`).join("")}
+          </tbody>
+        </table>
+      </div>
+    ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
+  </div>
+  ` : ""}`;
 }
 
 function renderSettingsTab() {
@@ -1763,46 +2946,83 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
+    <div class="switch-row" style="margin:0;">
+      <p class="settings-title" style="margin:0;">${icons.moon} Dark Mode</p>
+      <div id="darkModeSwitch" class="switch ${state.settings.darkMode !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.palette} Theme Color</p>
+    <div class="swatch-row">
+      ${THEME_COLORS.map(c => {
+        const selected = (state.settings.themeColor || "amber") === c.key;
+        return `<button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}" style="--c:${c.swatch};--c-rgb:${c.rgb};">${c.label}</button>`;
+      }).join("")}
+    </div>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.chart} Dashboard</p>
+    <p class="settings-desc" style="margin:0 0 8px;">Pick any combination — they overlay on one chart.</p>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Distance</span>
+      <div id="dashShowDistanceSwitch" class="switch ${state.settings.dashShowDistance !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:10px;">
+      <span class="settings-desc" style="margin:0;">Time</span>
+      <div id="dashShowTimeSwitch" class="switch ${state.settings.dashShowTime ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    <div class="switch-row" style="margin-bottom:${state.settings.driveType === "supervised" ? "10px" : "0"};">
+      <span class="settings-desc" style="margin:0;">Fuel Cost</span>
+      <div id="dashShowCostSwitch" class="switch ${state.settings.dashShowCost !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    ${state.settings.driveType === "supervised" ? `
+    <div class="switch-row" style="margin-bottom:0;">
+      <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
+      <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    ` : ""}
+  </div>
+
+  <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.car} Drive Type</p>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="settings-desc">Show in Log Screen</span>
+        <span class="settings-desc">Show on Drive Screen</span>
         <div id="showDriveTypeOnLogSwitch" class="switch ${state.settings.showDriveTypeOnLog ? "on" : ""}"><div class="knob"></div></div>
       </div>
     </div>
     <div class="toggle-row" style="margin-bottom:12px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Normal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Work</button>
+      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
+      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
       <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
     </div>
     <p class="settings-desc" style="margin:0;">${
-      state.settings.driveType === "work" ? "Work — For business and employment driving records."
+      state.settings.driveType === "work" ? "Business — For business and employment driving records."
       : state.settings.driveType === "supervised" ? "Supervised — For learner logbook requirements."
-      : "Normal — For everyday driving."
+      : "Personal — For everyday driving."
     }</p>
     ${state.settings.driveType === "supervised" ? `
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
       <p class="settings-title" style="margin:0 0 10px;">${getDeviceRegionCode() === "au" ? "License Requirements (Learner's Permit)" : "Licence Requirements"}</p>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <span class="settings-desc" style="margin:0;">Total hours</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="supHoursMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
-          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedTotalHoursTarget}" />
-          <button id="supHoursPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+      <div class="row-2">
+        <div>
+          <label class="field-label">Total Hours</label>
+          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget}" />
         </div>
-      </div>
-
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <span class="settings-desc" style="margin:0;">Night hours</span>
-        <div style="display:flex;align-items:center;gap:8px;">
-          <button id="supNightMinusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">−</button>
-          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="width:52px;text-align:center;padding:6px 4px;" value="${state.settings.supervisedNightHoursTarget}" />
-          <button id="supNightPlusBtn" class="icon-btn" type="button" style="width:28px;height:28px;border:1px solid var(--border);border-radius:8px;padding:0;">+</button>
+        <div>
+          <label class="field-label">Night Hours</label>
+          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget}" />
         </div>
       </div>
 
       <p class="settings-desc" style="margin:10px 0 0;">Compulsory hours as per government agency. Notification upon completion.</p>
+
+      <label class="field-label" style="margin-top:12px;">Target Completion Date</label>
+      <input id="supTargetDateInput" type="date" class="input mono" value="${escAttr(state.settings.supervisedTargetDate || "")}" />
+      <p class="settings-desc" style="margin-top:6px;">Optional — leave blank to project a date from your current pace.</p>
     </div>
     ` : ""}
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
@@ -1811,6 +3031,16 @@ function renderSettingsTab() {
         <div id="learnRoutesSwitch" class="switch ${state.settings.learnRoutes ? "on" : ""}"><div class="knob"></div></div>
       </div>
       <p class="settings-desc" style="margin:0;">Learns repeated routes to suggest a Drive Type.</p>
+      ${state.settings.learnRoutes ? `
+      <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <span class="settings-desc" style="margin:0;">Route match radius</span>
+        <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <input id="routeMatchRadiusInput" class="input mono" type="number" min="50" max="2000" step="50" value="${state.settings.routeMatchRadius}" style="width:80px;padding:6px 8px;text-align:right;" />
+          <span class="settings-desc" style="margin:0;">m</span>
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:4px 0 0;">How close a Trip Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
+      ` : ""}
     </div>
   </div>
 
@@ -1862,6 +3092,79 @@ function renderSettingsTab() {
   </div>
 
   <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <p class="settings-title" style="margin:0;">${icons.fuelPump} Fuel Cost Tracking (Beta)</p>
+      <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
+    </div>
+    ${state.settings.fuelTrackingEnabled === false ? `
+    <p class="settings-desc" style="margin:0;">Estimate or track fuel cost per drive.</p>
+    ` : `
+    <label class="field-label">Costing mode</label>
+    <div class="toggle-row" style="margin-bottom:14px;">
+      <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
+      <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
+    </div>
+    ${state.settings.fuelMode === "estimated" ? `
+      <label class="field-label">Vehicle</label>
+      ${state.settings.selectedVehicle ? `
+        <button id="carDetailsChip" class="input" style="width:100%;text-align:left;cursor:pointer;margin-bottom:14px;">${state.settings.selectedVehicle.label}</button>
+      ` : `
+        <button id="carLookupBtn" class="btn btn-ghost" style="width:100%;margin-bottom:14px;">${icons.search} Search Vehicle</button>
+      `}
+      <div class="row-2" style="margin-bottom:6px;">
+        <div>
+          <label class="field-label">Fuel Usage<br>(${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
+          <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
+        </div>
+        <div>
+          <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
+          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
+    ` : `
+      <p class="settings-desc" style="margin-bottom:12px;">Uses logged refuels and distance driven to calculate actual drive costs.</p>
+      <div class="row-2" style="margin-bottom:12px;">
+        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Refuel</button>
+        <button id="viewRefillHistoryBtn" class="btn btn-ghost">${icons.clock} Refuel History</button>
+      </div>
+      ${state.fuelFillups.length ? `
+        <p class="settings-desc" style="margin-top:0;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
+        <div style="margin-top:10px;">
+          <label class="field-label">Average Fuel Price &amp; Usage</label>
+          <select id="fuelPriceAvgPeriodSelect" class="input" style="margin-bottom:6px;">
+            <option value="1" ${state.fuelPriceAvgPeriod === "1" ? "selected" : ""}>Last month</option>
+            <option value="3" ${state.fuelPriceAvgPeriod === "3" ? "selected" : ""}>Last 3 months</option>
+            <option value="6" ${state.fuelPriceAvgPeriod === "6" ? "selected" : ""}>Last 6 months</option>
+            <option value="9" ${state.fuelPriceAvgPeriod === "9" ? "selected" : ""}>Last 9 months</option>
+            <option value="12" ${state.fuelPriceAvgPeriod === "12" ? "selected" : ""}>Last year</option>
+            <option value="all" ${state.fuelPriceAvgPeriod === "all" ? "selected" : ""}>All time</option>
+          </select>
+          <p class="settings-desc" style="margin:0;">
+            ${(() => {
+              const months = state.fuelPriceAvgPeriod === "all" ? null : parseInt(state.fuelPriceAvgPeriod, 10);
+              const avg = avgFuelPriceForPeriod(months);
+              return avg != null
+                ? `Price: <b class="mono" style="color:var(--text);">${avg.toFixed(2)}</b> / ${state.settings.unit === "mi" ? "gallon" : "litre"}`
+                : "No refuels in this period.";
+            })()}
+          </p>
+          <p class="settings-desc" style="margin:4px 0 0;">
+            ${(() => {
+              const months = state.fuelPriceAvgPeriod === "all" ? null : parseInt(state.fuelPriceAvgPeriod, 10);
+              const usage = accurateFuelUsage(months);
+              return usage != null
+                ? `Usage: <b class="mono" style="color:var(--text);">${usage.toFixed(1)}</b> ${state.settings.unit === "mi" ? "MPG" : "L/100km"}`
+                : "Add odometer readings to at least two full-tank refuels for a real usage figure.";
+            })()}
+          </p>
+        </div>
+      ` : `<p class="settings-desc" style="margin:0;">No refuels logged yet.</p>`}
+    `}
+    `}
+  </div>
+
+  <div class="card">
     <div class="switch-row" style="margin-bottom:10px;">
       <p class="settings-title" style="margin:0;">${icons.clock} Odometer Reminders</p>
       <div id="odometerRemindersSwitch" class="switch ${state.settings.odometerReminders !== false ? "on" : ""}"><div class="knob"></div></div>
@@ -1875,57 +3178,6 @@ function renderSettingsTab() {
       </select>
       <button id="enterOdometerNowBtn" class="btn btn-ghost">Enter Now</button>
     </div>
-  </div>
-
-  <div class="card">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-      <p class="settings-title" style="margin:0;">Fuel Cost Tracking (Beta)</p>
-      <div id="fuelTrackingSwitch" class="switch ${state.settings.fuelTrackingEnabled !== false ? "on" : ""}"><div class="knob"></div></div>
-    </div>
-    ${state.settings.fuelTrackingEnabled === false ? `
-    <p class="settings-desc" style="margin:0;">Estimate or track fuel cost per drive.</p>
-    ` : `
-    <label class="field-label">Costing mode</label>
-    <div class="toggle-row" style="margin-bottom:14px;">
-      <button class="toggle normal ${state.settings.fuelMode === "estimated" ? "on" : ""}" data-fuelmode="estimated">Estimated</button>
-      <button class="toggle work ${state.settings.fuelMode === "accurate" ? "on" : ""}" data-fuelmode="accurate">Accurate <span style="opacity:.7;font-weight:600;">(Beta)</span></button>
-    </div>
-    ${state.settings.fuelMode === "estimated" ? `
-      <div class="row-2" style="margin-bottom:6px;">
-        <div>
-          <label class="field-label">Fuel Consumption (${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
-          <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
-        </div>
-        <div>
-          <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
-          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
-        </div>
-      </div>
-      <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
-    ` : `
-      <p class="settings-desc" style="margin-bottom:12px;">Uses logged fill-ups and distance driven to calculate an average cost.</p>
-      <div class="settings-actions" style="margin-bottom:12px;">
-        <button id="logFillupBtn" class="btn btn-ghost">${icons.locate} Log a Fill-Up</button>
-      </div>
-      ${state.fuelFillups.length ? `
-        <div class="table-scroll" style="max-height:220px;">
-          <table>
-            <thead><tr><th>Date</th><th style="text-align:right;">Litres/Gal</th><th style="text-align:right;">Price</th><th></th></tr></thead>
-            <tbody>
-              ${state.fuelFillups.slice().sort((a,b) => b.date.localeCompare(a.date)).map(f => `
-                <tr>
-                  <td>${formatDateForDisplay(f.date)}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.amount).toFixed(2)}</td>
-                  <td class="mono" style="text-align:right;">${Number(f.price).toFixed(2)}</td>
-                  <td><button class="icon-btn deleteFillupBtn" data-id="${f.id}" title="Remove">${icons.trash}</button></td>
-                </tr>`).join("")}
-            </tbody>
-          </table>
-        </div>
-        <p class="settings-desc" style="margin-top:10px;">Current average: <b class="mono" style="color:var(--text);">${formatFuelCostPerUnit()}</b> / ${unitLabel()}</p>
-      ` : `<p class="settings-desc" style="margin:0;">No fill-ups logged yet.</p>`}
-    `}
-    `}
   </div>
 
   <div class="card">
@@ -1950,6 +3202,9 @@ const ROAD_TYPES = [
 ];
 const WEATHER_TYPES = [{ v: "dry", l: "Dry" }, { v: "wet", l: "Wet" }];
 const TRAFFIC_LEVELS = [{ v: "light", l: "Light" }, { v: "medium", l: "Medium" }, { v: "heavy", l: "Heavy" }];
+// Display labels only — the underlying "normal"/"work" values stay as-is
+// in storage, settings keys and data attributes for backward compatibility.
+const DRIVE_TYPES = [{ v: "normal", l: "Personal" }, { v: "work", l: "Business" }, { v: "supervised", l: "Supervised" }];
 
 function renderConditionsModal() {
   const f = state.conditionsForm;
@@ -2038,8 +3293,8 @@ function renderEditTripModal() {
 
       <label class="field-label">Type</label>
       <div class="toggle-row" style="margin-bottom:${t.tag === "supervised" ? "14" : "20"}px;">
-        <button class="toggle normal ${t.tag === "normal" ? "on" : ""}" data-edittag="normal">Normal</button>
-        <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Work</button>
+        <button class="toggle normal ${t.tag === "normal" ? "on" : ""}" data-edittag="normal">Personal</button>
+        <button class="toggle work ${t.tag === "work" ? "on" : ""}" data-edittag="work">Business</button>
         <button class="toggle supervised ${t.tag === "supervised" ? "on" : ""}" data-edittag="supervised">Supervised</button>
       </div>
 
@@ -2228,17 +3483,91 @@ function renderFuelFillupModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>${icons.locate} Log a Fill-Up</h2>
+      <h2>${icons.locate} Log a Refuel</h2>
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
+      <label class="field-label">Odometer (${unitLabel()}) — optional</label>
+      <input id="fillupOdometer" class="input" inputmode="decimal" placeholder="e.g. 48250" value="${escAttr(f.odometer)}" style="margin-bottom:14px;" />
       <label class="field-label">${volLabel}</label>
       <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
       <label class="field-label">Total price paid</label>
       <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
+      <p class="settings-desc" style="margin:0 0 6px;">Always fill the tank completely — a partial fill throws off the usage figure.</p>
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
         <button id="cancelFillupBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmFillupBtn" class="btn btn-amber">Save fill-up</button>
+        <button id="confirmFillupBtn" class="btn btn-amber">Save Refuel</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCarLookupModal() {
+  const f = state.carLookupForm;
+  const currentYear = new Date().getFullYear();
+  // Only surface models that were on sale at some point in roughly the last 20
+  // years; entries without year data (UK/EU) are always shown.
+  const inLast20Years = c => c.yearFrom === undefined || (c.yearTo == null ? true : c.yearTo >= currentYear - 20);
+  const nonUsMakes = f.region !== "us"
+    ? [...new Set(CAR_FUEL_DATA.filter(c => c.region === f.region && inLast20Years(c)).map(c => c.make))].sort()
+    : [];
+  const nonUsModels = f.region !== "us" && f.nonUsMake
+    ? CAR_FUEL_DATA.filter(c => c.region === f.region && c.make === f.nonUsMake && inLast20Years(c))
+    : [];
+  const unitLabelStr = state.settings.unit === "mi" ? "MPG" : "L/100km";
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">${icons.fuelPump} Search Fuel Usage</h2>
+        <button id="closeCarLookupBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+      ${f.region === "us" ? `
+        <p class="settings-desc" style="margin:0 0 12px;">Live data from fueleconomy.gov.</p>
+        <label class="field-label">Year</label>
+        <select id="carLookupYear" class="input" style="margin-bottom:14px;" ${!f.years.length && f.error ? "disabled" : ""}>
+          <option value="">${f.years.length ? "Select year" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.years.map(y => `<option value="${escAttr(y.value)}" ${f.year === y.value ? "selected" : ""}>${y.text}</option>`).join("")}
+        </select>
+        ${f.year ? `
+        <label class="field-label">Make</label>
+        <select id="carLookupMake" class="input" style="margin-bottom:14px;" ${!f.makes.length && f.error ? "disabled" : ""}>
+          <option value="">${f.makes.length ? "Select Make" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.makes.map(m => `<option value="${escAttr(m.value)}" ${f.make === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
+        </select>` : ""}
+        ${f.make ? `
+        <label class="field-label">Model</label>
+        <select id="carLookupModel" class="input" style="margin-bottom:14px;" ${!f.models.length && f.error ? "disabled" : ""}>
+          <option value="">${f.models.length ? "Select Model" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.models.map(m => `<option value="${escAttr(m.value)}" ${f.model === m.value ? "selected" : ""}>${m.text}</option>`).join("")}
+        </select>` : ""}
+        ${f.model ? `
+        <label class="field-label">Trim / configuration</label>
+        <select id="carLookupTrim" class="input" style="margin-bottom:14px;" ${!f.trims.length && f.error ? "disabled" : ""}>
+          <option value="">${f.trims.length ? "Select trim" : f.error ? "Unavailable" : "Loading..."}</option>
+          ${f.trims.map(t => `<option value="${escAttr(t.value)}" ${f.trimId === t.value ? "selected" : ""}>${t.text}</option>`).join("")}
+        </select>` : ""}
+      ` : `
+        <p class="settings-desc" style="margin:0 0 12px;">Approximate figures — adjust if you know the exact number.</p>
+        <label class="field-label">Make</label>
+        <select id="carLookupNonUsMake" class="input" style="margin-bottom:14px;">
+          <option value="">Select Make</option>
+          ${nonUsMakes.map(m => `<option value="${escAttr(m)}" ${f.nonUsMake === m ? "selected" : ""}>${m}</option>`).join("")}
+        </select>
+        ${f.nonUsMake ? `
+        <label class="field-label">Model</label>
+        <select id="carLookupNonUsModel" class="input" style="margin-bottom:14px;">
+          <option value="">Select Model</option>
+          ${nonUsModels.map(c => `<option value="${escAttr(c.model)}" ${f.nonUsModel === c.model ? "selected" : ""}>${c.model}${c.yearFrom ? ` (${c.yearFrom}–${c.yearTo || currentYear})` : ""}</option>`).join("")}
+        </select>` : ""}
+      `}
+      ${f.error ? `<p class="err" style="margin:8px 0 0;">${f.error}</p>` : ""}
+      ${f.result != null ? `
+        <p class="settings-desc" style="margin:14px 0 0;">Estimated consumption: <b class="mono" style="color:var(--text);">${f.result.toFixed(1)}</b> ${unitLabelStr}</p>
+      ` : ""}
+      <div class="row-2" style="margin-top:16px;">
+        <button id="cancelCarLookupBtn" class="btn btn-ghost">Cancel</button>
+        <button id="applyCarLookupBtn" class="btn btn-amber" ${f.result == null ? "disabled" : ""}>Use This Figure</button>
       </div>
     </div>
   </div>`;
@@ -2253,10 +3582,11 @@ const REPORT_FIELD_DEFS = [
   { v: "weather", l: "Weather" }, { v: "traffic", l: "Traffic density" },
   { v: "supervisorName", l: "Supervisor name" },
 ];
+const REPORT_CONDITION_FIELDS = ["timeOfDay", "roadType", "weather", "traffic", "supervisorName"];
 const REPORT_DEFAULTS = {
-  normal: ["date", "startPoint", "endPoint", "distance", "duration"],
-  work: ["date", "startPoint", "endPoint", "distance", "duration", "purpose", "fuelCost"],
-  supervised: ["date", "startTime", "endTime", "duration", "distance", "timeOfDay", "supervisorName"],
+  normal: ["date", "startPoint", "endPoint", "distance"],
+  work: ["date", "startPoint", "endPoint", "distance", "purpose", "fuelCost"],
+  supervised: ["date", "startTime", "endTime", "duration", "distance", ...REPORT_CONDITION_FIELDS],
 };
 function renderReportModal() {
   const r = state.reportForm;
@@ -2270,8 +3600,8 @@ function renderReportModal() {
 
       <label class="field-label">Report type</label>
       <select id="reportType" class="input" style="margin-bottom:14px;">
-        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Normal (Personal)</option>
-        <option value="work" ${r.type === "work" ? "selected" : ""}>Work</option>
+        <option value="normal" ${r.type === "normal" ? "selected" : ""}>Personal</option>
+        <option value="work" ${r.type === "work" ? "selected" : ""}>Business</option>
         <option value="supervised" ${r.type === "supervised" ? "selected" : ""}>Supervised</option>
         <option value="custom" ${r.type === "custom" ? "selected" : ""}>Custom combination</option>
       </select>
@@ -2279,7 +3609,7 @@ function renderReportModal() {
       ${r.type === "custom" ? `
       <label class="field-label">Include categories</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
-        ${["normal","work","supervised"].map(c => `<button type="button" class="chip ${r.categories.includes(c) ? "active" : ""}" data-reportcat="${c}">${c}</button>`).join("")}
+        ${DRIVE_TYPES.map(c => `<button type="button" class="chip ${r.categories.includes(c.v) ? "active" : ""}" data-reportcat="${c.v}">${c.l}</button>`).join("")}
       </div>` : ""}
 
       <div class="row-2" style="margin-bottom:14px;">
@@ -2295,7 +3625,7 @@ function renderReportModal() {
 
       <label class="field-label">Fields</label>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-        ${REPORT_FIELD_DEFS.map(fd => `<button type="button" class="chip ${r.fields.includes(fd.v) ? "active" : ""}" data-reportfield="${fd.v}">${fd.l}</button>`).join("")}
+        ${REPORT_FIELD_DEFS.filter(fd => !REPORT_CONDITION_FIELDS.includes(fd.v) || (r.type === "custom" ? r.categories.includes("supervised") : r.type === "supervised")).map(fd => `<button type="button" class="chip ${r.fields.includes(fd.v) ? "active" : ""}" data-reportfield="${fd.v}">${fd.l}</button>`).join("")}
       </div>
       <p class="settings-desc" style="margin:0 0 18px;">Defaults are pre-selected for the report type — tap any field to add or remove it.</p>
 
@@ -2448,7 +3778,7 @@ async function generateReportPDF() {
     y += 7;
     doc.text(`${state.profile ? state.profile.name : ""}`, marginX, y);
     y += 5;
-    doc.text(`${r.type === "custom" ? categories.join(" + ") : r.type} report · ${formatDateForDisplay(r.from)} – ${formatDateForDisplay(r.to)}`, marginX, y);
+    doc.text(`${r.type === "custom" ? categories.map(c => labelFor(DRIVE_TYPES, c)).join(" + ") : labelFor(DRIVE_TYPES, r.type)} report · ${formatDateForDisplay(r.from)} – ${formatDateForDisplay(r.to)}`, marginX, y);
     y += 9;
 
     const totalDistance = subset.reduce((s, t) => s + t.distance, 0);
@@ -2457,7 +3787,7 @@ async function generateReportPDF() {
     doc.setFont(undefined, "bold"); doc.text("Summary", marginX, y); doc.setFont(undefined, "normal");
     y += 6;
     doc.text(`Total distance: ${kmToDisplay(totalDistance).toFixed(1)} ${unitLabel()}`, marginX, y); y += 5;
-    doc.text(`Total drives: ${subset.length}  (Normal ${byCat.normal || 0} · Work ${byCat.work || 0} · Supervised ${byCat.supervised || 0})`, marginX, y);
+    doc.text(`Total drives: ${subset.length}  (Personal ${byCat.normal || 0} · Business ${byCat.work || 0} · Supervised ${byCat.supervised || 0})`, marginX, y);
     y += 10;
 
     doc.setFont(undefined, "bold"); doc.text("Trips", marginX, y); doc.setFont(undefined, "normal");
@@ -2646,6 +3976,9 @@ function attachAppHandlers() {
     btn.onclick = () => { state.tab = btn.dataset.tab; render(); };
   });
 
+  const appHomeBtn = document.getElementById("appHomeBtn");
+  if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "drive"; render(); };
+
   function applySavedAddressSelection(targetId, address) {
     const el = document.getElementById(targetId);
     if (el) el.value = address;
@@ -2681,16 +4014,51 @@ function attachAppHandlers() {
   });
 
   const settingsBtn = document.getElementById("settingsBtn");
-  if (settingsBtn) settingsBtn.onclick = () => { state.tab = "settings"; render(); };
+  if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
 
-  if (state.tab === "log") {
+  if (state.tab === "drive") {
+    const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
+    if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
+      btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
+    });
+    const dashChartKeys = {
+      sup: { period: "dashSupPeriod", offset: "dashSupOffset", tip: "dashSupTipIndex" },
+      norm: { period: "dashNormPeriod", offset: "dashNormOffset", tip: "dashNormTipIndex" },
+    };
+    document.querySelectorAll(".dashperiod").forEach(btn => {
+      btn.onclick = () => {
+        const keys = dashChartKeys[btn.dataset.chart];
+        state[keys.period] = btn.dataset.period;
+        state[keys.offset] = 0;
+        state[keys.tip] = null;
+        render();
+      };
+    });
+    document.querySelectorAll(".dashnav").forEach(btn => {
+      btn.onclick = () => {
+        const keys = dashChartKeys[btn.dataset.chart], dir = parseInt(btn.dataset.dir, 10);
+        state[keys.offset] += dir;
+        state[keys.tip] = null;
+        render();
+      };
+    });
+    document.querySelectorAll(".col").forEach(col => {
+      col.onclick = () => {
+        const keys = dashChartKeys[col.dataset.chart], i = parseInt(col.dataset.i, 10);
+        state[keys.tip] = state[keys.tip] === i ? null : i;
+        render();
+      };
+    });
+
     const logFillupBtnLog = document.getElementById("logFillupBtnLog");
     if (logFillupBtnLog) logFillupBtnLog.onclick = () => {
-      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
 
-    if (!state.active) {
+    if (state.planner) {
+      // Builder UI is shown instead — its own handlers are wired below.
+    } else if (!state.active) {
       document.querySelectorAll("[data-drivetype]").forEach(btn => {
         btn.onclick = async () => {
           state.settings.driveType = btn.dataset.drivetype;
@@ -2866,6 +4234,84 @@ function attachAppHandlers() {
       setupLocationMarquee("endPointInput");
       if (state.endLocArmed) armLocationMarquee("endPointInput");
     }
+
+    const newRouteBtn = document.getElementById("newPlannerRouteBtn");
+    if (newRouteBtn) newRouteBtn.onclick = startPlanner;
+
+    document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
+      btn.onclick = async () => {
+        const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
+        if (route) { openSavedRouteInPlanner(route); await startDrivingPlannedRoute(); }
+      };
+    });
+    document.querySelectorAll(".plannerEditSavedBtn").forEach(btn => {
+      btn.onclick = () => {
+        const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
+        if (route) openSavedRouteInPlanner(route);
+      };
+    });
+    document.querySelectorAll(".plannerDeleteSavedBtn").forEach(btn => {
+      btn.onclick = () => deletePlannedRoute(btn.dataset.routeid);
+    });
+
+    const p = state.planner;
+    if (p) {
+      const cancelBtn = document.getElementById("plannerCancelBtn");
+      if (cancelBtn) cancelBtn.onclick = cancelPlanner;
+
+      const addStopBtn = document.getElementById("plannerAddStopBtn");
+      if (addStopBtn) addStopBtn.onclick = plannerAddStop;
+
+      document.querySelectorAll(".plannerRemoveStopBtn").forEach(btn => {
+        btn.onclick = () => plannerRemoveStop(parseInt(btn.dataset.stopidx, 10));
+      });
+
+      document.querySelectorAll(".plannerLocateStopBtn").forEach(btn => {
+        btn.onclick = async () => {
+          const idx = parseInt(btn.dataset.stopidx, 10);
+          const stop = p.stops[idx];
+          if (!mapsConfigured()) { stop.resolveError = "Location lookup isn't set up for this app yet."; render(); return; }
+          try {
+            const coords = await getCurrentPosition();
+            const address = await reverseGeocode(coords.latitude, coords.longitude);
+            await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude });
+          } catch (e) {
+            stop.resolveError = e.message || "Couldn't get your location.";
+            render();
+          }
+        };
+      });
+
+      document.querySelectorAll(".plannerStopInput").forEach(input => {
+        const idx = parseInt(input.dataset.stopidx, 10);
+        const stop = p.stops[idx];
+        input.oninput = (e) => { stop.address = e.target.value; stop.lat = null; stop.lng = null; };
+        input.onblur = () => {
+          if (stop.address.trim() && stop.address !== input.dataset.lastResolved) {
+            input.dataset.lastResolved = stop.address;
+            plannerResolveStop(stop, stop.address.trim(), null);
+          }
+        };
+        attachPlacesAutocomplete(input, (desc) => {
+          input.value = desc;
+          input.dataset.lastResolved = desc;
+          plannerResolveStop(stop, desc, null);
+        });
+      });
+
+      document.querySelectorAll(".planner-leg-tags [data-legtag]").forEach(btn => {
+        btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
+      });
+
+      const previewBtn = document.getElementById("plannerPreviewBtn");
+      if (previewBtn) previewBtn.onclick = runPlannerPreview;
+      const saveBtn = document.getElementById("plannerSaveBtn");
+      if (saveBtn) saveBtn.onclick = savePlannedRoute;
+      const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
+      if (startDrivingBtn) startDrivingBtn.onclick = startDrivingPlannedRoute;
+    }
+
+    ensurePlannerMap();
   }
 
   if (state.tab === "settings") {
@@ -2885,62 +4331,44 @@ function attachAppHandlers() {
     };
 
     const supHoursInput = document.getElementById("supHoursTargetInput");
-    if (supHoursInput) supHoursInput.onchange = async (e) => {
-      const val = Math.max(1, Math.round(parseFloat(e.target.value)) || state.settings.supervisedTotalHoursTarget);
-      state.settings.supervisedTotalHoursTarget = val;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supHoursMinusBtn = document.getElementById("supHoursMinusBtn");
-    if (supHoursMinusBtn) supHoursMinusBtn.onclick = async () => {
-      state.settings.supervisedTotalHoursTarget = Math.max(1, (state.settings.supervisedTotalHoursTarget || 75) - 1);
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supHoursPlusBtn = document.getElementById("supHoursPlusBtn");
-    if (supHoursPlusBtn) supHoursPlusBtn.onclick = async () => {
-      state.settings.supervisedTotalHoursTarget = (state.settings.supervisedTotalHoursTarget || 75) + 1;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
+    if (supHoursInput) {
+      supHoursInput.onfocus = (e) => e.target.select();
+      supHoursInput.onchange = async (e) => {
+        const val = Math.max(1, Math.round(parseFloat(e.target.value)) || state.settings.supervisedTotalHoursTarget);
+        state.settings.supervisedTotalHoursTarget = val;
+        state.settings.supervisedCompletionNotified = false;
+        await storageSet(SETTINGS_KEY, state.settings);
+        checkSupervisedLicenceComplete();
+        render();
+      };
+    }
 
     const supNightInput = document.getElementById("supNightTargetInput");
-    if (supNightInput) supNightInput.onchange = async (e) => {
-      const val = Math.max(0, Math.round(parseFloat(e.target.value)) || state.settings.supervisedNightHoursTarget);
-      state.settings.supervisedNightHoursTarget = val;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supNightMinusBtn = document.getElementById("supNightMinusBtn");
-    if (supNightMinusBtn) supNightMinusBtn.onclick = async () => {
-      state.settings.supervisedNightHoursTarget = Math.max(0, (state.settings.supervisedNightHoursTarget || 15) - 1);
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
-    const supNightPlusBtn = document.getElementById("supNightPlusBtn");
-    if (supNightPlusBtn) supNightPlusBtn.onclick = async () => {
-      state.settings.supervisedNightHoursTarget = (state.settings.supervisedNightHoursTarget || 15) + 1;
-      state.settings.supervisedCompletionNotified = false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      checkSupervisedLicenceComplete();
-      render();
-    };
+    if (supNightInput) {
+      supNightInput.onfocus = (e) => e.target.select();
+      supNightInput.onchange = async (e) => {
+        const val = Math.max(0, Math.round(parseFloat(e.target.value)) || state.settings.supervisedNightHoursTarget);
+        state.settings.supervisedNightHoursTarget = val;
+        state.settings.supervisedCompletionNotified = false;
+        await storageSet(SETTINGS_KEY, state.settings);
+        checkSupervisedLicenceComplete();
+        render();
+      };
+    }
 
     const learnRoutesSwitch = document.getElementById("learnRoutesSwitch");
     if (learnRoutesSwitch) learnRoutesSwitch.onclick = async () => {
       state.settings.learnRoutes = !state.settings.learnRoutes;
       await storageSet(SETTINGS_KEY, state.settings);
       render();
+    };
+
+    const routeMatchRadiusInput = document.getElementById("routeMatchRadiusInput");
+    if (routeMatchRadiusInput) routeMatchRadiusInput.onchange = async (e) => {
+      const val = Math.max(50, Math.min(2000, parseInt(e.target.value, 10) || 300));
+      state.settings.routeMatchRadius = val;
+      e.target.value = val;
+      await storageSet(SETTINGS_KEY, state.settings);
     };
 
     const showSavedAddressesSwitch = document.getElementById("showSavedAddressesSwitch");
@@ -2971,6 +4399,44 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
       render();
     };
+    [
+      ["showSupervisedDashboardSwitch", "showSupervisedDashboard"],
+      ["dashShowDistanceSwitch", "dashShowDistance"],
+      ["dashShowTimeSwitch", "dashShowTime"],
+      ["dashShowCostSwitch", "dashShowCost"],
+    ].forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (el) el.onclick = async () => {
+        state.settings[key] = !state.settings[key];
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
+
+    const darkModeSwitch = document.getElementById("darkModeSwitch");
+    if (darkModeSwitch) darkModeSwitch.onclick = async () => {
+      state.settings.darkMode = state.settings.darkMode === false;
+      applyTheme();
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
+    document.querySelectorAll("[data-themecolor]").forEach(btn => {
+      btn.onclick = async () => {
+        state.settings.themeColor = btn.dataset.themecolor;
+        applyTheme();
+        await storageSet(SETTINGS_KEY, state.settings);
+        render();
+      };
+    });
+
+    const supTargetDateInput = document.getElementById("supTargetDateInput");
+    if (supTargetDateInput) supTargetDateInput.onchange = async (e) => {
+      state.settings.supervisedTargetDate = e.target.value;
+      await storageSet(SETTINGS_KEY, state.settings);
+      render();
+    };
+
     const odometerRemindersSwitch = document.getElementById("odometerRemindersSwitch");
     if (odometerRemindersSwitch) odometerRemindersSwitch.onclick = async () => {
       state.settings.odometerReminders = state.settings.odometerReminders === false;
@@ -3011,16 +4477,33 @@ function attachAppHandlers() {
     };
     const logFillupBtn = document.getElementById("logFillupBtn");
     if (logFillupBtn) logFillupBtn.onclick = () => {
-      state.fuelFillupForm = { date: todayStr(), amount: "", price: "", error: "" };
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
       render();
     };
-    document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
-      btn.onclick = async () => {
-        state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
-        await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
-        render();
-      };
-    });
+    const viewRefillHistoryBtn = document.getElementById("viewRefillHistoryBtn");
+    if (viewRefillHistoryBtn) viewRefillHistoryBtn.onclick = () => {
+      state.tab = "history";
+      render();
+    };
+    const carLookupBtn = document.getElementById("carLookupBtn");
+    if (carLookupBtn) carLookupBtn.onclick = async () => {
+      const region = detectRegion() || "us";
+      state.carLookupForm = newCarLookupForm(region);
+      render();
+      if (region === "us") { await loadFegYears(state.carLookupForm); render(); }
+    };
+    const carDetailsChip = document.getElementById("carDetailsChip");
+    if (carDetailsChip) carDetailsChip.onclick = async () => {
+      const region = (state.settings.selectedVehicle && state.settings.selectedVehicle.region) || detectRegion() || "us";
+      state.carLookupForm = newCarLookupForm(region);
+      render();
+      if (region === "us") { await loadFegYears(state.carLookupForm); render(); }
+    };
+    const fuelPriceAvgPeriodSelect = document.getElementById("fuelPriceAvgPeriodSelect");
+    if (fuelPriceAvgPeriodSelect) fuelPriceAvgPeriodSelect.onchange = (e) => {
+      state.fuelPriceAvgPeriod = e.target.value;
+      render();
+    };
 
     const savedHomeInput = document.getElementById("savedHomeInput");
     if (savedHomeInput) {
@@ -3136,6 +4619,19 @@ function attachAppHandlers() {
   }
 
   if (state.tab === "history") {
+    const logFillupBtnHistory = document.getElementById("logFillupBtnHistory");
+    if (logFillupBtnHistory) logFillupBtnHistory.onclick = () => {
+      state.fuelFillupForm = { date: todayStr(), odometer: "", amount: "", price: "", error: "" };
+      render();
+    };
+    document.querySelectorAll(".deleteFillupBtn").forEach(btn => {
+      btn.onclick = async () => {
+        state.fuelFillups = state.fuelFillups.filter(f => f.id !== btn.dataset.id);
+        await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
+        render();
+      };
+    });
+
     const openAddDrivesBtn = document.getElementById("openAddDrivesBtn");
     if (openAddDrivesBtn) openAddDrivesBtn.onclick = () => {
       state.addDrives = {
@@ -3590,6 +5086,8 @@ function attachAppHandlers() {
     const f = state.fuelFillupForm;
     const dateInput = document.getElementById("fillupDate");
     if (dateInput) dateInput.onchange = (e) => { f.date = e.target.value; };
+    const odometerInput = document.getElementById("fillupOdometer");
+    if (odometerInput) odometerInput.oninput = (e) => { f.odometer = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.odometer; };
     const amountInput = document.getElementById("fillupAmount");
     if (amountInput) amountInput.oninput = (e) => { f.amount = e.target.value.replace(/[^0-9.]/g, ""); e.target.value = f.amount; };
     const priceInput = document.getElementById("fillupPrice");
@@ -3601,14 +5099,100 @@ function attachAppHandlers() {
     const confirmBtn = document.getElementById("confirmFillupBtn");
     if (confirmBtn) confirmBtn.onclick = async () => {
       const amount = parseFloat(f.amount), price = parseFloat(f.price);
+      const odometer = f.odometer ? parseFloat(f.odometer) : null;
       if (!f.date || !amount || isNaN(amount) || amount <= 0 || !price || isNaN(price) || price <= 0) {
         f.error = "Enter a valid amount and price.";
         render();
         return;
       }
-      state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, amount, price }];
+      if (f.odometer && (isNaN(odometer) || odometer < 0)) {
+        f.error = "Enter a valid odometer reading, or leave it blank.";
+        render();
+        return;
+      }
+      state.fuelFillups = [...state.fuelFillups, { id: uid(), date: f.date, odometer, amount, price }];
       await storageSet(FUEL_FILLUPS_KEY, state.fuelFillups);
       state.fuelFillupForm = null;
+      render();
+    };
+  }
+
+  if (state.carLookupForm) {
+    const f = state.carLookupForm;
+
+    const yearSelect = document.getElementById("carLookupYear");
+    if (yearSelect) yearSelect.onchange = async (e) => {
+      f.year = e.target.value; f.make = ""; f.model = ""; f.trimId = "";
+      f.makes = []; f.models = []; f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.year) {
+        try { f.makes = await fegMenu("make", { year: f.year }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const makeSelect = document.getElementById("carLookupMake");
+    if (makeSelect) makeSelect.onchange = async (e) => {
+      f.make = e.target.value; f.model = ""; f.trimId = "";
+      f.models = []; f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.make) {
+        try { f.models = await fegMenu("model", { year: f.year, make: f.make }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const modelSelect = document.getElementById("carLookupModel");
+    if (modelSelect) modelSelect.onchange = async (e) => {
+      f.model = e.target.value; f.trimId = "";
+      f.trims = []; f.result = null; f.error = "";
+      render();
+      if (f.model) {
+        try { f.trims = await fegMenu("options", { year: f.year, make: f.make, model: f.model }); }
+        catch { f.error = "Lookup failed. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+    const trimSelect = document.getElementById("carLookupTrim");
+    if (trimSelect) trimSelect.onchange = async (e) => {
+      f.trimId = e.target.value; f.result = null; f.error = "";
+      render();
+      if (f.trimId) {
+        try {
+          const comb08 = await fegVehicle(f.trimId);
+          f.result = state.settings.unit === "mi" ? comb08 : usMpgToL100(comb08);
+        } catch { f.error = "Couldn't fetch vehicle data. Try again or enter the figure manually."; }
+        render();
+      }
+    };
+
+    const nonUsMakeSelect = document.getElementById("carLookupNonUsMake");
+    if (nonUsMakeSelect) nonUsMakeSelect.onchange = (e) => {
+      f.nonUsMake = e.target.value; f.nonUsModel = ""; f.result = null; f.error = "";
+      render();
+    };
+    const nonUsModelSelect = document.getElementById("carLookupNonUsModel");
+    if (nonUsModelSelect) nonUsModelSelect.onchange = (e) => {
+      f.nonUsModel = e.target.value;
+      const entry = CAR_FUEL_DATA.find(c => c.region === f.region && c.make === f.nonUsMake && c.model === f.nonUsModel);
+      f.result = entry ? (state.settings.unit === "mi" ? l100ToImpMpg(entry.l100km) : entry.l100km) : null;
+      render();
+    };
+
+    const closeCarLookupBtn = document.getElementById("closeCarLookupBtn");
+    if (closeCarLookupBtn) closeCarLookupBtn.onclick = () => { state.carLookupForm = null; render(); };
+    const cancelCarLookupBtn = document.getElementById("cancelCarLookupBtn");
+    if (cancelCarLookupBtn) cancelCarLookupBtn.onclick = () => { state.carLookupForm = null; render(); };
+    const applyCarLookupBtn = document.getElementById("applyCarLookupBtn");
+    if (applyCarLookupBtn) applyCarLookupBtn.onclick = async () => {
+      if (f.result == null) return;
+      state.settings.fuelRate = String(Math.round(f.result * 10) / 10);
+      const label = f.region === "us"
+        ? [f.year, f.make, f.model].filter(Boolean).join(" ")
+        : [f.nonUsMake, f.nonUsModel].filter(Boolean).join(" ");
+      state.settings.selectedVehicle = label ? { label, region: f.region } : null;
+      await storageSet(SETTINGS_KEY, state.settings);
+      state.carLookupForm = null;
       render();
     };
   }
@@ -3790,6 +5374,12 @@ function attachAppHandlers() {
   }
   render();
 })();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
 </script>
 </body>
 </html>
