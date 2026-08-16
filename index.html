@@ -864,7 +864,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
   const row = [[
     trip.date, trip.startTime, trip.endTime, Number(trip.distance).toFixed(1),
     trip.startPoint, trip.endPoint, labelFor(DRIVE_TYPES, trip.tag),
-    trip.timeOfDay ? (trip.timeOfDay === "day" ? "Daytime" : "Nighttime") : "",
+    trip.timeOfDay ? (trip.timeOfDay === "day" ? "Day" : "Night") : "",
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
     trip.traffic ? labelFor(TRAFFIC_LEVELS, trip.traffic) : "",
@@ -933,6 +933,7 @@ const state = {
   startLocArmed: false, // true once Start Location holds a real selection (not just typed text) — re-armed on every render, e.g. survives the Estimate Drive round-trip
   endLocArmed: false,   // same, for whichever End Location field is currently visible
   pendingTrip: null,
+  confirmingDrive: false, // showing the drive summary review step, before any supervised conditions prompt
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
   newSupervisorName: "",
@@ -3140,7 +3141,7 @@ function renderQuickDriveSection() {
       <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
       <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
 
-      <button id="stopTripBtn" class="btn btn-stop" ${state.estimating ? "disabled" : ""}>${icons.stop} ${state.estimating ? "Calculating…" : "Stop & Save"}</button>
+      <button id="stopTripBtn" class="btn btn-stop" ${state.estimating ? "disabled" : ""}>${icons.stop} ${state.estimating ? "Calculating…" : "End Drive"}</button>
     </div>
     ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
   }
@@ -3345,7 +3346,7 @@ function renderApp() {
     </div>
 
     ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
-    ${state.pendingTrip ? renderConditionsModal() : ""}
+    ${state.confirmingDrive ? renderDriveSummaryModal() : state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
@@ -3773,6 +3774,29 @@ const TRAFFIC_LEVELS = [{ v: "light", l: "Light" }, { v: "medium", l: "Medium" }
 // in storage, settings keys and data attributes for backward compatibility.
 const DRIVE_TYPES = [{ v: "normal", l: "Personal" }, { v: "work", l: "Business" }, { v: "supervised", l: "Supervised" }];
 
+// Shown right after "End Drive", before any supervised conditions prompt,
+// so the driver can double-check the auto-calculated distance/end point
+// (and the drive as a whole) before it's logged, or go back and fix it.
+function renderDriveSummaryModal() {
+  const t = state.pendingTrip;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Drive Summary</h2>
+      <div class="kv-line"><span class="k">Type</span><span class="tag ${t.tag}">${labelFor(DRIVE_TYPES, t.tag)}</span></div>
+      <div class="kv-line"><span class="k">Distance</span><span class="v mono">${kmToDisplay(t.distance).toFixed(1)} ${unitLabel()}</span></div>
+      <div class="kv-line"><span class="k">Duration</span><span class="v mono">${formatDuration(tripMinutes(t))}</span></div>
+      <div class="kv-line"><span class="k">Time</span><span class="v mono">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</span></div>
+      <div class="kv-line" style="align-items:flex-start;"><span class="k">Start</span><span class="v" style="text-align:right;max-width:70%;">${escAttr(t.startPoint)}</span></div>
+      <div class="kv-line" style="align-items:flex-start;margin-bottom:18px;"><span class="k">End</span><span class="v" style="text-align:right;max-width:70%;">${escAttr(t.endPoint)}</span></div>
+      <div class="row-2">
+        <button id="editDriveSummaryBtn" class="btn btn-ghost">Edit</button>
+        <button id="confirmDriveSummaryBtn" class="btn btn-amber">Continue</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function renderConditionsModal() {
   const f = state.conditionsForm;
   return `
@@ -3782,8 +3806,8 @@ function renderConditionsModal() {
 
       <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
       <select id="condTimeOfDay" class="input" style="margin-bottom:14px;">
-        <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
-        <option value="night" ${f.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
+        <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Day</option>
+        <option value="night" ${f.timeOfDay === "night" ? "selected" : ""}>Night</option>
       </select>
 
       <label class="field-label">Road type</label>
@@ -3869,8 +3893,8 @@ function renderEditTripModal() {
       <div class="card" style="padding:14px;margin-bottom:20px;">
         <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
         <select id="editTimeOfDay" class="input" style="margin-bottom:12px;">
-          <option value="day" ${t.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
-          <option value="night" ${t.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
+          <option value="day" ${t.timeOfDay === "day" ? "selected" : ""}>Day</option>
+          <option value="night" ${t.timeOfDay === "night" ? "selected" : ""}>Night</option>
         </select>
         <label class="field-label">Road type</label>
         <select id="editRoadType" class="input" style="margin-bottom:12px;">
@@ -4319,7 +4343,7 @@ function reportFieldValue(t, field) {
     case "duration": return formatDuration(tripMinutes(t));
     case "purpose": return t.purpose || "";
     case "fuelCost": { const c = tripFuelCost(t); return c != null ? c.toFixed(2) : ""; }
-    case "timeOfDay": return t.timeOfDay ? (t.timeOfDay === "day" ? "Daytime" : "Nighttime") : "";
+    case "timeOfDay": return t.timeOfDay ? (t.timeOfDay === "day" ? "Day" : "Night") : "";
     case "roadType": return t.roadType ? labelFor(ROAD_TYPES, t.roadType) : "";
     case "weather": return t.weather ? labelFor(WEATHER_TYPES, t.weather) : "";
     case "traffic": return t.traffic ? labelFor(TRAFFIC_LEVELS, t.traffic) : "";
@@ -4880,26 +4904,14 @@ function attachAppHandlers() {
         };
         if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
         if (state.endCoords) { trip.endLat = state.endCoords.lat; trip.endLng = state.endCoords.lng; }
-        state.active = null;
-        state.endPoint = ""; state.distance = "";
-        state.endCoords = null;
-        state.estimatedDuration = null; state.estimateError = "";
-        state.startPointInput = "";
-        await storageDelete(ACTIVE_KEY);
+        // The active trip stays intact (timer just pauses) until the driver
+        // confirms past the summary below — "Edit" needs to be able to
+        // simply resume it, and finalizeTrip()/ACTIVE_KEY cleanup only
+        // happens once the drive is actually confirmed.
         stopTicker();
-        autoFillCurrentLocation();
-
-        if (state.settings.driveType === "supervised") {
-          state.pendingTrip = trip;
-          const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
-          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-          state.addingSupervisor = false;
-          state.newSupervisorName = ""; state.newSupervisorLicence = "";
-          render();
-        } else {
-          await finalizeTrip(trip);
-          render();
-        }
+        state.pendingTrip = trip;
+        state.confirmingDrive = true;
+        render();
       };
 
       setupLocationMarquee("endPointInput");
@@ -5479,7 +5491,42 @@ function attachAppHandlers() {
     };
   }
 
-  if (state.pendingTrip) {
+  if (state.confirmingDrive) {
+    const editBtn = document.getElementById("editDriveSummaryBtn");
+    if (editBtn) editBtn.onclick = () => {
+      state.confirmingDrive = false;
+      state.pendingTrip = null;
+      startTicker();
+      render();
+    };
+
+    const confirmBtn = document.getElementById("confirmDriveSummaryBtn");
+    if (confirmBtn) confirmBtn.onclick = async () => {
+      const trip = state.pendingTrip;
+      state.confirmingDrive = false;
+      state.active = null;
+      state.endPoint = ""; state.distance = "";
+      state.endCoords = null;
+      state.estimatedDuration = null; state.estimateError = "";
+      state.startPointInput = "";
+      await storageDelete(ACTIVE_KEY);
+      autoFillCurrentLocation();
+
+      if (state.settings.driveType === "supervised") {
+        const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
+        state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+        state.addingSupervisor = false;
+        state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        render();
+      } else {
+        state.pendingTrip = null;
+        await finalizeTrip(trip);
+        render();
+      }
+    };
+  }
+
+  if (state.pendingTrip && !state.confirmingDrive) {
     const f = state.conditionsForm;
 
     const backBtn = document.getElementById("backConditionsBtn");
