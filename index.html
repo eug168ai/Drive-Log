@@ -15,12 +15,12 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
-    --bg:#14171C; --surface:#1E2229; --border:#2A2F38;
+    --bg:#14171C; --bg-rgb:20,23,28; --surface:#1E2229; --surface-rgb:30,34,41; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
     --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#F7CB89;
   }
   html[data-theme="light"]{
-    --bg:#EEF0F3; --surface:#FFFFFF; --border:#DDE1E7;
+    --bg:#EEF0F3; --bg-rgb:238,240,243; --surface:#FFFFFF; --surface-rgb:255,255,255; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
     --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#85540B;
   }
@@ -212,17 +212,99 @@
   .swatch-btn{flex:1;min-width:0;border:1px solid var(--c);border-radius:8px;padding:8px 2px;font-size:10.5px;font-weight:700;text-align:center;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;background:rgba(var(--c-rgb),.14);color:var(--c);}
   .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
 
-  .planner-stop-row{display:flex;align-items:flex-start;gap:8px;padding:8px 0;}
-  .planner-stop-marker{flex-shrink:0;width:22px;height:22px;border-radius:50%;background:rgba(var(--amber-rgb),.16);
-    color:var(--amber);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;margin-top:22px;}
-  .planner-stop-marker svg{width:11px;height:11px;}
-  .planner-connector{width:1px;height:10px;background:var(--border);margin:0 0 0 19px;}
   .planner-leg-row{padding:8px 0;}
   .planner-leg-info{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
   .planner-leg-route{font-size:13px;font-weight:600;color:var(--text);}
   .planner-leg-meta{font-size:12px;color:var(--muted);}
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
+
+  /* Trip Planner: fullscreen map builder + live GPS driving mode */
+  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
+  #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
+  .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
+    padding:calc(env(safe-area-inset-top) + 14px) 14px 16px;
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.95) 0%, rgba(var(--bg-rgb),.8) 65%, transparent 100%);}
+  .planner-back{display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;}
+  .planner-back:active{opacity:.7;}
+  .planner-back .chevron{width:30px;height:30px;border-radius:50%;background:rgba(var(--surface-rgb),.9);
+    border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .planner-back .chevron .icon{width:16px;height:16px;}
+  .planner-back b{display:block;font-size:14.5px;font-weight:700;}
+  .planner-back span{display:block;font-size:10.5px;color:var(--muted);margin-top:1px;}
+
+  .planner-field-block{margin-bottom:6px;}
+  .planner-field-row{display:flex;align-items:center;gap:6px;}
+  .planner-field-row .input-icon{flex:1;background:rgba(var(--surface-rgb),.94);box-shadow:0 6px 18px rgba(0,0,0,.25);}
+  .planner-field-row .input-icon .icon{color:var(--muted);}
+  .planner-field-row .input-icon.start .icon{color:var(--amber);}
+  .planner-field-row .input-icon.stop .icon{color:var(--blue);}
+  .planner-field-row .input-icon.end .icon{color:var(--work);}
+  .planner-remove-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
+    color:var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-remove-btn:hover{color:var(--work);background:rgba(224,100,44,.12);}
+
+  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 2px 0;}
+  .planner-pill-row.show{display:flex;}
+  .planner-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border-radius:999px;
+    font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--muted);
+    background:rgba(var(--surface-rgb),.9);cursor:pointer;flex-shrink:0;}
+  .planner-chip:hover{color:var(--text);border-color:var(--faint);}
+  .planner-chip.current .icon{color:var(--blue);}
+  .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
+    border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
+    color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;margin:6px 2px 0;}
+
+  .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
+    background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  .planner-recenter-fab .icon{width:18px;height:18px;}
+
+  .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
+    padding:14px 14px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);}
+  .planner-route-summary{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    padding:12px 14px;margin-bottom:10px;max-height:46vh;overflow-y:auto;}
+  .planner-route-badge{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
+  .planner-route-badge .icon{width:13px;height:13px;}
+  .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
+  .planner-route-metrics .metric{text-align:center;flex:1;}
+  .planner-route-metrics .metric .v{font-size:17px;font-weight:700;}
+  .planner-route-metrics .metric .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
+  .planner-route-metrics .div{width:1px;height:26px;background:var(--border);}
+  .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:9px;
+    border-top:1px solid var(--border);color:var(--work);}
+  .planner-hazard-row .icon{width:15px;height:15px;flex-shrink:0;color:var(--work);}
+  .planner-hazard-row .route-clip{color:var(--work);font-size:12px;font-weight:600;}
+  .planner-legtags{margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+  .planner-legtags .planner-leg-row{padding:6px 0;}
+
+  .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
+    padding:calc(env(safe-area-inset-top) + 14px) 14px 16px;
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.97) 0%, rgba(var(--bg-rgb),.82) 80%, transparent 100%);
+    display:flex;align-items:center;gap:14px;}
+  .planner-turn-icon{width:52px;height:52px;border-radius:14px;background:var(--amber);color:var(--bg);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;}
+  .planner-turn-icon.arrive{background:var(--normal);}
+  .planner-turn-icon .icon{width:26px;height:26px;}
+  .planner-turn-text{min-width:0;flex:1;}
+  .planner-turn-text b{display:block;font-size:17px;font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;}
+  .planner-turn-dist .v{font-size:19px;font-weight:800;color:var(--amber);}
+  .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
+
+  .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
+    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);
+    display:flex;align-items:center;gap:14px;}
+  .planner-eta-metrics{display:flex;gap:16px;flex:1;}
+  .planner-eta-metrics .m .v{font-size:16px;font-weight:800;}
+  .planner-eta-metrics .m.eta .v{color:var(--amber);}
+  .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
+  .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;background:var(--work);border:none;color:#fff;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;}
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
@@ -244,6 +326,7 @@ const RECENT_LOCATIONS_KEY = "driving-log:recent-locations";
 const SAVED_ADDRESSES_KEY = "driving-log:saved-addresses";
 const FUEL_FILLUPS_KEY = "driving-log:fuel-fillups";
 const PLANNED_ROUTES_KEY = "driving-log:planned-routes";
+const LIVE_DRIVE_KEY = "driving-log:live-drive";
 const GOOGLE_TOKEN_KEY = "driving-log:google-token";
 
 // --- Google Sheets connection (per-person, one-time setup by the app owner) ---
@@ -860,6 +943,7 @@ const state = {
   selectedTripIds: [],
   confirmingDeleteSelected: false,
   logEstimateForm: null,
+  plannerLogForm: null,
   savedAddresses: { home: "", work: "", other: [] },
   addingSavedOther: false,
   newSavedOtherName: "",
@@ -904,6 +988,14 @@ const icons = {
   moon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
   chart: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="14" width="4" height="6" rx="1"/></svg>`,
   palette: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 0-18c4.5 0 8 3 8 6.5 0 2-1.5 3.5-3.5 3.5H15a1.5 1.5 0 0 0-1 2.6c.4.4.6.9.6 1.4a3 3 0 0 1-2.6 3z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>`,
+  chevronLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
+  plus: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  warning: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>`,
+  turnRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20v-7a4 4 0 0 1 4-4h12"/><path d="M15 14l5-5-5-5"/></svg>`,
+  turnLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20v-7a4 4 0 0 0-4-4H4"/><path d="M9 14l-5-5 5-5"/></svg>`,
+  straight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4"/><path d="M6 10l6-6 6 6"/></svg>`,
+  flag: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>`,
+  navArrow: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 21l8-5 8 5z"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1463,6 +1555,8 @@ function plannerAddStop() {
   p.stage = "build";
   plannerDirectionsResult = null;
   render();
+  const newInput = document.getElementById(`plannerStopInput-${insertAt}`);
+  if (newInput) newInput.focus();
 }
 
 function plannerRemoveStop(idx) {
@@ -1601,23 +1695,22 @@ function minutesToTimeStr(totalMinutes) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-// Commits every leg as a logged trip, back-to-back starting now (this app
-// has no per-stop GPS check-in outside the Planner, so each leg's estimated
-// Directions duration stands in for its actual drive time).
-async function startDrivingPlannedRoute() {
+// Manual "Log Drive" path: commits every leg as a logged trip, back-to-back
+// from a chosen date/start time, using each leg's estimated Directions
+// duration as its drive time — for logging a drive that already happened
+// (or that you don't want live-tracked) rather than live GPS tracking.
+async function logPlannedRouteNow(date, startTimeStr) {
   const p = state.planner;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
-  const date = todayStr();
-  const now = new Date();
-  let cursor = now.getHours() * 60 + now.getMinutes();
+  let cursor = startTimeStr != null ? (parseInt(startTimeStr.slice(0, 2), 10) * 60 + parseInt(startTimeStr.slice(3, 5), 10)) : (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
   const trips = [];
   for (let i = 0; i < p.legs.length; i++) {
     const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
-    const startTime = minutesToTimeStr(cursor);
+    const tripStartTime = minutesToTimeStr(cursor);
     cursor += leg.durationMin || 1;
     const endTime = minutesToTimeStr(cursor);
     const trip = {
-      id: uid(), date, startTime, endTime,
+      id: uid(), date: date || todayStr(), startTime: tripStartTime, endTime,
       distance: leg.distanceKm || 0,
       startPoint: from.address.trim() || "Unspecified",
       endPoint: to.address.trim() || "Unspecified",
@@ -1632,6 +1725,323 @@ async function startDrivingPlannedRoute() {
   plannerDirectionsResult = null;
   state.tab = "history";
   render();
+}
+
+// --- Trip Planner: real GPS live-tracking driving mode -----------------------
+// "Start Drive" (unlike Log Drive above) tracks the device's actual position
+// with watchPosition rather than assuming the Directions estimate — distance
+// and duration logged at the end are what was really driven, split across
+// legs by proximity to each planned stop, with turn-by-turn advanced by
+// proximity to each Directions step's end point.
+const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it done
+const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
+const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
+const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
+const MANEUVER_LABELS = {
+  "turn-left": "Turn left", "turn-right": "Turn right",
+  "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
+  "turn-sharp-left": "Sharp left turn", "turn-sharp-right": "Sharp right turn",
+  "uturn-left": "Make a U-turn", "uturn-right": "Make a U-turn",
+  "merge": "Merge", "fork-left": "Keep left", "fork-right": "Keep right",
+  "ramp-left": "Take the ramp on the left", "ramp-right": "Take the ramp on the right",
+  "roundabout-left": "Enter the roundabout", "roundabout-right": "Enter the roundabout",
+  "straight": "Continue straight",
+};
+function maneuverIcon(m) {
+  if (m && m.includes("left")) return icons.turnLeft;
+  if (m && m.includes("right")) return icons.turnRight;
+  return icons.straight;
+}
+function maneuverLabel(m) { return MANEUVER_LABELS[m] || "Continue"; }
+// Distance-to-next-turn, in whichever unit the app is set to (matches
+// unitLabel()/kmToDisplay() used everywhere else) rather than always metric.
+function formatLiveTurnDistance(distM) {
+  if (currentUnit() === "mi") {
+    const feet = distM * 3.28084;
+    return feet < 500 ? `${Math.round(feet / 10) * 10} ft` : `${(distM / 1000 * 0.621371).toFixed(1)} mi`;
+  }
+  return distM < 950 ? `${Math.round(distM / 10) * 10} m` : `${(distM / 1000).toFixed(1)} km`;
+}
+function stepPlainInstruction(html) {
+  const div = document.createElement("div");
+  div.innerHTML = html || "";
+  return div.textContent || div.innerText || "";
+}
+// Every step across every leg, in order, each tagged with which leg it
+// belongs to — turn-by-turn advances through this independent of the
+// coarser per-leg distance/duration already shown in the route summary.
+function flattenDirectionsSteps(result) {
+  const steps = [];
+  result.routes[0].legs.forEach((leg, legIdx) => {
+    leg.steps.forEach(step => steps.push({
+      legIdx,
+      instructions: step.instructions || "",
+      maneuver: step.maneuver || "",
+      distanceM: step.distance ? step.distance.value : 0,
+      durationS: step.duration ? step.duration.value : 0,
+      endLat: step.end_location.lat(), endLng: step.end_location.lng(),
+    }));
+  });
+  return steps;
+}
+
+let liveDrive = null;
+let liveWatchId = null;
+let liveTickerId = null;
+
+async function startLiveDrive() {
+  const p = state.planner;
+  if (!p || !plannerDirectionsResult) return;
+  if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
+  if (!navigator.geolocation) { p.previewError = "Location isn't available on this device."; render(); return; }
+
+  let firstFix;
+  try { firstFix = await getCurrentPosition(); }
+  catch (e) { p.previewError = e.message || "Couldn't get your location."; render(); return; }
+  if (!state.planner) return; // cancelled while waiting on the permission prompt
+
+  liveDrive = {
+    startedAt: Date.now(),
+    steps: flattenDirectionsSteps(plannerDirectionsResult),
+    stepIdx: 0,
+    legIdx: 0,
+    legStartedAt: Date.now(),
+    legDistanceM: 0,
+    completedLegs: [],
+    lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
+  };
+  await persistLiveDriveSnapshot();
+
+  p.stage = "driving";
+  p.previewError = "";
+  render();
+
+  liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => { /* a missed fix just means no update this tick */ }, {
+    enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
+  });
+  startLiveTicker();
+}
+
+async function persistLiveDriveSnapshot() {
+  if (!liveDrive || !state.planner) return;
+  await storageSet(LIVE_DRIVE_KEY, {
+    startedAt: liveDrive.startedAt,
+    legIdx: liveDrive.legIdx,
+    legStartedAt: liveDrive.legStartedAt,
+    legDistanceM: liveDrive.legDistanceM,
+    completedLegs: liveDrive.completedLegs,
+    plannerSnapshot: { stops: state.planner.stops, legs: state.planner.legs },
+  });
+}
+
+function finishCurrentLiveLeg() {
+  const durationSec = (Date.now() - liveDrive.legStartedAt) / 1000;
+  liveDrive.completedLegs.push({
+    distanceKm: liveDrive.legDistanceM / 1000,
+    durationMin: Math.max(1, Math.round(durationSec / 60)),
+    partial: false,
+  });
+  liveDrive.legIdx++;
+  liveDrive.legStartedAt = Date.now();
+  liveDrive.legDistanceM = 0;
+  persistLiveDriveSnapshot();
+}
+
+function handleLiveFix(pos) {
+  if (!liveDrive) return;
+  const { latitude: lat, longitude: lng, accuracy, heading } = pos.coords;
+  if (accuracy != null && accuracy > LIVE_MAX_FIX_ACCURACY_M) return;
+  const prev = liveDrive.lastFix;
+  const deltaM = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : 0;
+  if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
+  liveDrive.lastFix = { lat, lng, heading, t: Date.now() };
+
+  updateLiveMarker(lat, lng, heading);
+
+  let step = liveDrive.steps[liveDrive.stepIdx];
+  while (step && step.legIdx === liveDrive.legIdx && haversineMeters(lat, lng, step.endLat, step.endLng) < LIVE_STEP_ADVANCE_M) {
+    liveDrive.stepIdx++;
+    step = liveDrive.steps[liveDrive.stepIdx];
+  }
+
+  const p = state.planner;
+  if (p && liveDrive.legIdx < p.legs.length) {
+    const destStop = p.stops[liveDrive.legIdx + 1];
+    if (destStop && destStop.lat != null && haversineMeters(lat, lng, destStop.lat, destStop.lng) < LIVE_LEG_ARRIVE_M) {
+      finishCurrentLiveLeg();
+    }
+  }
+
+  updateLiveDriveDOM();
+}
+
+async function updateLiveMarker(lat, lng, heading) {
+  if (!plannerMapInstance || !window.google || !google.maps.importLibrary) return;
+  try {
+    const { Marker } = await google.maps.importLibrary("marker");
+    if (!plannerMapInstance) return;
+    if (!plannerLiveMarker) {
+      plannerLiveMarker = new Marker({
+        map: plannerMapInstance,
+        position: { lat, lng },
+        icon: {
+          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 6,
+          rotation: heading || 0, fillColor: "#4C9FF2", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2,
+        },
+        zIndex: 999,
+      });
+    } else {
+      plannerLiveMarker.setPosition({ lat, lng });
+      const icon = plannerLiveMarker.getIcon();
+      if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
+    }
+    plannerMapInstance.panTo({ lat, lng });
+  } catch { /* marker library unavailable — position tracking still works without the on-map arrow */ }
+}
+
+function computeLiveRemaining() {
+  if (!liveDrive) return { km: 0, min: 0, etaStr: "–" };
+  let remainingM = 0;
+  const step = liveDrive.steps[liveDrive.stepIdx];
+  if (step && liveDrive.lastFix) remainingM += haversineMeters(liveDrive.lastFix.lat, liveDrive.lastFix.lng, step.endLat, step.endLng);
+  for (let i = liveDrive.stepIdx + 1; i < liveDrive.steps.length; i++) remainingM += liveDrive.steps[i].distanceM;
+  const totalDistM = liveDrive.steps.reduce((s, st) => s + st.distanceM, 0);
+  const totalDurS = liveDrive.steps.reduce((s, st) => s + st.durationS, 0);
+  const remainingMin = totalDistM > 0
+    ? Math.max(1, Math.round((remainingM / totalDistM) * totalDurS / 60))
+    : Math.max(1, Math.round(remainingM / 1000 / 40 * 60));
+  const eta = new Date(Date.now() + remainingMin * 60000);
+  return { km: remainingM / 1000, min: remainingMin, etaStr: eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) };
+}
+
+// Targeted DOM update on every GPS fix — deliberately not a full render(),
+// which would tear down and recreate the live google.maps.Map (and its
+// marker) dozens of times a minute.
+function updateLiveDriveDOM() {
+  if (!liveDrive) return;
+  const step = liveDrive.steps[liveDrive.stepIdx];
+  const turnIconWrap = document.getElementById("plannerTurnIconWrap");
+  const turnMain = document.getElementById("plannerTurnMain");
+  const turnSub = document.getElementById("plannerTurnSub");
+  const turnDistVal = document.getElementById("plannerTurnDistVal");
+  const arrived = !step;
+  if (turnIconWrap) {
+    turnIconWrap.className = arrived ? "planner-turn-icon arrive" : "planner-turn-icon";
+    turnIconWrap.innerHTML = arrived ? icons.flag : maneuverIcon(step.maneuver);
+  }
+  if (turnMain) turnMain.textContent = arrived ? "You have arrived" : maneuverLabel(step.maneuver);
+  if (turnSub) turnSub.textContent = arrived ? "" : stepPlainInstruction(step.instructions);
+  if (turnDistVal) {
+    if (arrived || !liveDrive.lastFix) { turnDistVal.textContent = "–"; }
+    else {
+      const distM = haversineMeters(liveDrive.lastFix.lat, liveDrive.lastFix.lng, step.endLat, step.endLng);
+      turnDistVal.textContent = formatLiveTurnDistance(distM);
+    }
+  }
+  const remain = computeLiveRemaining();
+  const etaVal = document.getElementById("plannerEtaVal");
+  const remainVal = document.getElementById("plannerRemainVal");
+  if (etaVal) etaVal.textContent = arrived ? "Arrived" : remain.etaStr;
+  if (remainVal) remainVal.textContent = arrived ? "0.0 " + unitLabel() : `${kmToDisplay(remain.km).toFixed(1)} ${unitLabel()}`;
+}
+
+function startLiveTicker() {
+  stopLiveTicker();
+  liveTickerId = setInterval(() => {
+    if (!liveDrive) return;
+    const el = document.getElementById("plannerElapsedVal");
+    if (!el) return;
+    const elapsedSec = Math.floor((Date.now() - liveDrive.startedAt) / 1000);
+    el.textContent = `${String(Math.floor(elapsedSec / 60)).padStart(2, "0")}:${String(elapsedSec % 60).padStart(2, "0")}`;
+  }, 1000);
+}
+function stopLiveTicker() { if (liveTickerId) clearInterval(liveTickerId); liveTickerId = null; }
+
+// Stop & Save: finalizes whatever's left of the leg in progress (its end
+// point becomes the current, reverse-geocoded location rather than the
+// planned stop, since that's genuinely where the drive ended), then commits
+// every completed/partial leg as a real trip using GPS-captured distance
+// and duration instead of the Directions estimate.
+async function endLiveDrive() {
+  if (!liveDrive || !state.planner) return;
+  const p = state.planner;
+  if (liveWatchId != null) { navigator.geolocation.clearWatch(liveWatchId); liveWatchId = null; }
+  stopLiveTicker();
+
+  if (liveDrive.legIdx < p.legs.length && liveDrive.legDistanceM > 0) {
+    const durationSec = (Date.now() - liveDrive.legStartedAt) / 1000;
+    liveDrive.completedLegs.push({
+      distanceKm: liveDrive.legDistanceM / 1000,
+      durationMin: Math.max(1, Math.round(durationSec / 60)),
+      partial: true,
+    });
+  }
+
+  const date = todayStr();
+  let cursor = new Date(liveDrive.startedAt);
+  const trips = [];
+  for (let i = 0; i < liveDrive.completedLegs.length; i++) {
+    const cl = liveDrive.completedLegs[i];
+    const leg = p.legs[i], from = p.stops[i], to = cl.partial ? null : p.stops[i + 1];
+    const startTimeStr = `${String(cursor.getHours()).padStart(2, "0")}:${String(cursor.getMinutes()).padStart(2, "0")}`;
+    cursor = new Date(cursor.getTime() + cl.durationMin * 60000);
+    const endTimeStr = `${String(cursor.getHours()).padStart(2, "0")}:${String(cursor.getMinutes()).padStart(2, "0")}`;
+    let endPoint = to ? (to.address.trim() || "Unspecified") : "Current location";
+    if (!to && liveDrive.lastFix) {
+      try { endPoint = await reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng); } catch { /* keep the "Current location" fallback */ }
+    }
+    const trip = {
+      id: uid(), date, startTime: startTimeStr, endTime: endTimeStr,
+      distance: cl.distanceKm, startPoint: from.address.trim() || "Unspecified",
+      endPoint, tag: leg.tag,
+    };
+    if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
+    if (to && to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
+    else if (!to && liveDrive.lastFix) { trip.endLat = liveDrive.lastFix.lat; trip.endLng = liveDrive.lastFix.lng; }
+    trips.push(trip);
+  }
+  for (const trip of trips) await finalizeTrip(trip);
+
+  liveDrive = null;
+  plannerLiveMarker = null;
+  state.planner = null;
+  plannerDirectionsResult = null;
+  await storageDelete(LIVE_DRIVE_KEY);
+  state.tab = "history";
+  render();
+}
+
+// Best-effort resume after a refresh mid-drive: restores the elapsed timer,
+// completed legs so far, and current leg's accumulated distance. The turn
+// list itself isn't persisted (it's a live Google object graph), so
+// turn-by-turn just goes quiet until the next fix re-derives it once Maps
+// and the route reload — GPS distance/time tracking itself resumes exactly.
+async function resumeLiveDriveIfAny() {
+  const saved = await storageGet(LIVE_DRIVE_KEY);
+  if (!saved || !saved.plannerSnapshot) return;
+  state.planner = {
+    stops: saved.plannerSnapshot.stops,
+    legs: saved.plannerSnapshot.legs,
+    stage: "driving",
+    previewing: false,
+    previewError: "",
+  };
+  liveDrive = {
+    startedAt: saved.startedAt,
+    steps: [],
+    stepIdx: 0,
+    legIdx: saved.legIdx || 0,
+    legStartedAt: saved.legStartedAt || saved.startedAt,
+    legDistanceM: saved.legDistanceM || 0,
+    completedLegs: saved.completedLegs || [],
+    lastFix: null,
+  };
+  if (navigator.geolocation) {
+    liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
+      enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
+    });
+    startLiveTicker();
+  }
 }
 
 let mapsLibraryPromise = null;
@@ -1650,6 +2060,25 @@ function plannerNextEmptyStopIndex() {
 let plannerMapInstance = null;
 let plannerMapClickListener = null;
 let plannerDirectionsRenderer = null;
+let plannerDirectionsChangedListener = null;
+let plannerLiveMarker = null;
+
+// Live-updates just the distance/time/hazard/leg-tag card in place, without
+// a full render() — used after a drag-to-reroute (directions_changed can
+// fire repeatedly mid-drag) so the drag gesture, map, and any focused input
+// elsewhere on the page are never interrupted.
+function updatePlannerRouteSummaryDOM() {
+  const el = document.querySelector(".planner-route-summary");
+  if (!el || !state.planner) return;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = renderPlannerRouteSummary();
+  const fresh = wrap.querySelector(".planner-route-summary");
+  if (fresh) el.replaceWith(fresh);
+  document.querySelectorAll(".planner-legtags [data-legtag]").forEach(btn => {
+    btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
+  });
+  armStaticHazardMarquee();
+}
 
 // The whole #app subtree is replaced via innerHTML on every render(), which
 // destroys any live google.maps.Map bound to the old canvas node — so this
@@ -1661,7 +2090,9 @@ async function ensurePlannerMap() {
   const canvas = document.getElementById("plannerMapCanvas");
   if (plannerMapClickListener) { google.maps.event.removeListener(plannerMapClickListener); plannerMapClickListener = null; }
   plannerDirectionsRenderer = null;
+  plannerDirectionsChangedListener = null;
   plannerMapInstance = null;
+  plannerLiveMarker = null;
   if (!canvas || !mapsConfigured()) return;
   const libraryPromise = getMapsLibrary();
   if (!libraryPromise) return;
@@ -1670,32 +2101,68 @@ async function ensurePlannerMap() {
   if (document.getElementById("plannerMapCanvas") !== canvas) return; // superseded by a newer render while this was loading
 
   const p = state.planner;
+  const driving = p && p.stage === "driving";
   const firstStop = p && p.stops.find(s => s.lat != null);
+  let center = firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 };
+  let zoom = firstStop ? 12 : 2;
+  if (!firstStop && mapsConfigured()) {
+    // Fullscreen map opens centered on the device's current location when
+    // nothing has been picked yet, rather than a world view.
+    try {
+      const coords = await getCurrentPosition();
+      if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      center = { lat: coords.latitude, lng: coords.longitude };
+      zoom = 14;
+    } catch { /* keep the world-view fallback — user can still search or tap the map */ }
+  }
   plannerMapInstance = new Map(canvas, {
-    center: firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 },
-    zoom: firstStop ? 12 : 2,
-    disableDefaultUI: true, zoomControl: true, gestureHandling: "greedy",
+    center, zoom,
+    disableDefaultUI: true, zoomControl: !driving, gestureHandling: driving ? "none" : "greedy",
   });
 
-  plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
-    const targetIdx = plannerNextEmptyStopIndex();
-    if (targetIdx == null) return;
-    const stop = state.planner.stops[targetIdx];
-    const lat = e.latLng.lat(), lng = e.latLng.lng();
-    let address;
-    try { address = await reverseGeocode(lat, lng); }
-    catch { address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
-    if (!state.planner || state.planner.stops[targetIdx] !== stop) return;
-    await plannerResolveStop(stop, address, { lat, lng });
-  });
+  if (!driving) {
+    plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
+      const targetIdx = plannerNextEmptyStopIndex();
+      if (targetIdx == null) return;
+      const stop = state.planner.stops[targetIdx];
+      const lat = e.latLng.lat(), lng = e.latLng.lng();
+      let address;
+      try { address = await reverseGeocode(lat, lng); }
+      catch { address = `${lat.toFixed(5)}, ${lng.toFixed(5)}`; }
+      if (!state.planner || state.planner.stops[targetIdx] !== stop) return;
+      await plannerResolveStop(stop, address, { lat, lng });
+    });
+  }
 
   if (plannerDirectionsResult) {
     try {
       const { DirectionsRenderer } = await getRoutesLibrary();
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
-      plannerDirectionsRenderer = new DirectionsRenderer({ map: plannerMapInstance, suppressMarkers: false });
+      plannerDirectionsRenderer = new DirectionsRenderer({
+        map: plannerMapInstance, suppressMarkers: false, draggable: !driving,
+      });
       plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
+      if (!driving) {
+        plannerDirectionsChangedListener = plannerDirectionsRenderer.addListener("directions_changed", () => {
+          const result = plannerDirectionsRenderer.getDirections();
+          plannerDirectionsResult = result;
+          const route = result.routes[0];
+          const pp = state.planner;
+          if (!pp) return;
+          route.legs.forEach((leg, i) => {
+            if (pp.legs[i]) {
+              pp.legs[i].distanceKm = leg.distance.value / 1000;
+              pp.legs[i].durationMin = Math.max(1, Math.round(leg.duration.value / 60));
+            }
+          });
+          updatePlannerRouteSummaryDOM();
+        });
+      }
     } catch { /* map still usable without the route line */ }
+  }
+
+  if (driving && liveDrive && liveDrive.lastFix) {
+    updateLiveMarker(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
   }
 }
 
@@ -1846,6 +2313,7 @@ async function loadData() {
   state.recentLocations = (await storageGet(RECENT_LOCATIONS_KEY)) || [];
   state.savedAddresses = (await storageGet(SAVED_ADDRESSES_KEY)) || { home: "", work: "", other: [] };
   state.fuelFillups = (await storageGet(FUEL_FILLUPS_KEY)) || [];
+  await resumeLiveDriveIfAny();
   if (!state.active) {
     state.startPointInput = "";
     autoFillCurrentLocation();
@@ -2544,24 +3012,51 @@ function plannerStopLabel(idx, total) {
   return `Stop ${idx}`;
 }
 
-function renderPlannerStopRow(stop, idx, total) {
-  const label = plannerStopLabel(idx, total);
-  const removable = idx !== 0 && idx !== total - 1;
-  const marker = idx === 0 ? icons.play : idx === total - 1 ? icons.pin : String(idx);
+function plannerFieldKind(idx, total) {
+  return idx === 0 ? "start" : idx === total - 1 ? "end" : "stop";
+}
+
+// Saved-place pills for one stop's field: a "Current Location" pill plus the
+// usual Home/Work/Other saved addresses (same list as renderSavedAddressChips
+// elsewhere), with any overflow in a native <select> — hidden by default via
+// CSS (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
+function renderPlannerFieldPills(idx) {
+  const list = savedAddressList();
+  const homeWork = list.filter(a => a.id === "home" || a.id === "work");
+  const others = list.filter(a => a.id !== "home" && a.id !== "work");
+  const pills = [...homeWork, ...others.slice(0, 2)];
+  const overflow = others.slice(2);
+  let html = `<button type="button" class="planner-chip current" data-stopidx="${idx}" data-currentloc="1">${icons.locate} Current Location</button>`;
+  html += pills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
+  if (overflow.length) {
+    html += `<select class="input plannerAddressOverflowSelect" data-stopidx="${idx}" style="flex:0 0 auto;width:auto;min-width:110px;font-size:11.5px;padding:5px 8px;border-radius:999px;">
+      <option value="">+${overflow.length} more…</option>
+      ${overflow.map(a => `<option value="${escAttr(a.address)}">${escAttr(a.name)}</option>`).join("")}
+    </select>`;
+  }
+  return html;
+}
+
+function renderPlannerFieldBlock(stop, idx, total) {
+  const kind = plannerFieldKind(idx, total);
+  const removable = kind === "stop";
+  const placeholder = kind === "start" ? "Start location" : kind === "end" ? "End location" : "Add a stop";
   return `
-  <div class="planner-stop-row" data-stopidx="${idx}">
-    <div class="planner-stop-marker">${marker}</div>
-    <div style="flex:1;min-width:0;">
-      <label class="field-label" style="margin-bottom:4px;">${label}</label>
-      <div class="input-icon">
+  <div class="planner-field-block" data-stopblock="${idx}">
+    <div class="planner-field-row">
+      ${removable ? `<button type="button" class="planner-remove-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop">${icons.close}</button>` : ""}
+      <div class="input-icon ${kind}">
         ${icons.pin}
-        <input class="plannerStopInput" data-stopidx="${idx}" placeholder="Search or tap the map" value="${escAttr(stop.address)}" autocomplete="off" />
+        <div class="loc-field-wrap">
+          <input id="plannerStopInput-${idx}" class="plannerStopInput" data-stopidx="${idx}" placeholder="${placeholder}" value="${escAttr(stop.address)}" autocomplete="off" onfocus="setTimeout(() => this.select())" />
+          <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
+        </div>
       </div>
-      ${stop.resolving ? `<p class="settings-desc" style="margin:4px 0 0;">Locating…</p>` : ""}
-      ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 0 0;">${escAttr(stop.resolveError)}</p>` : ""}
     </div>
-    <button type="button" class="icon-btn plannerLocateStopBtn" data-stopidx="${idx}" title="Use my location" style="margin-top:20px;">${icons.locate}</button>
-    ${removable ? `<button type="button" class="icon-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop" style="margin-top:20px;">${icons.trash}</button>` : ""}
+    ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
+    ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
+    <div class="planner-pill-row" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
+    ${kind === "start" && stop.address.trim() ? `<button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>` : ""}
   </div>`;
 }
 
@@ -2716,37 +3211,107 @@ function renderPlanTab() {
   }
 
   const n = p.stops.length;
+  const allSet = p.stops.every(s => s.address.trim());
+  const driving = p.stage === "driving";
+
   return `
-  ${mapsError}
-  <div class="card" style="padding:0;overflow:hidden;">
-    <div id="plannerMapCanvas" style="width:100%;height:200px;background:var(--bg);"></div>
-    ${!mapsConfigured() ? `<p class="settings-desc" style="margin:10px 12px;">Map preview isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
-  </div>
+  <div class="planner-fullscreen">
+    <div id="plannerMapCanvas"></div>
+    ${(!driving && p.stage !== "preview") ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
 
-  <div class="card">
-    <p class="settings-title" style="margin:0 0 4px;">${icons.route} Plan Route</p>
-    ${p.stops.map((s, i) => renderPlannerStopRow(s, i, n)).join(`<div class="planner-connector"></div>`)}
-    <button type="button" id="plannerAddStopBtn" class="chip" style="margin-top:6px;">+ Add Stop</button>
-  </div>
+    ${driving ? renderPlannerDrivingBanner() : `
+    <div class="planner-topbar">
+      <div class="planner-back" id="plannerBackBtn">
+        <span class="chevron">${icons.chevronLeft}</span>
+        <div><b>Plan Route</b><span>Tap to return to Drive</span></div>
+      </div>
+      ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
+      ${mapsError}
+      ${p.stops.map((s, i) => renderPlannerFieldBlock(s, i, n)).join("")}
+    </div>`}
 
-  <div class="card">
-    <p class="settings-title" style="margin:0 0 4px;">Legs</p>
-    ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
-  </div>
+    ${driving ? renderPlannerEtaBar() : `
+    <div class="planner-bottom-sheet">
+      ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
+      ${p.stage === "preview" ? renderPlannerRouteSummary() : ""}
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="plannerCancelBtn" class="btn btn-ghost" style="width:auto;flex:1;">Cancel</button>
+        <button type="button" id="plannerPreviewBtn" class="btn ${p.stage === "preview" ? "btn-ghost" : "btn-amber"}" style="width:auto;flex:2;" ${p.previewing || !allSet ? "disabled" : ""}>${p.previewing ? "Calculating…" : `${icons.route} ${p.stage === "preview" ? "Refresh Route" : "Preview Route"}`}</button>
+      </div>
+      ${p.stage === "preview" ? `
+      <button type="button" id="plannerSaveBtn" class="btn btn-ghost" style="margin-top:8px;">${icons.check} Save Route</button>
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <button type="button" id="plannerLogDriveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
+        <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:1;">${icons.play} Start Drive</button>
+      </div>
+      ` : ""}
+    </div>`}
+    ${state.plannerLogForm ? renderPlannerLogModal() : ""}
+  </div>`;
+}
 
-  ${p.previewError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${escAttr(p.previewError)}</p></div>` : ""}
-
-  <div class="card">
-    <div style="display:flex;gap:8px;">
-      <button type="button" id="plannerCancelBtn" class="btn btn-ghost" style="width:auto;flex:1;">Cancel</button>
-      <button type="button" id="plannerPreviewBtn" class="btn ${p.stage === "preview" ? "btn-ghost" : "btn-amber"}" style="width:auto;flex:2;" ${p.previewing ? "disabled" : ""}>${p.previewing ? "Calculating…" : `${icons.route} ${p.stage === "preview" ? "Refresh Route" : "Preview Route"}`}</button>
+function renderPlannerRouteSummary() {
+  const p = state.planner;
+  const totalKm = p.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
+  const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  const warnings = (plannerDirectionsResult && plannerDirectionsResult.routes[0].warnings) || [];
+  return `
+  <div class="planner-route-summary">
+    <div class="planner-route-badge">${icons.route} Fastest route</div>
+    <div class="planner-route-metrics">
+      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
+      <div class="div"></div>
+      <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Est. time</div></div>
     </div>
-    ${p.stage === "preview" ? `
-    <div style="display:flex;gap:8px;margin-top:8px;">
-      <button type="button" id="plannerSaveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.check} Save Route</button>
-      <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:2;">${icons.play} Start Driving</button>
-    </div>
+    ${warnings.length ? `
+    <div class="planner-hazard-row">${icons.warning}<div class="loc-field-wrap"><div class="route-clip" id="plannerHazardClip"><span class="route-track" id="plannerHazardTrack">${escAttr(warnings.join(" · "))}</span></div></div></div>
     ` : ""}
+    <div class="planner-legtags">
+      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+    </div>
+  </div>
+  <p class="settings-desc" style="margin:0 0 10px;text-align:center;">Drag the route on the map to route through another point — distance and time recalculate.</p>`;
+}
+
+function renderPlannerDrivingBanner() {
+  return `
+  <div class="planner-drive-banner">
+    <span class="planner-turn-icon" id="plannerTurnIconWrap">${icons.straight}</span>
+    <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b><span id="plannerTurnSub">Getting your position</span></div>
+    <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l">next turn</div></div>
+  </div>`;
+}
+
+function renderPlannerEtaBar() {
+  return `
+  <div class="planner-eta-bar">
+    <div class="planner-eta-metrics">
+      <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
+      <div class="m"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Remaining</div></div>
+      <div class="m"><div class="v mono" id="plannerElapsedVal">00:00</div><div class="l">Elapsed</div></div>
+    </div>
+    <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+  </div>`;
+}
+
+function renderPlannerLogModal() {
+  const f = state.plannerLogForm;
+  const p = state.planner;
+  const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Log this Drive</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">Logs every leg back-to-back from the time below, using the estimated durations from Preview (~${formatDuration(totalMin)} total) instead of live tracking.</p>
+      <label class="field-label">Date</label>
+      <input id="plannerLogDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
+      <label class="field-label">Start time (24hr)</label>
+      <input id="plannerLogStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
+      <div class="row-2">
+        <button id="plannerLogCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="plannerLogConfirmBtn" class="btn btn-amber">Save Drive</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -3857,6 +4422,23 @@ async function finalizeTrip(trip) {
 // trailing gap padding) so every row starts and loops in lockstep, and the
 // loop advances by the exact pixel distance between the two text copies so
 // it never visibly jumps.
+// Same 3-second-delayed marquee as attachRouteAutoScroll, for the single
+// hazard/warnings line in the Trip Planner's route summary card.
+function armStaticHazardMarquee() {
+  const track = document.getElementById("plannerHazardTrack");
+  const clip = document.getElementById("plannerHazardClip");
+  if (!track || !clip) return;
+  const singleWidth = track.scrollWidth;
+  if (singleWidth <= clip.clientWidth + 2) return;
+  const text = track.textContent;
+  const gapPx = 48, distance = singleWidth + gapPx, duration = Math.max(4, distance / 26);
+  track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+  track.animate(
+    [{ transform: "translateX(0px)" }, { transform: `translateX(-${distance}px)` }],
+    { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
+  );
+}
+
 function attachRouteAutoScroll() {
   const entries = [];
   document.querySelectorAll(".route-cell").forEach(cell => {
@@ -4242,7 +4824,10 @@ function attachAppHandlers() {
     document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
       btn.onclick = async () => {
         const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
-        if (route) { openSavedRouteInPlanner(route); await startDrivingPlannedRoute(); }
+        if (!route) return;
+        openSavedRouteInPlanner(route);
+        await runPlannerPreview(); // saved routes don't keep a live DirectionsResult — Preview regenerates it
+        if (state.planner && state.planner.stage === "preview") await startLiveDrive();
       };
     });
     document.querySelectorAll(".plannerEditSavedBtn").forEach(btn => {
@@ -4256,38 +4841,41 @@ function attachAppHandlers() {
     });
 
     const p = state.planner;
-    if (p) {
+    if (p && p.stage !== "driving") {
+      const backBtn = document.getElementById("plannerBackBtn");
+      if (backBtn) backBtn.onclick = cancelPlanner;
       const cancelBtn = document.getElementById("plannerCancelBtn");
       if (cancelBtn) cancelBtn.onclick = cancelPlanner;
 
-      const addStopBtn = document.getElementById("plannerAddStopBtn");
-      if (addStopBtn) addStopBtn.onclick = plannerAddStop;
+      const recenterBtn = document.getElementById("plannerRecenterBtn");
+      if (recenterBtn) recenterBtn.onclick = async () => {
+        if (!plannerMapInstance) return;
+        try {
+          const coords = await getCurrentPosition();
+          plannerMapInstance.panTo({ lat: coords.latitude, lng: coords.longitude });
+          plannerMapInstance.setZoom(14);
+        } catch { /* ignore — button just does nothing without permission */ }
+      };
+
+      document.querySelectorAll(".plannerAddStopChip").forEach(btn => {
+        btn.onclick = plannerAddStop;
+      });
 
       document.querySelectorAll(".plannerRemoveStopBtn").forEach(btn => {
         btn.onclick = () => plannerRemoveStop(parseInt(btn.dataset.stopidx, 10));
       });
 
-      document.querySelectorAll(".plannerLocateStopBtn").forEach(btn => {
-        btn.onclick = async () => {
-          const idx = parseInt(btn.dataset.stopidx, 10);
-          const stop = p.stops[idx];
-          if (!mapsConfigured()) { stop.resolveError = "Location lookup isn't set up for this app yet."; render(); return; }
-          try {
-            const coords = await getCurrentPosition();
-            const address = await reverseGeocode(coords.latitude, coords.longitude);
-            await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude });
-          } catch (e) {
-            stop.resolveError = e.message || "Couldn't get your location.";
-            render();
-          }
-        };
-      });
-
       document.querySelectorAll(".plannerStopInput").forEach(input => {
         const idx = parseInt(input.dataset.stopidx, 10);
         const stop = p.stops[idx];
-        input.oninput = (e) => { stop.address = e.target.value; stop.lat = null; stop.lng = null; };
+        const pillRow = document.getElementById(`plannerPillRow-${idx}`);
+        input.oninput = (e) => {
+          stop.address = e.target.value; stop.lat = null; stop.lng = null;
+          if (pillRow) pillRow.classList.toggle("show", !e.target.value.trim());
+        };
+        input.onfocus = () => { if (pillRow && !input.value.trim()) pillRow.classList.add("show"); };
         input.onblur = () => {
+          setTimeout(() => { if (pillRow) pillRow.classList.remove("show"); }, 150);
           if (stop.address.trim() && stop.address !== input.dataset.lastResolved) {
             input.dataset.lastResolved = stop.address;
             plannerResolveStop(stop, stop.address.trim(), null);
@@ -4296,8 +4884,43 @@ function attachAppHandlers() {
         attachPlacesAutocomplete(input, (desc) => {
           input.value = desc;
           input.dataset.lastResolved = desc;
+          if (pillRow) pillRow.classList.remove("show");
           plannerResolveStop(stop, desc, null);
         });
+        setupLocationMarquee(input.id);
+        if (stop.lat != null) armLocationMarquee(input.id);
+      });
+
+      document.querySelectorAll(".planner-chip").forEach(el => {
+        el.onmousedown = async (e) => {
+          e.preventDefault();
+          const idx = parseInt(el.dataset.stopidx, 10);
+          const stop = p.stops[idx];
+          if (!stop) return;
+          if (el.dataset.currentloc) {
+            if (!mapsConfigured()) { stop.resolveError = "Location lookup isn't set up for this app yet."; render(); return; }
+            try {
+              const coords = await getCurrentPosition();
+              const address = await reverseGeocode(coords.latitude, coords.longitude);
+              await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude });
+            } catch (err) {
+              stop.resolveError = err.message || "Couldn't get your location.";
+              render();
+            }
+          } else {
+            await plannerResolveStop(stop, el.dataset.address, null);
+          }
+        };
+      });
+      document.querySelectorAll(".plannerAddressOverflowSelect").forEach(sel => {
+        sel.onchange = async () => {
+          if (!sel.value) return;
+          const idx = parseInt(sel.dataset.stopidx, 10);
+          const stop = p.stops[idx];
+          const address = sel.value;
+          sel.value = "";
+          if (stop) await plannerResolveStop(stop, address, null);
+        };
       });
 
       document.querySelectorAll(".planner-leg-tags [data-legtag]").forEach(btn => {
@@ -4308,8 +4931,36 @@ function attachAppHandlers() {
       if (previewBtn) previewBtn.onclick = runPlannerPreview;
       const saveBtn = document.getElementById("plannerSaveBtn");
       if (saveBtn) saveBtn.onclick = savePlannedRoute;
+      const logDriveBtn = document.getElementById("plannerLogDriveBtn");
+      if (logDriveBtn) logDriveBtn.onclick = () => {
+        state.plannerLogForm = { date: todayStr(), startTime: nowTimeStr() };
+        render();
+      };
       const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
-      if (startDrivingBtn) startDrivingBtn.onclick = startDrivingPlannedRoute;
+      if (startDrivingBtn) startDrivingBtn.onclick = startLiveDrive;
+
+      if (state.plannerLogForm) {
+        const f = state.plannerLogForm;
+        const pld = document.getElementById("plannerLogDate");
+        if (pld) pld.onchange = (e) => { f.date = e.target.value; };
+        attachTimeInput(document.getElementById("plannerLogStartTime"), (v) => { f.startTime = v; });
+        const plCancel = document.getElementById("plannerLogCancelBtn");
+        if (plCancel) plCancel.onclick = () => { state.plannerLogForm = null; render(); };
+        const plConfirm = document.getElementById("plannerLogConfirmBtn");
+        if (plConfirm) plConfirm.onclick = async () => {
+          if (!f.date || !f.startTime) return;
+          const startTime = clampTimeValue(f.startTime);
+          const date = f.date;
+          state.plannerLogForm = null;
+          await logPlannedRouteNow(date, startTime);
+        };
+      }
+
+      armStaticHazardMarquee();
+    } else if (p && p.stage === "driving") {
+      const endDriveBtn = document.getElementById("plannerEndDriveBtn");
+      if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
+      updateLiveDriveDOM();
     }
 
     ensurePlannerMap();
