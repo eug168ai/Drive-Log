@@ -864,7 +864,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
   const row = [[
     trip.date, trip.startTime, trip.endTime, Number(trip.distance).toFixed(1),
     trip.startPoint, trip.endPoint, labelFor(DRIVE_TYPES, trip.tag),
-    trip.timeOfDay ? (trip.timeOfDay === "day" ? "Daytime" : "Nighttime") : "",
+    trip.timeOfDay ? (trip.timeOfDay === "day" ? "Day" : "Night") : "",
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
     trip.traffic ? labelFor(TRAFFIC_LEVELS, trip.traffic) : "",
@@ -3806,8 +3806,8 @@ function renderConditionsModal() {
 
       <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
       <select id="condTimeOfDay" class="input" style="margin-bottom:14px;">
-        <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
-        <option value="night" ${f.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
+        <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Day</option>
+        <option value="night" ${f.timeOfDay === "night" ? "selected" : ""}>Night</option>
       </select>
 
       <label class="field-label">Road type</label>
@@ -3893,8 +3893,8 @@ function renderEditTripModal() {
       <div class="card" style="padding:14px;margin-bottom:20px;">
         <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
         <select id="editTimeOfDay" class="input" style="margin-bottom:12px;">
-          <option value="day" ${t.timeOfDay === "day" ? "selected" : ""}>Daytime</option>
-          <option value="night" ${t.timeOfDay === "night" ? "selected" : ""}>Nighttime</option>
+          <option value="day" ${t.timeOfDay === "day" ? "selected" : ""}>Day</option>
+          <option value="night" ${t.timeOfDay === "night" ? "selected" : ""}>Night</option>
         </select>
         <label class="field-label">Road type</label>
         <select id="editRoadType" class="input" style="margin-bottom:12px;">
@@ -4343,7 +4343,7 @@ function reportFieldValue(t, field) {
     case "duration": return formatDuration(tripMinutes(t));
     case "purpose": return t.purpose || "";
     case "fuelCost": { const c = tripFuelCost(t); return c != null ? c.toFixed(2) : ""; }
-    case "timeOfDay": return t.timeOfDay ? (t.timeOfDay === "day" ? "Daytime" : "Nighttime") : "";
+    case "timeOfDay": return t.timeOfDay ? (t.timeOfDay === "day" ? "Day" : "Night") : "";
     case "roadType": return t.roadType ? labelFor(ROAD_TYPES, t.roadType) : "";
     case "weather": return t.weather ? labelFor(WEATHER_TYPES, t.weather) : "";
     case "traffic": return t.traffic ? labelFor(TRAFFIC_LEVELS, t.traffic) : "";
