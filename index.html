@@ -723,6 +723,23 @@ function detectDrivingSegments(points) {
     });
 }
 
+// Cached device fix for biasing/sorting Places Autocomplete results toward
+// nearby addresses. maximumAge lets the browser return an existing fix
+// instantly instead of blocking each keystroke on a fresh GPS read; a short
+// timeout means a slow/denied fix just leaves suggestions unbiased rather
+// than delaying them.
+let cachedAutocompletePosition = null;
+function getPositionForAutocomplete() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) return resolve(cachedAutocompletePosition);
+    navigator.geolocation.getCurrentPosition(
+      pos => { cachedAutocompletePosition = { lat: pos.coords.latitude, lng: pos.coords.longitude }; resolve(cachedAutocompletePosition); },
+      () => resolve(cachedAutocompletePosition),
+      { enableHighAccuracy: false, timeout: 3000, maximumAge: 300000 }
+    );
+  });
+}
+
 function attachPlacesAutocomplete(inputEl, onSelect) {
   if (!inputEl) return;
   const wrapper = inputEl.closest(".input-icon");
@@ -759,9 +776,25 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
       const request = { input: query, sessionToken: new AutocompleteSessionToken() };
       const region = getDeviceRegionCode();
       if (region) request.includedRegionCodes = [region];
+      const bias = await getPositionForAutocomplete();
+      if (bias) {
+        request.locationBias = { center: bias, radius: 50000 };
+        request.origin = bias;
+      }
       const { suggestions } = await AutocompleteSuggestion.fetchAutocompleteSuggestions(request);
       if (!suggestions || !suggestions.length) { hide(); return; }
-      dropdown.innerHTML = suggestions.slice(0, 5).map(s => {
+      // With `origin` set, each prediction carries distanceMeters — sort by
+      // it so the closest address is always first, not just whichever
+      // Google ranked most textually relevant.
+      const ranked = suggestions.slice().sort((a, b) => {
+        const da = a.placePrediction && a.placePrediction.distanceMeters;
+        const db = b.placePrediction && b.placePrediction.distanceMeters;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return da - db;
+      });
+      dropdown.innerHTML = ranked.slice(0, 5).map(s => {
         const text = s.placePrediction && s.placePrediction.text ? s.placePrediction.text.text : "";
         return `<div class="places-suggestion" data-desc="${escAttr(text)}">${text}</div>`;
       }).join("");
