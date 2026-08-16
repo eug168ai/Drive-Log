@@ -1,0 +1,51 @@
+name: Deploy Pages (main + staging)
+
+on:
+  push:
+    branches: [main, staging]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: src-main
+
+      - name: Checkout staging
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+          path: src-staging
+
+      # main serves from the site root; staging serves from /staging/ on the
+      # same Pages site, so both stay live at once under one domain.
+      - name: Assemble combined site
+        run: |
+          mkdir -p public/staging
+          rsync -a --exclude='.git' --exclude='.github' src-main/ public/
+          rsync -a --exclude='.git' --exclude='.github' src-staging/ public/staging/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
