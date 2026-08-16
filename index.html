@@ -3140,7 +3140,7 @@ function renderQuickDriveSection() {
       <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
       <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
 
-      <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
+      <button id="stopTripBtn" class="btn btn-stop" ${state.estimating ? "disabled" : ""}>${icons.stop} ${state.estimating ? "Calculating…" : "Stop & Save"}</button>
     </div>
     ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
   }
@@ -4834,16 +4834,40 @@ function attachAppHandlers() {
       };
       const stopBtn = document.getElementById("stopTripBtn");
       if (stopBtn) stopBtn.onclick = async () => {
-        const distVal = parseFloat(state.distance);
+        const a = state.active;
+        let distVal = parseFloat(state.distance);
         if (!state.distance || isNaN(distVal) || distVal <= 0) {
-          state.distanceError = "Enter a distance to save this drive.";
-          render();
-          const diAgain = document.getElementById("distanceInput");
-          if (diAgain) diAgain.focus();
-          return;
+          const dest = state.endPoint.trim();
+          if (!dest) {
+            state.distanceError = "Enter an end location, or a distance, to save this drive.";
+            render();
+            const diAgain = document.getElementById("distanceInput");
+            if (diAgain) diAgain.focus();
+            return;
+          }
+          if (!mapsConfigured()) {
+            state.distanceError = "Distance lookup isn't set up for this app yet — enter the distance manually.";
+            render();
+            return;
+          }
+          // No distance entered yet but an end location is set — calculate
+          // it automatically from start -> end rather than blocking on a
+          // manual number.
+          state.estimating = true; state.distanceError = ""; render();
+          try {
+            const { distanceKm, durationMin } = await estimateRoute(a.startPoint, dest);
+            state.distance = kmToDisplay(distanceKm).toFixed(1);
+            state.estimatedDuration = durationMin;
+            distVal = parseFloat(state.distance);
+          } catch (e) {
+            state.estimating = false;
+            state.distanceError = e.message || "Couldn't calculate the distance automatically — enter it manually.";
+            render();
+            return;
+          }
+          state.estimating = false;
         }
         state.distanceError = "";
-        const a = state.active;
         const endTimeNow = nowTimeStr();
         const trip = {
           id: uid(), date: a.date, startTime: a.startTime, endTime: endTimeNow,
