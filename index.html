@@ -1434,18 +1434,6 @@ function suggestTagForCoords(startLat, startLng, endLat, endLng) {
 function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "" }; }
 function newPlannerLeg() { return { tag: null, tagSource: null, distanceKm: null, durationMin: null }; }
 
-function startPlanner() {
-  state.planner = {
-    stops: [newPlannerStop(), newPlannerStop()],
-    legs: [newPlannerLeg()],
-    stage: "build",
-    previewing: false,
-    previewError: "",
-  };
-  plannerDirectionsResult = null;
-  render();
-}
-
 function cancelPlanner() {
   state.planner = null;
   plannerDirectionsResult = null;
@@ -2584,9 +2572,6 @@ function renderPlannerLegRow(leg, idx, stops) {
 }
 
 function renderSavedRoutesList() {
-  if (!state.plannedRoutes.length) {
-    return `<div class="card"><p class="settings-desc" style="margin:0;">No saved routes yet. Plan a multi-stop drive and save it here to reuse later.</p></div>`;
-  }
   return state.plannedRoutes.map(r => {
     const totalKm = r.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
     const totalMin = r.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
@@ -2705,13 +2690,7 @@ function renderPlanTab() {
   const mapsError = state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : "";
 
   if (!p) {
-    const plannerEntry = state.active ? "" : `
-    <div class="card">
-      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="beta-tag">Beta</span></p>
-      <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
-      <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
-    </div>
-    ${renderSavedRoutesList()}`;
+    const plannerEntry = (!state.active && state.plannedRoutes.length) ? renderSavedRoutesList() : "";
     return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
   }
 
@@ -4234,9 +4213,6 @@ function attachAppHandlers() {
       setupLocationMarquee("endPointInput");
       if (state.endLocArmed) armLocationMarquee("endPointInput");
     }
-
-    const newRouteBtn = document.getElementById("newPlannerRouteBtn");
-    if (newRouteBtn) newRouteBtn.onclick = startPlanner;
 
     document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
       btn.onclick = async () => {
