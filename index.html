@@ -1618,10 +1618,10 @@ async function geocodeSavedAddressCached(address) {
   return coords;
 }
 
-const SAVED_LOCATION_MATCH_RADIUS_M = 100;
+const SAVED_LOCATION_MATCH_RADIUS_M = 300;
 
 // Auto-fills a fresh route's start field so most drives need zero typing:
-// a saved address (Home/Work/Other) within 100m of the device's current
+// a saved address (Home/Work/Other) within 300m of the device's current
 // position wins — so the field reads "Home", not raw GPS text — otherwise
 // the current position itself is used and flagged so the map can highlight
 // it as a guess rather than a confirmed place. Silent on failure; the user
