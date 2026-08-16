@@ -255,7 +255,9 @@
   .planner-chip.current .icon{color:var(--blue);}
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
-    color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;margin:6px 2px 0;}
+    color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
+  .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 2px 0;}
+  .planner-quick-estimate{font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
@@ -1527,7 +1529,7 @@ function suggestTagForCoords(startLat, startLng, endLat, endLng) {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
 }
 
-function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "" }; }
+function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "", fromCurrentLocation: false }; }
 function newPlannerLeg() { return { tag: null, tagSource: null, distanceKm: null, durationMin: null }; }
 
 function startPlanner() {
@@ -1537,9 +1539,11 @@ function startPlanner() {
     stage: "build",
     previewing: false,
     previewError: "",
+    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
   };
   plannerDirectionsResult = null;
   render();
+  autoFillPlannerStart();
 }
 
 function cancelPlanner() {
@@ -1577,9 +1581,10 @@ function plannerRemoveStop(idx) {
 // Called after a stop's address is set (autocomplete pick, map click, or a
 // manually typed address on blur). `coords` is passed when already known
 // (autocomplete place / map click); otherwise it's resolved by geocoding.
-async function plannerResolveStop(stop, address, coords) {
+async function plannerResolveStop(stop, address, coords, fromCurrentLocation) {
   stop.address = address;
   stop.resolveError = "";
+  stop.fromCurrentLocation = !!fromCurrentLocation;
   if (coords) {
     stop.lat = coords.lat; stop.lng = coords.lng;
   } else {
@@ -1598,6 +1603,93 @@ async function plannerResolveStop(stop, address, coords) {
     stop.resolving = false;
   }
   autoSuggestPlannerTags();
+  render();
+  updatePlannerQuickEstimate();
+}
+
+// A saved address's coordinates rarely change, so cache them for the
+// session instead of re-geocoding on every planner open.
+const savedAddressGeocodeCache = {};
+async function geocodeSavedAddressCached(address) {
+  if (savedAddressGeocodeCache[address]) return savedAddressGeocodeCache[address];
+  const geo = await forwardGeocode(address);
+  const coords = { lat: geo.lat, lng: geo.lng };
+  savedAddressGeocodeCache[address] = coords;
+  return coords;
+}
+
+const SAVED_LOCATION_MATCH_RADIUS_M = 100;
+
+// Auto-fills a fresh route's start field so most drives need zero typing:
+// a saved address (Home/Work/Other) within 100m of the device's current
+// position wins — so the field reads "Home", not raw GPS text — otherwise
+// the current position itself is used and flagged so the map can highlight
+// it as a guess rather than a confirmed place. Silent on failure; the user
+// can still search or tap a chip manually.
+async function autoFillPlannerStart() {
+  const p = state.planner;
+  if (!p || p.stops[0].address.trim() || !mapsConfigured()) return;
+  const stop = p.stops[0];
+  const stillRelevant = () => state.planner && state.planner.stops[0] === stop && !stop.address.trim();
+  try {
+    const coords = await getCurrentPosition();
+    if (!stillRelevant()) return;
+    let matched = null;
+    for (const a of savedAddressList()) {
+      try {
+        const geo = await geocodeSavedAddressCached(a.address);
+        if (haversineMeters(coords.latitude, coords.longitude, geo.lat, geo.lng) <= SAVED_LOCATION_MATCH_RADIUS_M) {
+          matched = { address: a.address, lat: geo.lat, lng: geo.lng };
+          break;
+        }
+      } catch { /* that saved address couldn't be located — skip it */ }
+      if (!stillRelevant()) return;
+    }
+    if (!stillRelevant()) return;
+    if (matched) {
+      await plannerResolveStop(stop, matched.address, { lat: matched.lat, lng: matched.lng }, false);
+    } else {
+      const address = await reverseGeocode(coords.latitude, coords.longitude);
+      if (!stillRelevant()) return;
+      await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude }, true);
+    }
+  } catch (e) {
+    // Silent fail — user can still type manually or tap a chip.
+  }
+}
+
+// Lightweight start->end estimate shown inline while building a route, so
+// distance/time appear as soon as an end location is picked instead of
+// waiting for the full multi-stop Preview. Ignores any waypoints in
+// between — it's just a quick heads-up, not the final numbers.
+async function updatePlannerQuickEstimate() {
+  const p = state.planner;
+  if (!p) return;
+  const start = p.stops[0], end = p.stops[p.stops.length - 1];
+  const startAddr = start && start.address.trim();
+  const endAddr = end && end.address.trim();
+  if (!startAddr || !endAddr || start.lat == null || end.lat == null || !mapsConfigured()) {
+    if (p.quickDistanceKm != null || p.quickDurationMin != null) {
+      p.quickDistanceKm = null; p.quickDurationMin = null; p._quickEstimateKey = null; render();
+    }
+    return;
+  }
+  const key = `${startAddr}|${endAddr}`;
+  if (p._quickEstimateKey === key) return;
+  p._quickEstimateKey = key;
+  p.quickEstimating = true;
+  render();
+  try {
+    const { distanceKm, durationMin } = await estimateRoute(startAddr, endAddr);
+    if (!state.planner || state.planner._quickEstimateKey !== key) return;
+    state.planner.quickDistanceKm = distanceKm;
+    state.planner.quickDurationMin = durationMin;
+  } catch (e) {
+    if (!state.planner || state.planner._quickEstimateKey !== key) return;
+    state.planner.quickDistanceKm = null;
+    state.planner.quickDurationMin = null;
+  }
+  state.planner.quickEstimating = false;
   render();
 }
 
@@ -1684,14 +1776,16 @@ async function deletePlannedRoute(id) {
 // Reopens a saved route so it can be edited, re-previewed, or driven again.
 function openSavedRouteInPlanner(route) {
   state.planner = {
-    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "" })),
+    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "", fromCurrentLocation: false })),
     legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
     stage: route.legs.every(l => l.distanceKm != null) ? "preview" : "build",
     previewing: false,
     previewError: "",
+    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
   };
   plannerDirectionsResult = null; // re-Preview redraws the map line; leg data itself still shows without it
   render();
+  updatePlannerQuickEstimate();
 }
 
 function minutesToTimeStr(totalMinutes) {
@@ -2167,6 +2261,25 @@ async function ensurePlannerMap() {
 
   if (driving && liveDrive && liveDrive.lastFix) {
     updateLiveMarker(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
+  }
+
+  // The start field was auto-filled from the device's raw position (no
+  // saved-address match) — highlight it on the map since it's a guess, not
+  // a confirmed place, so it's obvious at a glance and easy to correct.
+  if (!driving && p && p.stops[0] && p.stops[0].fromCurrentLocation && p.stops[0].lat != null) {
+    try {
+      const { Marker } = await google.maps.importLibrary("marker");
+      if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      new Marker({
+        map: plannerMapInstance,
+        position: { lat: p.stops[0].lat, lng: p.stops[0].lng },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE, scale: 12,
+          fillColor: "#4C9FF2", fillOpacity: 0.35, strokeColor: "#4C9FF2", strokeWeight: 2,
+        },
+        zIndex: 1,
+      });
+    } catch { /* map still usable without the highlight */ }
   }
 }
 
@@ -3052,7 +3165,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
       <div class="input-icon ${kind}">
         ${icons.pin}
         <div class="loc-field-wrap">
-          <input id="plannerStopInput-${idx}" class="plannerStopInput" data-stopidx="${idx}" placeholder="${placeholder}" value="${escAttr(stop.address)}" autocomplete="off" onfocus="setTimeout(() => this.select())" />
+          <input id="plannerStopInput-${idx}" class="plannerStopInput" data-stopidx="${idx}" placeholder="${placeholder}" value="${escAttr(stop.address)}" autocomplete="off" />
           <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
         </div>
       </div>
@@ -3060,7 +3173,21 @@ function renderPlannerFieldBlock(stop, idx, total) {
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
     <div class="planner-pill-row" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
-    ${kind === "start" && stop.address.trim() ? `<button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>` : ""}
+  </div>`;
+}
+
+// Row below all the address fields: the quick start->end estimate (once an
+// end location is picked) on the left, Add Stop pushed to the far right.
+function renderPlannerToolbarRow() {
+  const p = state.planner;
+  const end = p.stops[p.stops.length - 1];
+  const estimateText = p.quickEstimating ? "Calculating…"
+    : (end.address.trim() && p.quickDistanceKm != null) ? `${kmToDisplay(p.quickDistanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(p.quickDurationMin)}`
+    : "";
+  return `
+  <div class="planner-toolbar-row">
+    <span class="planner-quick-estimate mono">${estimateText}</span>
+    <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
 }
 
@@ -3232,6 +3359,7 @@ function renderPlanTab() {
       ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
       ${mapsError}
       ${p.stops.map((s, i) => renderPlannerFieldBlock(s, i, n)).join("")}
+      ${p.stops[0].address.trim() ? renderPlannerToolbarRow() : ""}
     </div>`}
 
     ${driving ? renderPlannerEtaBar() : `
@@ -4969,11 +5097,18 @@ function attachAppHandlers() {
         const idx = parseInt(input.dataset.stopidx, 10);
         const stop = p.stops[idx];
         const pillRow = document.getElementById(`plannerPillRow-${idx}`);
+        // Already resolved (chip pick, map tap, or auto-fill — not just typed
+        // + blurred) — mark it as such so blurring the field after a one-click
+        // select doesn't fire a redundant, racy re-geocode of an unchanged value.
+        if (stop.lat != null) input.dataset.lastResolved = stop.address;
         input.oninput = (e) => {
-          stop.address = e.target.value; stop.lat = null; stop.lng = null;
+          stop.address = e.target.value; stop.lat = null; stop.lng = null; stop.fromCurrentLocation = false;
           if (pillRow) pillRow.classList.toggle("show", !e.target.value.trim());
         };
-        input.onfocus = () => { if (pillRow && !input.value.trim()) pillRow.classList.add("show"); };
+        input.onfocus = () => {
+          setTimeout(() => input.select());
+          if (pillRow && !input.value.trim()) pillRow.classList.add("show");
+        };
         input.onblur = () => {
           setTimeout(() => { if (pillRow) pillRow.classList.remove("show"); }, 150);
           if (stop.address.trim() && stop.address !== input.dataset.lastResolved) {
@@ -5002,7 +5137,7 @@ function attachAppHandlers() {
             try {
               const coords = await getCurrentPosition();
               const address = await reverseGeocode(coords.latitude, coords.longitude);
-              await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude });
+              await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude }, true);
             } catch (err) {
               stop.resolveError = err.message || "Couldn't get your location.";
               render();
