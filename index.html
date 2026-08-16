@@ -4837,24 +4837,28 @@ function attachAppHandlers() {
         const a = state.active;
         let distVal = parseFloat(state.distance);
         if (!state.distance || isNaN(distVal) || distVal <= 0) {
-          const dest = state.endPoint.trim();
-          if (!dest) {
-            state.distanceError = "Enter an end location, or a distance, to save this drive.";
-            render();
-            const diAgain = document.getElementById("distanceInput");
-            if (diAgain) diAgain.focus();
-            return;
-          }
+          let dest = state.endPoint.trim();
           if (!mapsConfigured()) {
-            state.distanceError = "Distance lookup isn't set up for this app yet — enter the distance manually.";
+            state.distanceError = dest
+              ? "Distance lookup isn't set up for this app yet — enter the distance manually."
+              : "Enter an end location, or a distance, to save this drive.";
             render();
             return;
           }
-          // No distance entered yet but an end location is set — calculate
-          // it automatically from start -> end rather than blocking on a
-          // manual number.
+          // No distance entered yet. If an end location was typed, calculate
+          // the drive distance from start -> end; if not, fall back to the
+          // device's current location as the end point so the user never
+          // has to type one just to save the drive.
           state.estimating = true; state.distanceError = ""; render();
           try {
+            if (!dest) {
+              if (!navigator.geolocation) throw new Error("Location isn't available on this device — enter an end location or distance.");
+              const coords = await getCurrentPosition();
+              state.endCoords = { lat: coords.latitude, lng: coords.longitude };
+              try { state.endPoint = await reverseGeocode(coords.latitude, coords.longitude); }
+              catch { state.endPoint = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`; }
+              dest = `${coords.latitude},${coords.longitude}`;
+            }
             const { distanceKm, durationMin } = await estimateRoute(a.startPoint, dest);
             state.distance = kmToDisplay(distanceKm).toFixed(1);
             state.estimatedDuration = durationMin;
