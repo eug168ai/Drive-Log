@@ -135,6 +135,8 @@
   .time-cell{padding-right:0;padding-left:4px;}
   .num-cell{padding-left:0;padding-right:0;}
   .route-cell{max-width:none;padding-left:8px;padding-right:0;position:relative;z-index:0;}
+  .history-row{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;touch-action:pan-y;}
+  .history-row.long-pressing{background:rgba(var(--amber-rgb),.1);}
   .route-clip{overflow:hidden;white-space:nowrap;width:calc(100% - 8px);}
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .loc-field-wrap{position:relative;flex:1;min-width:0;}
@@ -1240,6 +1242,7 @@ function attachTimeInput(el, set) {
     e.target.value = clamped;
     set(clamped);
   };
+  el.onfocus = () => setTimeout(() => el.select());
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
@@ -3137,7 +3140,7 @@ function renderQuickDriveSection() {
       <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
       <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
 
-      <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
+      <button id="stopTripBtn" class="btn btn-stop" ${state.estimating ? "disabled" : ""}>${icons.stop} ${state.estimating ? "Calculating…" : "Stop & Save"}</button>
     </div>
     ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
   }
@@ -3424,7 +3427,7 @@ function renderHistoryTab() {
           ${rows.length === 0
             ? `<tr><td colspan="${sel ? 6 : 4}" class="empty">No trips logged yet.</td></tr>`
             : rows.map(t => `
-              <tr>
+              <tr class="history-row" data-tripid="${t.id}">
                 ${sel ? `<td><input type="checkbox" class="tripCheckbox" data-tripid="${t.id}" ${state.selectedTripIds.includes(t.id) ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" /></td>` : ""}
                 <td class="date-cell">${formatDateCompact(t.date)}</td>
                 <td class="time-cell" style="color:var(--muted)">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</td>
@@ -3947,14 +3950,23 @@ function renderLogEstimateModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>Log this estimate</h2>
+      <h2>Log this Estimate</h2>
       <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} ${unitLabel()}, ~${state.preTripDuration} min) without starting a live trip.</p>
 
       <label class="field-label">Date</label>
       <input id="logEstimateDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
 
-      <label class="field-label">Start time (24hr)</label>
-      <input id="logEstimateStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
+      <div class="row-2">
+        <div>
+          <label class="field-label">Start time (24hr)</label>
+          <input id="logEstimateStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" />
+        </div>
+        <div>
+          <label class="field-label">End time (24hr)</label>
+          <input id="logEstimateEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.endTime || "")}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:6px 0 20px;">End time is prefilled from the estimate — edit either time if the drive ran differently.</p>
 
       <div class="row-2">
         <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
@@ -4439,6 +4451,51 @@ function armStaticHazardMarquee() {
   );
 }
 
+// Long-press (touch or mouse hold) on an element, without hijacking a normal
+// tap/click or the page's vertical scroll gesture. Cancels if the pointer
+// moves more than a few px (a scroll/drag in progress, not a hold-in-place).
+function attachLongPress(el, onLongPress, ms) {
+  if (!el) return;
+  let timer = null, startX = 0, startY = 0;
+  const clear = () => {
+    if (timer) clearTimeout(timer);
+    timer = null;
+    el.classList.remove("long-pressing");
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    startX = e.clientX; startY = e.clientY;
+    clear();
+    el.classList.add("long-pressing");
+    timer = setTimeout(() => { clear(); onLongPress(e); }, ms || 550);
+  });
+  el.addEventListener("pointerup", clear);
+  el.addEventListener("pointercancel", clear);
+  el.addEventListener("pointerleave", clear);
+  el.addEventListener("pointermove", (e) => {
+    if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) clear();
+  });
+}
+
+// Opens the edit modal for a single trip — shared by the History table's
+// Edit-mode pencil button and long-pressing a row directly.
+function openTripEditor(tripId) {
+  const trip = state.trips.find(t => t.id === tripId);
+  if (!trip) return;
+  state.editingTrip = {
+    ...trip,
+    distance: kmToDisplay(trip.distance).toFixed(2),
+    timeOfDay: trip.timeOfDay || defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng),
+    roadType: trip.roadType || "sealed",
+    weather: trip.weather || "dry",
+    traffic: trip.traffic || "medium",
+    supervisorId: (state.supervisors.find(s => s.name === trip.supervisorName && s.licence === trip.supervisorLicence) || {}).id || "",
+    purpose: trip.purpose || "",
+  };
+  state.editAddingSupervisor = false;
+  render();
+}
+
 function attachRouteAutoScroll() {
   const entries = [];
   document.querySelectorAll(".route-cell").forEach(cell => {
@@ -4694,7 +4751,10 @@ function attachAppHandlers() {
 
       const logEstBtn = document.getElementById("logEstimateBtn");
       if (logEstBtn) logEstBtn.onclick = () => {
-        state.logEstimateForm = { date: todayStr(), startTime: nowTimeStr() };
+        const startTime = nowTimeStr();
+        const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
+        const endTime = minutesToTimeStr(startMinutes + (state.preTripDuration || 0));
+        state.logEstimateForm = { date: todayStr(), startTime, endTime };
         render();
       };
 
@@ -4774,16 +4834,44 @@ function attachAppHandlers() {
       };
       const stopBtn = document.getElementById("stopTripBtn");
       if (stopBtn) stopBtn.onclick = async () => {
-        const distVal = parseFloat(state.distance);
+        const a = state.active;
+        let distVal = parseFloat(state.distance);
         if (!state.distance || isNaN(distVal) || distVal <= 0) {
-          state.distanceError = "Enter a distance to save this drive.";
-          render();
-          const diAgain = document.getElementById("distanceInput");
-          if (diAgain) diAgain.focus();
-          return;
+          let dest = state.endPoint.trim();
+          if (!mapsConfigured()) {
+            state.distanceError = dest
+              ? "Distance lookup isn't set up for this app yet — enter the distance manually."
+              : "Enter an end location, or a distance, to save this drive.";
+            render();
+            return;
+          }
+          // No distance entered yet. If an end location was typed, calculate
+          // the drive distance from start -> end; if not, fall back to the
+          // device's current location as the end point so the user never
+          // has to type one just to save the drive.
+          state.estimating = true; state.distanceError = ""; render();
+          try {
+            if (!dest) {
+              if (!navigator.geolocation) throw new Error("Location isn't available on this device — enter an end location or distance.");
+              const coords = await getCurrentPosition();
+              state.endCoords = { lat: coords.latitude, lng: coords.longitude };
+              try { state.endPoint = await reverseGeocode(coords.latitude, coords.longitude); }
+              catch { state.endPoint = `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`; }
+              dest = `${coords.latitude},${coords.longitude}`;
+            }
+            const { distanceKm, durationMin } = await estimateRoute(a.startPoint, dest);
+            state.distance = kmToDisplay(distanceKm).toFixed(1);
+            state.estimatedDuration = durationMin;
+            distVal = parseFloat(state.distance);
+          } catch (e) {
+            state.estimating = false;
+            state.distanceError = e.message || "Couldn't calculate the distance automatically — enter it manually.";
+            render();
+            return;
+          }
+          state.estimating = false;
         }
         state.distanceError = "";
-        const a = state.active;
         const endTimeNow = nowTimeStr();
         const trip = {
           id: uid(), date: a.date, startTime: a.startTime, endTime: endTimeNow,
@@ -5374,23 +5462,11 @@ function attachAppHandlers() {
     });
 
     document.querySelectorAll(".editTripBtn").forEach(btn => {
-      btn.onclick = () => {
-        const trip = state.trips.find(t => t.id === btn.dataset.tripid);
-        if (trip) {
-          state.editingTrip = {
-            ...trip,
-            distance: kmToDisplay(trip.distance).toFixed(2),
-            timeOfDay: trip.timeOfDay || defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng),
-            roadType: trip.roadType || "sealed",
-            weather: trip.weather || "dry",
-            traffic: trip.traffic || "medium",
-            supervisorId: (state.supervisors.find(s => s.name === trip.supervisorName && s.licence === trip.supervisorLicence) || {}).id || "",
-            purpose: trip.purpose || "",
-          };
-          state.editAddingSupervisor = false;
-          render();
-        }
-      };
+      btn.onclick = (e) => { e.stopPropagation(); openTripEditor(btn.dataset.tripid); };
+    });
+
+    document.querySelectorAll(".history-row").forEach(row => {
+      attachLongPress(row, () => openTripEditor(row.dataset.tripid));
     });
 
     attachRouteAutoScroll();
@@ -5607,22 +5683,21 @@ function attachAppHandlers() {
     const led = document.getElementById("logEstimateDate");
     if (led) led.onchange = (e) => { f.date = e.target.value; };
     attachTimeInput(document.getElementById("logEstimateStartTime"), (v) => { f.startTime = v; });
+    attachTimeInput(document.getElementById("logEstimateEndTime"), (v) => { f.endTime = v; });
 
     const cancelLogBtn = document.getElementById("cancelLogEstimateBtn");
     if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; render(); };
 
     const confirmLogBtn = document.getElementById("confirmLogEstimateBtn");
     if (confirmLogBtn) confirmLogBtn.onclick = async () => {
-      if (!f.date || !f.startTime) return;
+      if (!f.date || !f.startTime || !f.endTime) return;
       f.startTime = clampTimeValue(f.startTime);
-      const startDate = new Date(`1970/01/01 ${f.startTime}`);
-      const endDate = new Date(startDate.getTime() + (state.preTripDuration || 0) * 60000);
-      const endTimeStr = `${String(endDate.getHours()).padStart(2, "0")}:${String(endDate.getMinutes()).padStart(2, "0")}`;
+      f.endTime = clampTimeValue(f.endTime);
       const trip = {
         id: uid(),
         date: f.date,
         startTime: f.startTime,
-        endTime: endTimeStr,
+        endTime: f.endTime,
         distance: displayToKm(parseFloat(state.preTripDistance) || 0),
         startPoint: state.startPointInput.trim() || "Unspecified",
         endPoint: state.preTripEndLocation.trim() || "Unspecified",
