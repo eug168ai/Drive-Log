@@ -2323,6 +2323,7 @@ function renderSupervisedDashboardCard() {
   const rateMin = pace.ratePerDayMin != null ? (paceUnit === "week" ? pace.ratePerDayMin * 7 : pace.ratePerDayMin) : null;
   const dayPct = totalTarget ? Math.min(100, ((sup.hours - sup.nightHours) / totalTarget) * 100) : 0;
   const nightPct = nightTarget ? Math.min(100, (sup.nightHours / nightTarget) * 100) : 0;
+  const bothBarsComplete = dayPct >= 100 && nightPct >= 100;
 
   const period = state.dashSupPeriod, offset = state.dashSupOffset;
   const range = dashRange(period, offset);
@@ -2346,9 +2347,9 @@ function renderSupervisedDashboardCard() {
     <div class="kv-line"><span class="k">${pace.label}</span><span class="v mono">${pace.dateDisplay}</span></div>
     <div class="kv-sub">${pace.sub}</div>
     <div class="pacerow">
-      <div class="pace-card" style="background:${rateMin != null ? "rgba(var(--amber-rgb),.08)" : "rgba(139,146,160,.08)"};border-color:${rateMin != null ? "rgba(var(--amber-rgb),.35)" : "var(--border)"};">
-        <span class="txt" style="color:${rateMin != null ? "var(--amber)" : "var(--muted)"};">
-          <b class="mono">${rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
+      <div class="pace-card" style="background:${bothBarsComplete ? "rgba(76,159,112,.15)" : rateMin != null ? "rgba(var(--amber-rgb),.08)" : "rgba(139,146,160,.08)"};border-color:${bothBarsComplete ? "rgba(76,159,112,.3)" : rateMin != null ? "rgba(var(--amber-rgb),.35)" : "var(--border)"};">
+        <span class="txt" style="color:${bothBarsComplete ? "var(--normal)" : rateMin != null ? "var(--amber)" : "var(--muted)"};">
+          <b class="mono">${bothBarsComplete ? "Completed" : rateMin != null ? `${formatHM(rateMin)}/${paceUnit} ${state.settings.supervisedTargetDate ? "needed" : "average"}` : "—"}</b>
         </span>
       </div>
       <div class="toggle2" id="dashSupPaceToggle"><span class="${paceUnit === "day" ? "on" : ""}" data-paceunit="day">Per Day</span><span class="${paceUnit === "week" ? "on" : ""}" data-paceunit="week">Per Week</span></div>
