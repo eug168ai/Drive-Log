@@ -1016,6 +1016,8 @@ const state = {
   reportGenerating: false,
   addDrives: null,
   carLookupForm: null,
+  logBookForm: null,
+  logBookGenerating: false,
 };
 
 const icons = {
@@ -1041,6 +1043,7 @@ const icons = {
   moon: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`,
   chart: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="6" width="4" height="14" rx="1"/><rect x="16" y="14" width="4" height="6" rx="1"/></svg>`,
   palette: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21a9 9 0 1 1 0-18c4.5 0 8 3 8 6.5 0 2-1.5 3.5-3.5 3.5H15a1.5 1.5 0 0 0-1 2.6c.4.4.6.9.6 1.4a3 3 0 0 1-2.6 3z"/><circle cx="7.5" cy="10.5" r="1.2" fill="currentColor" stroke="none"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor" stroke="none"/></svg>`,
+  book: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M9 7h7M9 11h7"/></svg>`,
   chevronLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>`,
   plus: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
   warning: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.9 18a2 2 0 0 0 1.7 3h16.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>`,
@@ -2562,6 +2565,12 @@ async function loadData() {
     if (!state.settings.supervisedNightHoursTarget) state.settings.supervisedNightHoursTarget = d.night;
   }
   if (state.settings.supervisedCompletionNotified === undefined) state.settings.supervisedCompletionNotified = false;
+  if (state.settings.learnerName === undefined) state.settings.learnerName = "";
+  if (state.settings.learnerPermitNo === undefined) state.settings.learnerPermitNo = "";
+  if (state.settings.hasForeignLicence === undefined) state.settings.hasForeignLicence = false;
+  if (state.settings.foreignLicenceCountryState === undefined) state.settings.foreignLicenceCountryState = "";
+  if (state.settings.foreignLicenceExpiry === undefined) state.settings.foreignLicenceExpiry = "";
+  if (state.settings.foreignLicenceYearsHeld === undefined) state.settings.foreignLicenceYearsHeld = "";
   state.sheetLink = await storageGet(SHEET_LINK_KEY);
   if (state.sheetLink) await loadPersistedGoogleToken();
   state.supervisors = (await storageGet(SUPERVISORS_KEY)) || [];
@@ -2684,6 +2693,16 @@ function formatTime24(raw) {
     return `${plainMatch[1].padStart(2, "0")}:${plainMatch[2]}`;
   }
   return s;
+}
+// 24hr "HH:MM" -> "h:MM am/pm", for official log-book style output.
+function formatTime12(raw) {
+  const s24 = formatTime24(raw);
+  const m = s24.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return "";
+  let h = parseInt(m[1], 10);
+  const isPm = h >= 12;
+  h = h % 12; if (h === 0) h = 12;
+  return `${h}:${m[2]} ${isPm ? "pm" : "am"}`;
 }
 function tripMinutes(t) {
   const start = new Date(`1970/01/01 ${formatTime24(t.startTime)}`);
@@ -2952,9 +2971,12 @@ function renderSupervisedDashboardCard() {
 
   return `
   <div class="card" style="padding:12px 10px;">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;">
       <p class="settings-title" style="margin:0;">Supervised Driving</p>
-      ${completed ? `<span class="connected-pill">Completed</span>` : ""}
+      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+        ${completed ? `<span class="connected-pill">Completed</span>` : ""}
+        ${state.trips.some(t => t.tag === "supervised") ? `<button id="openLogBookBtn" class="icon-btn" style="padding:0;" title="Official learner log book PDF">${icons.book}</button>` : ""}
+      </div>
     </div>
 
     <div class="kv-line"><span class="k">${pace.label}</span><span class="v mono">${pace.dateDisplay}</span></div>
@@ -3614,6 +3636,7 @@ function renderApp() {
     ${state.fuelFillupForm ? renderFuelFillupModal() : ""}
     ${state.carLookupForm ? renderCarLookupModal() : ""}
     ${state.reportForm ? renderReportModal() : ""}
+    ${state.logBookForm ? renderLogBookModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
     <datalist id="recentLocations">
       ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
@@ -4526,6 +4549,68 @@ function renderReportModal() {
   </div>`;
 }
 
+function logBookSupervisedRange() {
+  const dates = state.trips.filter(t => t.tag === "supervised").map(t => t.date).sort();
+  return dates.length ? { from: dates[0], to: dates[dates.length - 1] } : { from: "", to: "" };
+}
+
+function renderLogBookModal() {
+  const f = state.logBookForm;
+  const rangeCount = state.trips.filter(t => t.tag === "supervised" && (!f.from || t.date >= f.from) && (!f.to || t.date <= f.to)).length;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <h2 style="margin:0;">${icons.book} Official Log Book</h2>
+        <button id="closeLogBookBtn" class="icon-btn" title="Close">${icons.close}</button>
+      </div>
+      <p class="settings-desc" style="margin:0 0 16px;">Fills out the Daytime and Night-time driving hour tables from your supervised drive history. Print it and get the Learner's and Supervisor's signature boxes signed by hand — that part can't be done for you.</p>
+
+      <label class="field-label">Learner's full name</label>
+      <input id="logBookName" class="input" style="margin-bottom:12px;" value="${escAttr(f.learnerName)}" placeholder="e.g. Jordan Smith" />
+
+      <label class="field-label">Learner's permit number</label>
+      <input id="logBookPermitNo" class="input" style="margin-bottom:12px;" value="${escAttr(f.permitNo)}" placeholder="e.g. L1234567" />
+
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="logBookForeign" ${f.hasForeignLicence ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" />
+        I previously held a foreign or interstate licence
+      </label>
+
+      ${f.hasForeignLicence ? `
+      <div class="row-2" style="margin-bottom:12px;">
+        <div>
+          <label class="field-label">Country / State</label>
+          <input id="logBookForeignPlace" class="input" value="${escAttr(f.foreignCountryState)}" placeholder="e.g. UK" />
+        </div>
+        <div>
+          <label class="field-label">Years held</label>
+          <input id="logBookForeignYears" class="input" type="number" min="0" step="1" value="${escAttr(f.foreignYearsHeld)}" />
+        </div>
+      </div>
+      <label class="field-label">Licence expiry date</label>
+      <input id="logBookForeignExpiry" type="date" class="input" style="margin-bottom:12px;" value="${f.foreignExpiry}" />
+      ` : ""}
+
+      <div class="row-2" style="margin-bottom:14px;">
+        <div>
+          <label class="field-label">From</label>
+          <input id="logBookFrom" type="date" class="input" value="${f.from}" />
+        </div>
+        <div>
+          <label class="field-label">To</label>
+          <input id="logBookTo" type="date" class="input" value="${f.to}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:0 0 14px;">${rangeCount} supervised drive${rangeCount === 1 ? "" : "s"} in this range — every date, time, location, road/weather/traffic condition and supervisor is pulled straight from your log.</p>
+
+      ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
+
+      <button id="generateLogBookBtn" class="btn btn-amber">${state.logBookGenerating ? "Generating…" : "Generate PDF"}</button>
+    </div>
+  </div>`;
+}
+
 function renderAddDrivesModal() {
   const a = state.addDrives;
   return `
@@ -4709,6 +4794,321 @@ async function generateReportPDF() {
     r.error = e.message || "Couldn't generate the PDF.";
   }
   state.reportGenerating = false;
+  render();
+}
+
+// --- Official learner log book PDF (matches the AU state driving-companion
+// paper log book layout: per-drive Daytime/Night-time tables plus a
+// Declaration-of-hours summary page) ------------------------------------
+const LOGBOOK_ROAD_CODE = { sealed: "S", unsealed: "U", quiet: "Q", busy: "B", multilane: "ML" };
+const LOGBOOK_WEATHER_CODE = { dry: "D", wet: "W" };
+const LOGBOOK_TRAFFIC_CODE = { light: "L", medium: "M", heavy: "H" };
+const LOGBOOK_ROWS_PER_PAGE = 16;
+const LOGBOOK_COLS = [
+  { key: "date", h1: "Date", h2: "", w: 20 },
+  { key: "start", h1: "Time", h2: "Start am/pm", w: 16 },
+  { key: "finish", h1: "Time", h2: "Finish am/pm", w: 16 },
+  { key: "duration", h1: "Time", h2: "Duration", w: 15 },
+  { key: "from", h1: "Location (Suburb)", h2: "From", w: 34 },
+  { key: "to", h1: "Location (Suburb)", h2: "To", w: 34 },
+  { key: "road", h1: "Conditions", h2: "Road", w: 11 },
+  { key: "weather", h1: "Conditions", h2: "Weather", w: 14 },
+  { key: "traffic", h1: "Conditions", h2: "Traffic", w: 13 },
+  { key: "learnerSig", h1: "Learner's Signature", h2: "", w: 20 },
+  { key: "supName", h1: "Qualified Supervising Driver", h2: "Full Name", w: 28 },
+  { key: "supLicence", h1: "Qualified Supervising Driver", h2: "Licence No.", w: 20 },
+  { key: "supSig", h1: "Qualified Supervising Driver", h2: "Signature", w: 20 },
+];
+function formatDateAU(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (isNaN(d)) return dateStr;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+}
+function resolvedAUStateCode() {
+  try {
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    return AU_TIMEZONE_STATE[timezone] || null;
+  } catch (e) { return null; }
+}
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+function fitText(doc, str, maxW) {
+  if (!str) return "";
+  let s = String(str);
+  while (s.length && doc.getTextWidth(s) > maxW) s = s.slice(0, -1);
+  return s;
+}
+function logBookTripRow(t) {
+  return [
+    formatDateAU(t.date), formatTime12(t.startTime), formatTime12(t.endTime), String(tripMinutes(t)),
+    t.startPoint || "", t.endPoint || "",
+    LOGBOOK_ROAD_CODE[t.roadType] || "", LOGBOOK_WEATHER_CODE[t.weather] || "", LOGBOOK_TRAFFIC_CODE[t.traffic] || "",
+    "", t.supervisorName || "", t.supervisorLicence || "", "",
+  ];
+}
+function logBookColRuns(cols) {
+  const runs = [];
+  let i = 0;
+  while (i < cols.length) {
+    let j = i;
+    while (j + 1 < cols.length && cols[j + 1].h1 === cols[i].h1) j++;
+    runs.push({ start: i, end: j });
+    i = j + 1;
+  }
+  return runs;
+}
+// jsPDF's fill color is shared state between setFillColor() and text
+// rendering (setTextColor()/text()) — drawing black text after filling a
+// cell leaves the fill color clobbered to black, so setFillColor(...) is
+// re-applied immediately before every "FD" rect below rather than once
+// up front.
+function drawLogBookHeader(doc, x0, y0) {
+  const rowH = 7;
+  let x = x0;
+  const colX = LOGBOOK_COLS.map(c => { const cx = x; x += c.w; return cx; });
+  doc.setDrawColor(90); doc.setLineWidth(0.2);
+  logBookColRuns(LOGBOOK_COLS).forEach(run => {
+    const rx = colX[run.start];
+    const rw = LOGBOOK_COLS.slice(run.start, run.end + 1).reduce((s, c) => s + c.w, 0);
+    const spanTwoRows = run.end === run.start && !LOGBOOK_COLS[run.start].h2;
+    doc.setFont(undefined, "bold"); doc.setFontSize(7.3);
+    if (spanTwoRows) {
+      doc.setFillColor(230, 230, 230);
+      doc.rect(rx, y0, rw, rowH * 2, "FD");
+      doc.setTextColor(0);
+      doc.text(fitText(doc, LOGBOOK_COLS[run.start].h1, rw - 2), rx + rw / 2, y0 + rowH + 1, { align: "center" });
+    } else {
+      doc.setFillColor(230, 230, 230);
+      doc.rect(rx, y0, rw, rowH, "FD");
+      doc.setTextColor(0);
+      doc.text(fitText(doc, LOGBOOK_COLS[run.start].h1, rw - 2), rx + rw / 2, y0 + rowH / 2 + 1.3, { align: "center" });
+      doc.setFontSize(6.6); doc.setFont(undefined, "normal");
+      for (let k = run.start; k <= run.end; k++) {
+        doc.setFillColor(230, 230, 230);
+        doc.rect(colX[k], y0 + rowH, LOGBOOK_COLS[k].w, rowH, "FD");
+        doc.setTextColor(0);
+        doc.text(fitText(doc, LOGBOOK_COLS[k].h2, LOGBOOK_COLS[k].w - 2), colX[k] + LOGBOOK_COLS[k].w / 2, y0 + rowH * 2 - 1.8, { align: "center" });
+      }
+    }
+  });
+  doc.setFont(undefined, "normal");
+  return y0 + rowH * 2;
+}
+function drawLogBookRows(doc, x0, yStart, rows) {
+  const rowH = 6.5;
+  doc.setFont(undefined, "normal"); doc.setFontSize(7); doc.setTextColor(0);
+  let y = yStart;
+  rows.forEach(row => {
+    let x = x0;
+    LOGBOOK_COLS.forEach((c, i) => {
+      doc.rect(x, y, c.w, rowH, "S");
+      const val = fitText(doc, row[i], c.w - 2);
+      if (val) doc.text(val, x + 1.2, y + rowH - 2);
+      x += c.w;
+    });
+    y += rowH;
+  });
+  return y;
+}
+function drawLogBookFooter(doc, x0, y, marginRight, opts) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const fullW = pageWidth - x0 - marginRight;
+  y += 6;
+  doc.setFont(undefined, "bold"); doc.setFontSize(9); doc.setTextColor(0);
+  doc.text("Learner's Permit Holder", x0, y);
+  doc.setFont(undefined, "normal");
+  doc.text(`Sub Total (minutes): ${opts.subTotalMinutes}`, x0 + fullW * 0.62, y, { align: "left" });
+  y += 5.5;
+  doc.text(`Name: ${opts.learnerName}`, x0, y);
+  y += 5;
+  doc.text(`Permit No.: ${opts.permitNo}`, x0, y);
+  y += 7;
+
+  doc.setFontSize(7.2);
+  doc.text("Road Type: Sealed S · Unsealed U · Quiet Street Q · Busy Road B · Multi-laned Road ML", x0, y); y += 4;
+  doc.text("Weather: Dry D · Wet W          Traffic Density: Light L · Medium M · Heavy H", x0, y); y += 6;
+
+  doc.setFont(undefined, "bold"); doc.text("Foreign or Interstate Licence", x0, y); doc.setFont(undefined, "normal");
+  y += 4.5;
+  doc.text(`Country/State: ${opts.foreignInfo.country || "N/A"}   Expiry Date: ${opts.foreignInfo.expiry || "N/A"}   Yrs Held: ${opts.foreignInfo.years || "N/A"}`, x0, y);
+  y += 6;
+
+  doc.setFont(undefined, "italic"); doc.setFontSize(6.4); doc.setTextColor(90);
+  const warn = "Warning: Heavy penalties apply for false entries. If the Qualified Supervising Driver's licence cannot be validated, the entry will be rejected and any licence issued will be void. Incomplete entries are invalid.";
+  doc.text(doc.splitTextToSize(warn, fullW), x0, y);
+  doc.setFont(undefined, "normal"); doc.setTextColor(0);
+}
+// Draws one physical "form" page (one Daytime or Night-time table + its own
+// Sub Total footer, mirroring how the paper log book paginates) and returns
+// that page's total minutes.
+function drawLogBookFormPage(doc, { sectionLabel, formNo, rows, learnerName, permitNo, foreignInfo }) {
+  const marginX = 12, marginTop = 12, marginRight = 12;
+  let y = marginTop;
+  doc.setFont(undefined, "bold"); doc.setFontSize(14); doc.setTextColor(0);
+  doc.text(`Record of ${sectionLabel} Driving Hours`, marginX, y);
+  doc.setFont(undefined, "normal"); doc.setFontSize(9);
+  doc.text(`Form ${formNo}`, doc.internal.pageSize.getWidth() - marginRight, y, { align: "right" });
+  y += 7;
+
+  y = drawLogBookHeader(doc, marginX, y);
+  y = drawLogBookRows(doc, marginX, y, rows);
+  const subTotalMinutes = rows.reduce((s, r) => s + (parseInt(r[3], 10) || 0), 0);
+  drawLogBookFooter(doc, marginX, y, marginRight, { learnerName, permitNo, foreignInfo, subTotalMinutes });
+  return subTotalMinutes;
+}
+
+async function generateLogBookPDF() {
+  const f = state.logBookForm;
+  f.error = "";
+  if (!f.learnerName.trim()) { f.error = "Enter the learner's full name."; render(); return; }
+  if (!f.permitNo.trim()) { f.error = "Enter the learner's permit number."; render(); return; }
+  if (!f.from || !f.to) { f.error = "Choose a date range."; render(); return; }
+
+  const subset = state.trips
+    .filter(t => t.tag === "supervised" && t.date >= f.from && t.date <= f.to)
+    .sort((a, b) => (a.date + formatTime24(a.startTime)).localeCompare(b.date + formatTime24(b.startTime)));
+  if (!subset.length) { f.error = "No supervised drives found in that date range."; render(); return; }
+
+  state.logBookGenerating = true; render();
+  try {
+    state.settings.learnerName = f.learnerName.trim();
+    state.settings.learnerPermitNo = f.permitNo.trim();
+    state.settings.hasForeignLicence = f.hasForeignLicence;
+    state.settings.foreignLicenceCountryState = f.foreignCountryState.trim();
+    state.settings.foreignLicenceExpiry = f.foreignExpiry;
+    state.settings.foreignLicenceYearsHeld = f.foreignYearsHeld;
+    await storageSet(SETTINGS_KEY, state.settings);
+
+    const foreignInfo = f.hasForeignLicence
+      ? { country: f.foreignCountryState.trim(), expiry: f.foreignExpiry ? formatDateAU(f.foreignExpiry) : "", years: f.foreignYearsHeld }
+      : { country: "", expiry: "", years: "" };
+
+    const dayTrips = subset.filter(t => (t.timeOfDay || "day") !== "night");
+    const nightTrips = subset.filter(t => t.timeOfDay === "night");
+    const dayPages = chunkArray(dayTrips, LOGBOOK_ROWS_PER_PAGE);
+    const nightPages = chunkArray(nightTrips, LOGBOOK_ROWS_PER_PAGE);
+
+    const jsPDFCtor = await loadJsPDF();
+    const doc = new jsPDFCtor({ orientation: "landscape", unit: "mm", format: "a4" });
+    let firstPage = true;
+    let formNo = 0;
+    const dayForms = [], nightForms = [];
+
+    dayPages.forEach(pageTrips => {
+      if (!firstPage) doc.addPage("a4", "landscape"); firstPage = false;
+      formNo++;
+      const minutes = drawLogBookFormPage(doc, {
+        sectionLabel: "Daytime", formNo, rows: pageTrips.map(logBookTripRow),
+        learnerName: f.learnerName.trim(), permitNo: f.permitNo.trim(), foreignInfo,
+      });
+      dayForms.push({ formNo, minutes });
+    });
+    nightPages.forEach(pageTrips => {
+      if (!firstPage) doc.addPage("a4", "landscape"); firstPage = false;
+      formNo++;
+      const minutes = drawLogBookFormPage(doc, {
+        sectionLabel: "Night-time", formNo, rows: pageTrips.map(logBookTripRow),
+        learnerName: f.learnerName.trim(), permitNo: f.permitNo.trim(), foreignInfo,
+      });
+      nightForms.push({ formNo, minutes });
+    });
+
+    // --- Declaration of hours summary page ---------------------------
+    if (!firstPage) doc.addPage("a4", "portrait"); firstPage = false;
+    const totalTargetMin = Math.round((state.settings.supervisedTotalHoursTarget || 75) * 60);
+    const nightTargetMin = Math.round((state.settings.supervisedNightHoursTarget || 15) * 60);
+    const dayTotal = dayForms.reduce((s, r) => s + r.minutes, 0);
+    const nightTotal = nightForms.reduce((s, r) => s + r.minutes, 0);
+    const pw = doc.internal.pageSize.getWidth();
+    const mx = 16;
+    let y = 18;
+    doc.setFont(undefined, "bold"); doc.setFontSize(15);
+    doc.text(`Declaration of ${totalTargetMin.toLocaleString()} minutes (${state.settings.supervisedTotalHoursTarget || 75} hours) of driving time`, mx, y, { maxWidth: pw - mx * 2 });
+    y += 10;
+
+    function formsTable(title, forms) {
+      doc.setFont(undefined, "bold"); doc.setFontSize(10); doc.text(title, mx, y); y += 5;
+      doc.setFontSize(8); doc.setFont(undefined, "bold");
+      doc.text("Form No.", mx, y); doc.text("Minutes Sub Total", mx + 35, y); doc.text("Running Total", mx + 90, y);
+      y += 3.5; doc.setLineWidth(0.2); doc.line(mx, y, mx + 140, y); y += 4;
+      doc.setFont(undefined, "normal");
+      let running = 0;
+      if (!forms.length) { doc.setTextColor(120); doc.text("None", mx, y); doc.setTextColor(0); y += 5; }
+      forms.forEach(r => {
+        running += r.minutes;
+        doc.text(String(r.formNo), mx, y);
+        doc.text(String(r.minutes), mx + 35, y);
+        doc.text(String(running), mx + 90, y);
+        y += 5;
+      });
+      y += 1;
+      doc.setFont(undefined, "bold");
+      doc.text(`${title.replace(" driving", " total")}: ${running} minutes`, mx, y);
+      doc.setFont(undefined, "normal");
+      y += 8;
+      return running;
+    }
+    formsTable("Daytime driving", dayForms);
+    formsTable("Night-time driving", nightForms);
+
+    doc.setDrawColor(90); doc.setLineWidth(0.3);
+    doc.rect(mx, y, 90, 24);
+    doc.setFont(undefined, "bold"); doc.setFontSize(9); doc.text("Total driving minutes", mx + 3, y + 5.5);
+    doc.setFont(undefined, "normal"); doc.setFontSize(8.5);
+    doc.text(`Daytime total: ${dayTotal}`, mx + 3, y + 11);
+    doc.text(`Night-time total (minimum ${nightTargetMin}): ${nightTotal}`, mx + 3, y + 16);
+    doc.setFont(undefined, "bold");
+    doc.text(`Total (minimum ${totalTargetMin}): ${dayTotal + nightTotal}`, mx + 3, y + 21.5);
+    doc.setFont(undefined, "normal");
+    y += 32;
+
+    doc.setFont(undefined, "bold"); doc.setFontSize(10);
+    doc.text("Declaration by Learner Driver (Compulsory)", mx, y); y += 6;
+    doc.setFont(undefined, "normal"); doc.setFontSize(9);
+    doc.text(`I, ${f.learnerName.trim()},`, mx, y); y += 6;
+    doc.text(doc.splitTextToSize(`declare that I have completed ${totalTargetMin.toLocaleString()} minutes (${state.settings.supervisedTotalHoursTarget || 75} hours) of driving experience, including at least ${nightTargetMin.toLocaleString()} minutes (${state.settings.supervisedNightHoursTarget || 15} hours) of night driving.`, pw - mx * 2), mx, y);
+    y += 12;
+    doc.setLineWidth(0.2);
+    doc.line(mx, y, mx + 60, y); doc.line(mx + 70, y, mx + 130, y); doc.line(mx + 140, y, mx + 170, y);
+    doc.setFontSize(7.5); doc.setTextColor(90);
+    doc.text("Signature", mx, y + 4);
+    doc.text(`Learner's Permit number: ${f.permitNo.trim()}`, mx + 70, y + 4);
+    doc.text("Date", mx + 140, y + 4);
+    doc.setTextColor(0);
+    y += 14;
+
+    doc.setFont(undefined, "bold"); doc.setFontSize(10);
+    doc.text("Declaration by Qualified Supervising Driver (Optional)", mx, y); y += 6;
+    doc.setFont(undefined, "normal"); doc.setFontSize(9);
+    doc.text("I, ______________________________________,", mx, y); y += 6;
+    doc.text(doc.splitTextToSize(`declare that I have sighted the ${totalTargetMin.toLocaleString()} minutes (${state.settings.supervisedTotalHoursTarget || 75} hours) of driving experience, including at least ${nightTargetMin.toLocaleString()} minutes (${state.settings.supervisedNightHoursTarget || 15} hours) of night driving.`, pw - mx * 2), mx, y);
+    y += 12;
+    doc.line(mx, y, mx + 60, y); doc.line(mx + 70, y, mx + 130, y); doc.line(mx + 140, y, mx + 170, y);
+    doc.setFontSize(7.5); doc.setTextColor(90);
+    doc.text("Signature", mx, y + 4);
+    doc.text("Driver's Licence number", mx + 70, y + 4);
+    doc.text("Date", mx + 140, y + 4);
+    doc.setTextColor(0);
+    y += 14;
+
+    const stateCode = resolvedAUStateCode();
+    doc.setFont(undefined, "bold"); doc.setFontSize(8.5);
+    doc.text(stateCode === "SA" ? "Warning — heavy penalties apply for false entries (Motor Vehicles Act 1959, SA — Section 135(1))" : "Warning — heavy penalties apply for false or misleading entries under your state's road transport / motor vehicle legislation.", mx, y, { maxWidth: pw - mx * 2 });
+    y += 6;
+    doc.setFont(undefined, "normal"); doc.setFontSize(7.5); doc.setTextColor(90);
+    doc.text(doc.splitTextToSize("A person must not, in furnishing information or compiling a record, make, nor include in the record, a statement that is false or misleading in a material particular. Check the exact wording and penalties that apply in your state before submitting this book.", pw - mx * 2), mx, y);
+    doc.setTextColor(0);
+
+    doc.save(`learner-log-book-${f.from}-to-${f.to}.pdf`);
+    state.logBookForm = null;
+  } catch (e) {
+    f.error = e.message || "Couldn't generate the PDF.";
+  }
+  state.logBookGenerating = false;
   render();
 }
 
@@ -4976,6 +5376,21 @@ function attachAppHandlers() {
   if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
 
   if (state.tab === "drive") {
+    const openLogBookBtn = document.getElementById("openLogBookBtn");
+    if (openLogBookBtn) openLogBookBtn.onclick = () => {
+      const range = logBookSupervisedRange();
+      state.logBookForm = {
+        learnerName: state.settings.learnerName || (state.profile ? state.profile.name : "") || "",
+        permitNo: state.settings.learnerPermitNo || "",
+        hasForeignLicence: state.settings.hasForeignLicence || false,
+        foreignCountryState: state.settings.foreignLicenceCountryState || "",
+        foreignExpiry: state.settings.foreignLicenceExpiry || "",
+        foreignYearsHeld: state.settings.foreignLicenceYearsHeld || "",
+        from: range.from, to: range.to, error: "",
+      };
+      render();
+    };
+
     const dashSupPaceToggle = document.getElementById("dashSupPaceToggle");
     if (dashSupPaceToggle) dashSupPaceToggle.querySelectorAll("[data-paceunit]").forEach(btn => {
       btn.onclick = () => { state.dashSupPaceUnit = btn.dataset.paceunit; render(); };
@@ -6295,6 +6710,32 @@ function attachAppHandlers() {
 
     const generateBtn = document.getElementById("generateReportBtn");
     if (generateBtn) generateBtn.onclick = () => generateReportPDF();
+  }
+
+  if (state.logBookForm) {
+    const f = state.logBookForm;
+    const nameInput = document.getElementById("logBookName");
+    if (nameInput) nameInput.oninput = (e) => { f.learnerName = e.target.value; };
+    const permitInput = document.getElementById("logBookPermitNo");
+    if (permitInput) permitInput.oninput = (e) => { f.permitNo = e.target.value; };
+    const foreignBox = document.getElementById("logBookForeign");
+    if (foreignBox) foreignBox.onchange = (e) => { f.hasForeignLicence = e.target.checked; render(); };
+    const foreignPlace = document.getElementById("logBookForeignPlace");
+    if (foreignPlace) foreignPlace.oninput = (e) => { f.foreignCountryState = e.target.value; };
+    const foreignYears = document.getElementById("logBookForeignYears");
+    if (foreignYears) foreignYears.oninput = (e) => { f.foreignYearsHeld = e.target.value; };
+    const foreignExpiry = document.getElementById("logBookForeignExpiry");
+    if (foreignExpiry) foreignExpiry.onchange = (e) => { f.foreignExpiry = e.target.value; };
+    const fromInput = document.getElementById("logBookFrom");
+    if (fromInput) fromInput.onchange = (e) => { f.from = e.target.value; render(); };
+    const toInput = document.getElementById("logBookTo");
+    if (toInput) toInput.onchange = (e) => { f.to = e.target.value; render(); };
+
+    const closeBtn = document.getElementById("closeLogBookBtn");
+    if (closeBtn) closeBtn.onclick = () => { state.logBookForm = null; render(); };
+
+    const generateBtn = document.getElementById("generateLogBookBtn");
+    if (generateBtn) generateBtn.onclick = () => generateLogBookPDF();
   }
 
   if (state.addDrives) {
