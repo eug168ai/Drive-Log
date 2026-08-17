@@ -239,6 +239,7 @@
   .planner-header-icon{width:34px;height:34px;border-radius:9px;background:rgba(var(--amber-rgb),.16);
     color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .planner-header-icon .icon{width:19px;height:19px;}
+  .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
 
   .planner-field-block{margin-bottom:6px;}
@@ -266,7 +267,10 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:6px 12px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-toolbar-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0;}
+  .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;}
+  .planner-quick-estimate{flex:1;min-width:0;text-align:center;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+  .planner-saved-list{max-height:min(52vh, 380px);overflow-y:auto;padding-right:2px;}
 
   .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
@@ -279,9 +283,12 @@
   .planner-route-summary{background:rgba(var(--surface-rgb),.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:14px;
     padding:10px 12px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
-  .planner-route-badge{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
+  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;}
+  .planner-route-badge-label{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.04em;}
   .planner-route-badge .icon{width:13px;height:13px;}
+  .planner-save-star{padding:2px;}
+  .planner-save-star .icon{width:15px;height:15px;}
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
   .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
@@ -317,7 +324,13 @@
   .planner-eta-metrics .m .v{font-size:16px;font-weight:800;}
   .planner-eta-metrics .m.eta .v{color:var(--amber);}
   .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
-  .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;background:var(--work);border:none;color:#fff;
+  .planner-eta-bar.paused .planner-eta-metrics .m.eta .v{color:var(--muted);}
+  .planner-pause-drive-btn{width:46px;height:46px;border-radius:50%;background:rgba(var(--surface-rgb),.94);
+    border:1px solid var(--border);color:var(--text);flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-pause-drive-btn.paused{background:var(--amber);border-color:var(--amber);color:var(--bg);}
+  .planner-pause-drive-btn .icon{width:20px;height:20px;}
+  .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;background:var(--work);border:none;color:#fff;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;}
 
   @media (max-width:479px){
@@ -976,6 +989,7 @@ const state = {
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 500,
+    autoPauseStationaryMinutes: 5,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
@@ -1010,6 +1024,8 @@ const state = {
   selectedTripIds: [],
   confirmingDeleteSelected: false,
   logEstimateForm: null,
+  plannerLogForm: null,
+  plannerSaveRouteForm: null,
   savedAddresses: { home: "", work: "", other: [] },
   addingSavedOther: false,
   editingSavedOtherId: null,
@@ -1068,6 +1084,7 @@ const icons = {
   navArrow: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 21l8-5 8 5z"/></svg>`,
   starOutline: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   starFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
+  pause: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1717,6 +1734,8 @@ function startPlanner() {
     previewing: false,
     previewError: "",
     savedRouteId: null,
+    showSavedList: false,
+    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
   };
   plannerDirectionsResult = null;
   render();
@@ -1782,6 +1801,7 @@ async function plannerResolveStop(stop, address, coords, fromCurrentLocation) {
   }
   autoSuggestPlannerTags();
   render();
+  updatePlannerQuickEstimate();
   // Every stop (including this one) now has coordinates — draw the actual
   // route on the map immediately, live, without a manual "Preview" tap.
   if (state.planner && state.planner.stops.every(s => s.lat != null)) {
@@ -1800,32 +1820,35 @@ async function geocodeSavedAddressCached(address) {
   return coords;
 }
 
+// Saved-address (Home/Work/Other) proximity match within Settings > Route
+// Match Radius of the given coordinates — shared by the planner's start-field
+// auto-fill and end-of-drive snapping. Returns the winning entry's own
+// address text plus its geocoded coords, or null if nothing's close enough.
+async function matchSavedAddressNear(lat, lng) {
+  const radius = Number(state.settings.routeMatchRadius) || 500;
+  for (const a of savedAddressList()) {
+    try {
+      const geo = await geocodeSavedAddressCached(a.address);
+      if (haversineMeters(lat, lng, geo.lat, geo.lng) <= radius) return { address: a.address, lat: geo.lat, lng: geo.lng };
+    } catch { /* that saved address couldn't be located — skip it */ }
+  }
+  return null;
+}
+
 // Auto-fills a fresh route's start field so most drives need zero typing:
-// a saved address (Home/Work/Other) within the Settings > Route Match Radius
-// of the device's current position wins — so the field reads "Home", not raw
-// GPS text — otherwise the current position itself is used and flagged so
-// the map can highlight it as a guess rather than a confirmed place. Silent
-// on failure; the user can still search or tap a chip manually.
+// a saved address within the Route Match Radius of the device's current
+// position wins — otherwise the current position itself is used and
+// flagged so the map can highlight it as a guess rather than a confirmed
+// place. Silent on failure; the user can still search or tap a chip manually.
 async function autoFillPlannerStart() {
   const p = state.planner;
   if (!p || p.stops[0].address.trim() || !mapsConfigured()) return;
   const stop = p.stops[0];
-  const radius = Number(state.settings.routeMatchRadius) || 500;
   const stillRelevant = () => state.planner && state.planner.stops[0] === stop && !stop.address.trim();
   try {
     const coords = await getCurrentPosition();
     if (!stillRelevant()) return;
-    let matched = null;
-    for (const a of savedAddressList()) {
-      try {
-        const geo = await geocodeSavedAddressCached(a.address);
-        if (haversineMeters(coords.latitude, coords.longitude, geo.lat, geo.lng) <= radius) {
-          matched = { address: a.address, lat: geo.lat, lng: geo.lng };
-          break;
-        }
-      } catch { /* that saved address couldn't be located — skip it */ }
-      if (!stillRelevant()) return;
-    }
+    const matched = await matchSavedAddressNear(coords.latitude, coords.longitude);
     if (!stillRelevant()) return;
     if (matched) {
       await plannerResolveStop(stop, matched.address, { lat: matched.lat, lng: matched.lng }, false);
@@ -1837,6 +1860,41 @@ async function autoFillPlannerStart() {
   } catch (e) {
     // Silent fail — user can still type manually or tap a chip.
   }
+}
+
+// Lightweight start->end estimate shown inline while building a route, so
+// distance/time appear as soon as an end location is picked instead of
+// waiting for the full multi-stop Preview. Ignores any waypoints in
+// between — it's just a quick heads-up, not the final numbers.
+async function updatePlannerQuickEstimate() {
+  const p = state.planner;
+  if (!p) return;
+  const start = p.stops[0], end = p.stops[p.stops.length - 1];
+  const startAddr = start && start.address.trim();
+  const endAddr = end && end.address.trim();
+  if (!startAddr || !endAddr || start.lat == null || end.lat == null || !mapsConfigured()) {
+    if (p.quickDistanceKm != null || p.quickDurationMin != null) {
+      p.quickDistanceKm = null; p.quickDurationMin = null; p._quickEstimateKey = null; render();
+    }
+    return;
+  }
+  const key = `${startAddr}|${endAddr}`;
+  if (p._quickEstimateKey === key) return;
+  p._quickEstimateKey = key;
+  p.quickEstimating = true;
+  render();
+  try {
+    const { distanceKm, durationMin } = await estimateRoute(startAddr, endAddr);
+    if (!state.planner || state.planner._quickEstimateKey !== key) return;
+    state.planner.quickDistanceKm = distanceKm;
+    state.planner.quickDurationMin = durationMin;
+  } catch (e) {
+    if (!state.planner || state.planner._quickEstimateKey !== key) return;
+    state.planner.quickDistanceKm = null;
+    state.planner.quickDurationMin = null;
+  }
+  state.planner.quickEstimating = false;
+  render();
 }
 
 // Fills in any untagged leg whose two endpoints both have coordinates,
@@ -1899,24 +1957,40 @@ async function runPlannerPreview() {
   render();
 }
 
-// Star toggle in the planner header: saves the current route to the saved
-// list (filled star) or, tapped again, removes it (empty star) — doesn't
-// exit the builder either way, unlike the old standalone Save Route button.
-async function togglePlannerSaved() {
+function plannerDefaultRouteName(p) {
+  const start = p.stops[0].address.trim() || "Start";
+  const end = p.stops[p.stops.length - 1].address.trim() || "Destination";
+  return `${start} → ${end}`;
+}
+
+// Small star next to the route summary badge: prompts for a name, then
+// saves the current route to the saved list — doesn't exit the builder.
+function openPlannerSaveRoutePrompt() {
   const p = state.planner;
   if (!p || p.stage !== "preview") return;
-  if (p.savedRouteId) {
-    state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== p.savedRouteId);
-    p.savedRouteId = null;
-  } else {
-    const route = {
-      id: uid(), createdAt: Date.now(),
-      stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
-      legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
-    };
-    state.plannedRoutes = [route, ...state.plannedRoutes];
-    p.savedRouteId = route.id;
-  }
+  state.plannerSaveRouteForm = { name: plannerDefaultRouteName(p) };
+  render();
+}
+async function savePlannerRoute(name) {
+  const p = state.planner;
+  if (!p || p.stage !== "preview") return;
+  const route = {
+    id: uid(), createdAt: Date.now(), name: (name || "").trim() || null,
+    stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
+    legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
+  };
+  state.plannedRoutes = [route, ...state.plannedRoutes];
+  p.savedRouteId = route.id;
+  state.plannerSaveRouteForm = null;
+  await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  render();
+}
+// Tapping the already-solid star removes it again — no naming prompt needed.
+async function unsavePlannerRoute() {
+  const p = state.planner;
+  if (!p || !p.savedRouteId) return;
+  state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== p.savedRouteId);
+  p.savedRouteId = null;
   await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
   render();
 }
@@ -1938,15 +2012,50 @@ function openSavedRouteInPlanner(route) {
     previewing: false,
     previewError: "",
     savedRouteId: route.id,
+    showSavedList: false,
+    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
   };
   plannerDirectionsResult = null;
   render();
+  updatePlannerQuickEstimate();
   if (state.planner.stops.every(s => s.lat != null)) runPlannerPreview();
 }
 
 function minutesToTimeStr(totalMinutes) {
   const m = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
+// Manual "Log Drive" path: commits every leg as a logged trip, back-to-back
+// from a chosen date/start time, using each leg's estimated Directions
+// duration as its drive time — for logging a drive that already happened
+// (or that you don't want live-tracked) rather than live GPS tracking.
+async function logPlannedRouteNow(date, startTimeStr) {
+  const p = state.planner;
+  if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
+  let cursor = startTimeStr != null ? (parseInt(startTimeStr.slice(0, 2), 10) * 60 + parseInt(startTimeStr.slice(3, 5), 10)) : (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
+  const trips = [];
+  for (let i = 0; i < p.legs.length; i++) {
+    const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
+    const tripStartTime = minutesToTimeStr(cursor);
+    cursor += leg.durationMin || 1;
+    const endTime = minutesToTimeStr(cursor);
+    const trip = {
+      id: uid(), date: date || todayStr(), startTime: tripStartTime, endTime,
+      distance: leg.distanceKm || 0,
+      startPoint: from.address.trim() || "Unspecified",
+      endPoint: to.address.trim() || "Unspecified",
+      tag: leg.tag,
+    };
+    if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
+    if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
+    trips.push(trip);
+  }
+  for (const trip of trips) await finalizeTrip(trip);
+  state.planner = null;
+  plannerDirectionsResult = null;
+  state.tab = "history";
+  render();
 }
 
 // --- Trip Planner: real GPS live-tracking driving mode -----------------------
@@ -1959,6 +2068,7 @@ const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it 
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
+const LIVE_STATIONARY_MOVE_M = 10;   // fix-to-fix movement below this doesn't count as "still driving", for auto-pause
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2011,29 +2121,11 @@ let liveDrive = null;
 let liveWatchId = null;
 let liveTickerId = null;
 
-// Opens Google Maps (app on mobile, maps.google.com in a new tab on
-// desktop) with the full planned route pre-filled — turn-by-turn voice
-// navigation happens there, while this app just tracks elapsed time/
-// distance in the background for the eventual trip log.
-function launchGoogleMapsNavigation(p) {
-  const fmt = s => `${s.lat},${s.lng}`;
-  const params = new URLSearchParams({
-    api: "1", origin: fmt(p.stops[0]), destination: fmt(p.stops[p.stops.length - 1]), travelmode: "driving",
-  });
-  const waypoints = p.stops.slice(1, -1).map(fmt);
-  if (waypoints.length) params.set("waypoints", waypoints.join("|"));
-  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank", "noopener");
-}
-
 async function startLiveDrive() {
   const p = state.planner;
   if (!p || !plannerDirectionsResult) return;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
   if (!navigator.geolocation) { p.previewError = "Location isn't available on this device."; render(); return; }
-
-  // Fired synchronously, before any await, so the browser still counts
-  // this as a direct response to the tap and doesn't block the popup.
-  launchGoogleMapsNavigation(p);
 
   let firstFix;
   try { firstFix = await getCurrentPosition(); }
@@ -2049,6 +2141,7 @@ async function startLiveDrive() {
     legDistanceM: 0,
     completedLegs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
+    paused: false, pausedAt: null, autoPaused: false, lastMovementAt: Date.now(),
   };
   await persistLiveDriveSnapshot();
 
@@ -2062,6 +2155,32 @@ async function startLiveDrive() {
   startLiveTicker();
 }
 
+// Pausing shifts nothing yet — it just freezes the ticker and stops counting
+// fixes toward distance/duration. Resuming shifts startedAt/legStartedAt
+// forward by however long the pause lasted, so every downstream "Date.now()
+// - startedAt" duration calc naturally excludes the paused interval without
+// needing a separate running total to subtract everywhere.
+function pauseLiveDrive(auto) {
+  if (!liveDrive || liveDrive.paused) return;
+  liveDrive.paused = true;
+  liveDrive.pausedAt = Date.now();
+  liveDrive.autoPaused = !!auto;
+  persistLiveDriveSnapshot();
+  render();
+}
+function resumeLiveDrive() {
+  if (!liveDrive || !liveDrive.paused) return;
+  const pausedMs = Date.now() - liveDrive.pausedAt;
+  liveDrive.startedAt += pausedMs;
+  liveDrive.legStartedAt += pausedMs;
+  liveDrive.paused = false;
+  liveDrive.pausedAt = null;
+  liveDrive.autoPaused = false;
+  liveDrive.lastMovementAt = Date.now();
+  persistLiveDriveSnapshot();
+  render();
+}
+
 async function persistLiveDriveSnapshot() {
   if (!liveDrive || !state.planner) return;
   await storageSet(LIVE_DRIVE_KEY, {
@@ -2070,6 +2189,7 @@ async function persistLiveDriveSnapshot() {
     legStartedAt: liveDrive.legStartedAt,
     legDistanceM: liveDrive.legDistanceM,
     completedLegs: liveDrive.completedLegs,
+    paused: liveDrive.paused, pausedAt: liveDrive.pausedAt,
     plannerSnapshot: { stops: state.planner.stops, legs: state.planner.legs },
   });
 }
@@ -2093,10 +2213,15 @@ function handleLiveFix(pos) {
   if (accuracy != null && accuracy > LIVE_MAX_FIX_ACCURACY_M) return;
   const prev = liveDrive.lastFix;
   const deltaM = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : 0;
-  if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
   liveDrive.lastFix = { lat, lng, heading, t: Date.now() };
-
   updateLiveMarker(lat, lng, heading);
+
+  // Paused: keep the marker/position current so resuming isn't stale, but
+  // don't count this fix toward distance, steps, arrival, or auto-pause.
+  if (liveDrive.paused) { updateLiveDriveDOM(); return; }
+
+  if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
+  if (prev && deltaM > LIVE_STATIONARY_MOVE_M) liveDrive.lastMovementAt = Date.now();
 
   let step = liveDrive.steps[liveDrive.stepIdx];
   while (step && step.legIdx === liveDrive.legIdx && haversineMeters(lat, lng, step.endLat, step.endLng) < LIVE_STEP_ADVANCE_M) {
@@ -2189,6 +2314,16 @@ function startLiveTicker() {
   stopLiveTicker();
   liveTickerId = setInterval(() => {
     if (!liveDrive) return;
+    // Runs every second regardless of GPS fix cadence, so stationary
+    // auto-pause still fires even when fixes go quiet while parked.
+    if (!liveDrive.paused) {
+      const autoPauseMin = Number(state.settings.autoPauseStationaryMinutes) || 0;
+      if (autoPauseMin > 0 && Date.now() - liveDrive.lastMovementAt >= autoPauseMin * 60000) {
+        pauseLiveDrive(true);
+        return;
+      }
+    }
+    if (liveDrive.paused) return; // elapsed display stays frozen while paused
     const el = document.getElementById("plannerElapsedVal");
     if (!el) return;
     const elapsedSec = Math.floor((Date.now() - liveDrive.startedAt) / 1000);
@@ -2207,6 +2342,16 @@ async function endLiveDrive() {
   const p = state.planner;
   if (liveWatchId != null) { navigator.geolocation.clearWatch(liveWatchId); liveWatchId = null; }
   stopLiveTicker();
+
+  // Ending while paused: exclude the still-ongoing paused interval from the
+  // final leg's duration, same math as a resume — just without restarting tracking.
+  if (liveDrive.paused) {
+    const pausedMs = Date.now() - liveDrive.pausedAt;
+    liveDrive.startedAt += pausedMs;
+    liveDrive.legStartedAt += pausedMs;
+    liveDrive.paused = false;
+    liveDrive.pausedAt = null;
+  }
 
   if (liveDrive.legIdx < p.legs.length && liveDrive.legDistanceM > 0) {
     const durationSec = (Date.now() - liveDrive.legStartedAt) / 1000;
@@ -2228,7 +2373,12 @@ async function endLiveDrive() {
     const endTimeStr = `${String(cursor.getHours()).padStart(2, "0")}:${String(cursor.getMinutes()).padStart(2, "0")}`;
     let endPoint = to ? (to.address.trim() || "Unspecified") : "Current location";
     if (!to && liveDrive.lastFix) {
-      try { endPoint = await reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng); } catch { /* keep the "Current location" fallback */ }
+      const matched = mapsConfigured() ? await matchSavedAddressNear(liveDrive.lastFix.lat, liveDrive.lastFix.lng) : null;
+      if (matched) {
+        endPoint = matched.address;
+      } else {
+        try { endPoint = await reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng); } catch { /* keep the "Current location" fallback */ }
+      }
     }
     const trip = {
       id: uid(), date, startTime: startTimeStr, endTime: endTimeStr,
@@ -2275,6 +2425,7 @@ async function resumeLiveDriveIfAny() {
     legDistanceM: saved.legDistanceM || 0,
     completedLegs: saved.completedLegs || [],
     lastFix: null,
+    paused: !!saved.paused, pausedAt: saved.pausedAt || null, autoPaused: false, lastMovementAt: Date.now(),
   };
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
@@ -2606,6 +2757,7 @@ async function loadData() {
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
   if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 500;
+  if (state.settings.autoPauseStationaryMinutes === undefined) state.settings.autoPauseStationaryMinutes = 5;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
@@ -3414,9 +3566,17 @@ function renderPlannerFieldBlock(stop, idx, total) {
 
 // Row between the Start field and the rest of the stops: just the Add
 // Stop pill, centered between the two search bars.
+// Row between the Start field and the rest of the stops: the quick
+// start->end estimate centered in the line, Add Stop pushed to the far right.
 function renderPlannerToolbarRow() {
+  const p = state.planner;
+  const end = p.stops[p.stops.length - 1];
+  const estimateText = p.quickEstimating ? "Calculating…"
+    : (end.address.trim() && p.quickDistanceKm != null) ? `${kmToDisplay(p.quickDistanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(p.quickDurationMin)}`
+    : "";
   return `
   <div class="planner-toolbar-row">
+    <span class="planner-quick-estimate mono">${estimateText}</span>
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
 }
@@ -3450,7 +3610,7 @@ function renderSavedRoutesList() {
     const untagged = r.legs.some(l => !l.tag);
     return `
     <div class="card">
-      <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.stops[0].address || "Start")} → ${escAttr(r.stops[r.stops.length - 1].address || "Destination")}</p>
+      <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.name || `${r.stops[0].address || "Start"} → ${r.stops[r.stops.length - 1].address || "Destination"}`)}</p>
       <p class="settings-desc" style="margin:0 0 10px;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Driving</button>
@@ -3560,7 +3720,7 @@ function renderPlanTab() {
   return `
   <div class="planner-fullscreen">
     <div id="plannerMapCanvas"></div>
-    ${(!driving && p.stage !== "preview") ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
+    ${(!driving && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : `
     <div class="planner-topbar">
@@ -3569,8 +3729,14 @@ function renderPlanTab() {
           <span class="planner-header-icon">${icons.steeringWheel}</span>
           <div><h1>Drive Log</h1><p>${escAttr(state.profile.name)}</p></div>
         </div>
-        <button type="button" class="icon-btn ${p.savedRouteId ? "active" : ""}" id="plannerSaveBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this route"}" ${p.stage !== "preview" ? "disabled" : ""}>${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
+        <div class="planner-header-actions">
+          <button type="button" class="icon-btn ${p.showSavedList ? "active" : ""}" id="plannerBrowseSavedBtn" title="Saved routes">${icons.starFilled}</button>
+          <button type="button" class="icon-btn" id="plannerSettingsBtn" title="Settings">${icons.gear}</button>
+        </div>
       </div>
+      ${p.showSavedList ? `
+      <div class="planner-saved-list">${renderSavedRoutesList()}</div>
+      ` : `
       ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
       ${mapsError}
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
@@ -3578,15 +3744,23 @@ function renderPlanTab() {
       ${renderPlannerToolbarRow()}
       ${p.stops.slice(1).map((s, i) => renderPlannerFieldBlock(s, i + 1, n)).join("")}
       ` : ""}
+      `}
     </div>`}
 
-    ${driving ? renderPlannerEtaBar() : `
+    ${driving ? renderPlannerEtaBar() : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
       ${p.previewing && !plannerDirectionsResult ? `<p class="settings-desc" style="text-align:center;margin:0 0 8px;">${icons.route} Calculating route…</p>` : ""}
       ${p.stage === "preview" ? renderPlannerRouteSummary() : ""}
-      ${p.stage === "preview" ? `<button type="button" id="plannerStartDrivingBtn" class="btn btn-amber">${icons.play} Start Drive</button>` : ""}
-    </div>`}
+      ${p.stage === "preview" ? `
+      <div style="display:flex;gap:8px;">
+        <button type="button" id="plannerLogDriveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
+        <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:1;">${icons.play} Start Drive</button>
+      </div>
+      ` : ""}
+    </div>`)}
+    ${state.plannerSaveRouteForm ? renderPlannerSaveRouteModal() : ""}
+    ${state.plannerLogForm ? renderPlannerLogModal() : ""}
   </div>`;
 }
 
@@ -3597,7 +3771,10 @@ function renderPlannerRouteSummary() {
   const warnings = (plannerDirectionsResult && plannerDirectionsResult.routes[0].warnings) || [];
   return `
   <div class="planner-route-summary">
-    <div class="planner-route-badge">${icons.route} Fastest route</div>
+    <div class="planner-route-badge">
+      <span class="planner-route-badge-label">${icons.route} Fastest route</span>
+      <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this route"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
+    </div>
     <div class="planner-route-metrics">
       <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
       <div class="div"></div>
@@ -3623,14 +3800,53 @@ function renderPlannerDrivingBanner() {
 }
 
 function renderPlannerEtaBar() {
+  const paused = !!(liveDrive && liveDrive.paused);
   return `
-  <div class="planner-eta-bar">
+  <div class="planner-eta-bar ${paused ? "paused" : ""}">
     <div class="planner-eta-metrics">
-      <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
+      <div class="m eta"><div class="v mono" id="plannerEtaVal">${paused ? "Paused" : "–"}</div><div class="l">ETA</div></div>
       <div class="m"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Remaining</div></div>
       <div class="m"><div class="v mono" id="plannerElapsedVal">00:00</div><div class="l">Elapsed</div></div>
     </div>
+    <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
     <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+  </div>`;
+}
+
+function renderPlannerSaveRouteModal() {
+  const f = state.plannerSaveRouteForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Save this route</h2>
+      <label class="field-label">Route name</label>
+      <input id="plannerSaveRouteNameInput" class="input" type="text" placeholder="e.g. Morning commute" value="${escAttr(f.name)}" style="margin-bottom:20px;" />
+      <div class="row-2">
+        <button id="plannerSaveRouteCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="plannerSaveRouteConfirmBtn" class="btn btn-amber">Save</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderPlannerLogModal() {
+  const f = state.plannerLogForm;
+  const p = state.planner;
+  const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Log this Drive</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">Logs every leg back-to-back from the time below, using the estimated durations from Preview (~${formatDuration(totalMin)} total) instead of live tracking.</p>
+      <label class="field-label">Date</label>
+      <input id="plannerLogDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
+      <label class="field-label">Start time (24hr)</label>
+      <input id="plannerLogStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
+      <div class="row-2">
+        <button id="plannerLogCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="plannerLogConfirmBtn" class="btn btn-amber">Save Drive</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -3928,6 +4144,16 @@ function renderSettingsTab() {
       </div>
       <p class="settings-desc" style="margin:4px 0 0;">How close a Drive Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
       ` : ""}
+    </div>
+    <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;">
+      <div>
+        <p class="settings-title" style="margin:0;">Auto-pause Live Drive</p>
+        <p class="settings-desc" style="margin:2px 0 0;">Pauses the timer after this long stationary. 0 = off.</p>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <input id="autoPauseMinutesInput" class="input mono" type="number" min="0" max="60" step="1" value="${state.settings.autoPauseStationaryMinutes}" style="width:60px;padding:6px 8px;text-align:right;" onfocus="setTimeout(() => this.select())" />
+        <span class="settings-desc" style="margin:0;">min</span>
+      </div>
     </div>
   </div>
 
@@ -5648,6 +5874,10 @@ function attachAppHandlers() {
     if (p && p.stage !== "driving") {
       const backBtn = document.getElementById("plannerBackBtn");
       if (backBtn) backBtn.onclick = cancelPlanner;
+      const browseSavedBtn = document.getElementById("plannerBrowseSavedBtn");
+      if (browseSavedBtn) browseSavedBtn.onclick = () => { p.showSavedList = !p.showSavedList; render(); };
+      const plannerSettingsBtn = document.getElementById("plannerSettingsBtn");
+      if (plannerSettingsBtn) plannerSettingsBtn.onclick = () => { state.tab = "settings"; render(); };
 
       const recenterBtn = document.getElementById("plannerRecenterBtn");
       if (recenterBtn) recenterBtn.onclick = async () => {
@@ -5736,15 +5966,49 @@ function attachAppHandlers() {
         btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
       });
 
-      const saveBtn = document.getElementById("plannerSaveBtn");
-      if (saveBtn) saveBtn.onclick = togglePlannerSaved;
+      const saveRouteBtn = document.getElementById("plannerSaveRouteBtn");
+      if (saveRouteBtn) saveRouteBtn.onclick = () => { if (p.savedRouteId) unsavePlannerRoute(); else openPlannerSaveRoutePrompt(); };
+      const logDriveBtn = document.getElementById("plannerLogDriveBtn");
+      if (logDriveBtn) logDriveBtn.onclick = () => {
+        state.plannerLogForm = { date: todayStr(), startTime: nowTimeStr() };
+        render();
+      };
       const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
       if (startDrivingBtn) startDrivingBtn.onclick = startLiveDrive;
+
+      if (state.plannerSaveRouteForm) {
+        const f = state.plannerSaveRouteForm;
+        const nameInput = document.getElementById("plannerSaveRouteNameInput");
+        if (nameInput) { nameInput.oninput = (e) => { f.name = e.target.value; }; nameInput.focus(); nameInput.select(); }
+        const srCancel = document.getElementById("plannerSaveRouteCancelBtn");
+        if (srCancel) srCancel.onclick = () => { state.plannerSaveRouteForm = null; render(); };
+        const srConfirm = document.getElementById("plannerSaveRouteConfirmBtn");
+        if (srConfirm) srConfirm.onclick = () => savePlannerRoute(f.name);
+      }
+
+      if (state.plannerLogForm) {
+        const f = state.plannerLogForm;
+        const pld = document.getElementById("plannerLogDate");
+        if (pld) pld.onchange = (e) => { f.date = e.target.value; };
+        attachTimeInput(document.getElementById("plannerLogStartTime"), (v) => { f.startTime = v; });
+        const plCancel = document.getElementById("plannerLogCancelBtn");
+        if (plCancel) plCancel.onclick = () => { state.plannerLogForm = null; render(); };
+        const plConfirm = document.getElementById("plannerLogConfirmBtn");
+        if (plConfirm) plConfirm.onclick = async () => {
+          if (!f.date || !f.startTime) return;
+          const startTime = clampTimeValue(f.startTime);
+          const date = f.date;
+          state.plannerLogForm = null;
+          await logPlannedRouteNow(date, startTime);
+        };
+      }
 
       armStaticHazardMarquee();
     } else if (p && p.stage === "driving") {
       const endDriveBtn = document.getElementById("plannerEndDriveBtn");
       if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
+      const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
+      if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(false); };
       updateLiveDriveDOM();
     }
 
@@ -5804,6 +6068,14 @@ function attachAppHandlers() {
     if (routeMatchRadiusInput) routeMatchRadiusInput.onchange = async (e) => {
       const val = Math.max(50, Math.min(2000, parseInt(e.target.value, 10) || 300));
       state.settings.routeMatchRadius = val;
+      e.target.value = val;
+      await storageSet(SETTINGS_KEY, state.settings);
+    };
+
+    const autoPauseMinutesInput = document.getElementById("autoPauseMinutesInput");
+    if (autoPauseMinutesInput) autoPauseMinutesInput.onchange = async (e) => {
+      const val = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
+      state.settings.autoPauseStationaryMinutes = val;
       e.target.value = val;
       await storageSet(SETTINGS_KEY, state.settings);
     };
