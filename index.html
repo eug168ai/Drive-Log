@@ -1554,6 +1554,19 @@ function suggestTagForCoords(startLat, startLng, endLat, endLng) {
 function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "" }; }
 function newPlannerLeg() { return { tag: null, tagSource: null, distanceKm: null, durationMin: null }; }
 
+function startPlanner() {
+  state.planner = {
+    stops: [newPlannerStop(), newPlannerStop()],
+    legs: [newPlannerLeg()],
+    stage: "build",
+    previewing: false,
+    previewError: "",
+  };
+  plannerDirectionsResult = null;
+  state.tab = "drive";
+  render();
+}
+
 function cancelPlanner() {
   state.planner = null;
   plannerDirectionsResult = null;
@@ -3305,6 +3318,12 @@ function renderSettingsTab() {
     <p class="settings-title" style="color:var(--work);">${icons.clock} Clear History</p>
     <p class="settings-desc">Permanently deletes all logged drives from this device. Google Sheet is not affected.</p>
     <button id="clearHistoryBtn" class="btn btn-ghost" style="margin-top:12px;color:var(--work);border-color:rgba(224,100,44,.4);">Clear All Drive History</button>
+  </div>
+
+  <div class="card">
+    <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="beta-tag">Under Construction</span></p>
+    <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
+    <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Drive</button>
   </div>
   </div>`;
 }
@@ -5153,6 +5172,9 @@ function attachAppHandlers() {
 
     const clearHistoryBtn = document.getElementById("clearHistoryBtn");
     if (clearHistoryBtn) clearHistoryBtn.onclick = () => { state.confirmingClearHistory = true; render(); };
+
+    const newRouteBtn = document.getElementById("newPlannerRouteBtn");
+    if (newRouteBtn) newRouteBtn.onclick = startPlanner;
 
     const connectBtn = document.getElementById("connectSheetBtn");
     if (connectBtn) connectBtn.onclick = async () => {
