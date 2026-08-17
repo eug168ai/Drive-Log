@@ -804,18 +804,17 @@ const state = {
   pendingTag: "normal",
   startPointInput: "",
   startCoords: null,
-  endCoords: null,
   preTripEndLocation: "",
   preTripEstimating: false,
   preTripDistance: null,
   preTripDuration: null,
   preTripEstimateError: "",
-  endPoint: "",
   locatingStart: false,
-  locatingEnd: false,
   locateError: "",
-  distanceError: "",
-  distance: "",
+  endDriveBusy: false,
+  endDriveError: "",
+  driveSummary: null,
+  businessForm: null,
   filterTag: "all",
   filterFrom: "",
   filterTo: "",
@@ -1207,27 +1206,21 @@ async function geocodeCandidateAddresses(a) {
   if (state.addDrives === a) { a.geocoding = false; render(); }
 }
 
-async function useMyLocation(target) {
+async function useMyLocation() {
   if (!mapsConfigured()) { state.locateError = "Location lookup isn't set up for this app yet."; render(); return; }
   state.locateError = "";
-  if (target === "start") state.locatingStart = true; else state.locatingEnd = true;
+  state.locatingStart = true;
   render();
   try {
     const coords = await getCurrentPosition();
     const address = await reverseGeocode(coords.latitude, coords.longitude);
-    if (target === "start") {
-      state.startPointInput = address;
-      state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.startLocArmed = true;
-    } else {
-      state.endPoint = address;
-      state.endCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.endLocArmed = true;
-    }
+    state.startPointInput = address;
+    state.startCoords = { lat: coords.latitude, lng: coords.longitude };
+    state.startLocArmed = true;
   } catch (e) {
     state.locateError = e.message || "Couldn't get your location.";
   }
-  state.locatingStart = false; state.locatingEnd = false;
+  state.locatingStart = false;
   render();
 }
 
@@ -1331,22 +1324,6 @@ async function estimateRoute(origin, destination) {
   });
 }
 
-async function runRouteEstimate(origin, destination) {
-  if (!mapsConfigured()) { state.estimateError = "Distance lookup isn't set up for this app yet."; render(); return; }
-  if (!origin || !destination) return;
-  state.estimating = true; state.estimateError = ""; render();
-  try {
-    const { distanceKm, durationMin } = await estimateRoute(origin, destination);
-    state.distance = kmToDisplay(distanceKm).toFixed(1);
-    state.estimatedDuration = durationMin;
-  } catch (e) {
-    state.estimateError = e.message || "Couldn't calculate distance and time.";
-    state.estimatedDuration = null;
-  }
-  state.estimating = false;
-  render();
-}
-
 async function runPreTripEstimate(origin, destination) {
   if (!mapsConfigured()) { state.preTripEstimateError = "Distance lookup isn't set up for this app yet."; render(); return; }
   if (!destination) return;
@@ -1361,6 +1338,67 @@ async function runPreTripEstimate(origin, destination) {
     state.preTripDistance = null; state.preTripDuration = null;
   }
   state.preTripEstimating = false;
+  render();
+}
+
+// Ends the active drive: grabs the current GPS fix as the end location and
+// calculates the drive distance by road (via the Distance Matrix, using
+// exact coordinates when GPS is available, falling back to the typed start
+// address otherwise). No manual distance entry — if location can't be
+// resolved, the user sees an error and can retry rather than being asked
+// to type a number.
+async function beginEndDrive() {
+  const a = state.active;
+  if (!a) return;
+  state.endDriveBusy = true;
+  state.endDriveError = "";
+  render();
+
+  let endLat = null, endLng = null, endAddress = "";
+  try {
+    const coords = await getCurrentPosition();
+    endLat = coords.latitude; endLng = coords.longitude;
+    try { endAddress = await reverseGeocode(endLat, endLng); } catch (e) { endAddress = ""; }
+  } catch (e) {
+    // GPS not active/available — handled below once we know if any distance is computable.
+  }
+
+  let distanceKm = null;
+  if (endLat != null && mapsConfigured()) {
+    const origin = a.startLat != null ? { lat: a.startLat, lng: a.startLng } : a.startPoint;
+    try {
+      const result = await estimateRoute(origin, { lat: endLat, lng: endLng });
+      distanceKm = result.distanceKm;
+    } catch (e) {
+      // Fall through to the straight-line fallback below.
+    }
+  }
+  if (distanceKm == null && endLat != null && a.startLat != null) {
+    distanceKm = haversineKm(a.startLat, a.startLng, endLat, endLng);
+  }
+
+  state.endDriveBusy = false;
+
+  if (endLat == null) {
+    state.endDriveError = "Couldn't get your location — check location permission and try again.";
+    render();
+    return;
+  }
+  if (distanceKm == null) {
+    state.endDriveError = "Couldn't calculate a driving distance for this route. Try again.";
+    render();
+    return;
+  }
+
+  const trip = {
+    id: uid(), date: a.date, startTime: a.startTime, endTime: nowTimeStr(),
+    distance: distanceKm, startPoint: a.startPoint,
+    endPoint: endAddress || "Unspecified", tag: a.tag,
+  };
+  if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
+  trip.endLat = endLat; trip.endLng = endLng;
+
+  state.driveSummary = { trip };
   render();
 }
 
@@ -2604,30 +2642,9 @@ function renderQuickDriveSection() {
       </div>
       <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
 
-      <label class="field-label">End Location</label>
-      ${renderSavedAddressChips("endPointInput")}
-      <div class="input-icon" style="margin-bottom:10px;">
-        ${icons.pin}<div class="loc-field-wrap">
-          <input id="endPointInput" list="recentLocations" placeholder="e.g. Office" value="${state.endPoint}" onfocus="setTimeout(() => this.select())" />
-          <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-        </div>
-        <button id="locateEndBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingEnd ? "disabled" : ""}>${state.locatingEnd ? "…" : icons.locate}</button>
-      </div>
-      ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-4px 0 14px;">${state.locateError}</p>` : ""}
+      ${state.endDriveError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 14px;">${state.endDriveError}</p>` : ""}
 
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:${state.estimateError ? "6" : "16"}px;">
-        <button id="estimateRouteBtn" class="chip" type="button" ${state.estimating || !state.endPoint.trim() ? "disabled" : ""}>
-          ${icons.route} ${state.estimating ? "Calculating…" : "Estimate Drive"}
-        </button>
-        ${state.estimatedDuration != null && !state.estimating ? `<span class="mono" style="color:var(--muted);font-size:12px;white-space:nowrap;">~${state.estimatedDuration} min drive</span>` : ""}
-      </div>
-      ${state.estimateError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 12px;">${state.estimateError}</p>` : ""}
-
-      <label class="field-label">Distance (${unitLabel()})</label>
-      <input id="distanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.distance}" style="margin-bottom:6px;" />
-      <p id="distanceErrorMsg" class="settings-desc" style="color:var(--work);margin:0 0 10px;${state.distanceError ? "" : "display:none;"}">${state.distanceError || ""}</p>
-
-      <button id="stopTripBtn" class="btn btn-stop">${icons.stop} Stop & Save</button>
+      <button id="endDriveBtn" class="btn btn-stop" ${state.endDriveBusy ? "disabled" : ""}>${icons.stop} ${state.endDriveBusy ? "Ending Drive…" : "End Drive"}</button>
     </div>
     ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
   }
@@ -2757,6 +2774,8 @@ function renderApp() {
     </div>
 
     ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
+    ${state.driveSummary ? renderDriveSummaryModal() : ""}
+    ${state.businessForm ? renderBusinessDetailsModal() : ""}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
@@ -3184,6 +3203,60 @@ const TRAFFIC_LEVELS = [{ v: "light", l: "Light" }, { v: "medium", l: "Medium" }
 // Display labels only — the underlying "normal"/"work" values stay as-is
 // in storage, settings keys and data attributes for backward compatibility.
 const DRIVE_TYPES = [{ v: "normal", l: "Personal" }, { v: "work", l: "Business" }, { v: "supervised", l: "Supervised" }];
+
+function renderDriveSummaryModal() {
+  const { trip } = state.driveSummary;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Drive summary</h2>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+        <span class="tag ${trip.tag}">${labelFor(DRIVE_TYPES, trip.tag)}</span>
+        <span class="settings-desc" style="margin:0;">${formatTime24(trip.startTime)} – ${formatTime24(trip.endTime)}</span>
+      </div>
+
+      <p class="settings-desc" style="margin:0 0 4px;">From</p>
+      <p style="margin:0 0 10px;font-size:14px;">${escAttr(trip.startPoint)}</p>
+      <p class="settings-desc" style="margin:0 0 4px;">To</p>
+      <p style="margin:0 0 16px;font-size:14px;">${escAttr(trip.endPoint)}</p>
+
+      <div class="row-2" style="margin-bottom:20px;">
+        <div>
+          <p class="settings-desc" style="margin:0 0 2px;">Distance</p>
+          <p class="mono" style="margin:0;font-size:18px;">${kmToDisplay(trip.distance).toFixed(1)} ${unitLabel()}</p>
+        </div>
+        <div>
+          <p class="settings-desc" style="margin:0 0 2px;">Duration</p>
+          <p class="mono" style="margin:0;font-size:18px;">${formatDuration(tripMinutes(trip))}</p>
+        </div>
+      </div>
+
+      <div class="row-2">
+        <button id="cancelDriveSummaryBtn" class="btn btn-ghost">Cancel</button>
+        <button id="continueDriveSummaryBtn" class="btn btn-amber">Continue</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessDetailsModal() {
+  const f = state.businessForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Business drive details</h2>
+
+      <label class="field-label">Purpose / notes</label>
+      <input id="businessPurposeInput" class="input" value="${escAttr(f.purpose)}" placeholder="e.g. Client visit" style="margin-bottom:20px;" />
+
+      <div class="row-2">
+        <button id="backBusinessBtn" class="btn btn-ghost">Back</button>
+        <button id="saveBusinessTripBtn" class="btn btn-amber">Save Drive</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 function renderConditionsModal() {
   const f = state.conditionsForm;
@@ -3971,11 +4044,6 @@ function attachAppHandlers() {
       const hint = document.getElementById("preTripEndHint");
       if (section) section.style.display = "";
       if (hint) hint.style.display = "none";
-    } else if (targetId === "endPointInput") {
-      state.endPoint = address;
-      state.endLocArmed = true;
-      const estBtn = document.getElementById("estimateRouteBtn");
-      if (estBtn) estBtn.disabled = false;
     }
     armLocationMarquee(targetId);
   }
@@ -4057,7 +4125,7 @@ function attachAppHandlers() {
         });
       }
       const locStartBtn = document.getElementById("locateStartBtn");
-      if (locStartBtn) locStartBtn.onclick = () => useMyLocation("start");
+      if (locStartBtn) locStartBtn.onclick = () => useMyLocation();
 
       const peti = document.getElementById("preTripEndInput");
       if (peti) {
@@ -4119,9 +4187,7 @@ function attachAppHandlers() {
         state.preTripDuration = null;
         state.preTripEstimateError = "";
         state.preTripEstimating = false;
-        state.estimatedDuration = null;
-        state.estimateError = "";
-        state.distanceError = "";
+        state.endDriveError = "";
         await storageSet(ACTIVE_KEY, trip);
         startTicker();
         render();
@@ -4134,84 +4200,8 @@ function attachAppHandlers() {
     } else {
       renderTimerOnly();
       attachActiveStartMarquee();
-      const epi = document.getElementById("endPointInput");
-      if (epi) {
-        epi.oninput = (e) => {
-          state.endPoint = e.target.value;
-          state.endLocArmed = false;
-          const estBtn = document.getElementById("estimateRouteBtn");
-          if (estBtn) estBtn.disabled = !state.endPoint.trim();
-        };
-        attachPlacesAutocomplete(epi, (desc) => {
-          epi.value = desc;
-          state.endPoint = desc;
-          state.endLocArmed = true;
-          const estBtn = document.getElementById("estimateRouteBtn");
-          if (estBtn) estBtn.disabled = !state.endPoint.trim();
-          armLocationMarquee("endPointInput");
-        });
-      }
-      const locEndBtn = document.getElementById("locateEndBtn");
-      if (locEndBtn) locEndBtn.onclick = () => useMyLocation("end");
-      const estimateBtn = document.getElementById("estimateRouteBtn");
-      if (estimateBtn) estimateBtn.onclick = () => {
-        const dest = state.endPoint.trim();
-        if (dest) runRouteEstimate(state.active.startPoint, dest);
-      };
-      const di = document.getElementById("distanceInput");
-      if (di) di.oninput = (e) => {
-        state.distance = e.target.value.replace(/[^0-9.]/g, "");
-        e.target.value = state.distance;
-        if (state.distanceError) {
-          state.distanceError = "";
-          const errEl = document.getElementById("distanceErrorMsg");
-          if (errEl) { errEl.textContent = ""; errEl.style.display = "none"; }
-        }
-      };
-      const stopBtn = document.getElementById("stopTripBtn");
-      if (stopBtn) stopBtn.onclick = async () => {
-        const distVal = parseFloat(state.distance);
-        if (!state.distance || isNaN(distVal) || distVal <= 0) {
-          state.distanceError = "Enter a distance to save this drive.";
-          render();
-          const diAgain = document.getElementById("distanceInput");
-          if (diAgain) diAgain.focus();
-          return;
-        }
-        state.distanceError = "";
-        const a = state.active;
-        const endTimeNow = nowTimeStr();
-        const trip = {
-          id: uid(), date: a.date, startTime: a.startTime, endTime: endTimeNow,
-          distance: displayToKm(distVal), startPoint: a.startPoint,
-          endPoint: state.endPoint.trim() || "Unspecified", tag: a.tag,
-        };
-        if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
-        if (state.endCoords) { trip.endLat = state.endCoords.lat; trip.endLng = state.endCoords.lng; }
-        state.active = null;
-        state.endPoint = ""; state.distance = "";
-        state.endCoords = null;
-        state.estimatedDuration = null; state.estimateError = "";
-        state.startPointInput = "";
-        await storageDelete(ACTIVE_KEY);
-        stopTicker();
-        autoFillCurrentLocation();
-
-        if (state.settings.driveType === "supervised") {
-          state.pendingTrip = trip;
-          const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
-          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-          state.addingSupervisor = false;
-          state.newSupervisorName = ""; state.newSupervisorLicence = "";
-          render();
-        } else {
-          await finalizeTrip(trip);
-          render();
-        }
-      };
-
-      setupLocationMarquee("endPointInput");
-      if (state.endLocArmed) armLocationMarquee("endPointInput");
+      const endDriveBtn = document.getElementById("endDriveBtn");
+      if (endDriveBtn) endDriveBtn.onclick = beginEndDrive;
     }
 
     document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
@@ -4723,6 +4713,61 @@ function attachAppHandlers() {
     if (deleteSelectedBtn) deleteSelectedBtn.onclick = () => {
       if (state.selectedTripIds.length === 0) return;
       state.confirmingDeleteSelected = true;
+      render();
+    };
+  }
+
+  if (state.driveSummary) {
+    const cancelBtn = document.getElementById("cancelDriveSummaryBtn");
+    if (cancelBtn) cancelBtn.onclick = () => {
+      state.driveSummary = null;
+      render();
+    };
+
+    const continueBtn = document.getElementById("continueDriveSummaryBtn");
+    if (continueBtn) continueBtn.onclick = async () => {
+      const { trip } = state.driveSummary;
+      state.driveSummary = null;
+      state.active = null;
+      state.startPointInput = "";
+      await storageDelete(ACTIVE_KEY);
+      stopTicker();
+      autoFillCurrentLocation();
+
+      if (trip.tag === "supervised") {
+        state.pendingTrip = trip;
+        const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
+        state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+        state.addingSupervisor = false;
+        state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        render();
+      } else if (trip.tag === "work") {
+        state.businessForm = { trip, purpose: "" };
+        render();
+      } else {
+        await finalizeTrip(trip);
+        render();
+      }
+    };
+  }
+
+  if (state.businessForm) {
+    const f = state.businessForm;
+
+    const purposeInput = document.getElementById("businessPurposeInput");
+    if (purposeInput) purposeInput.oninput = (e) => { f.purpose = e.target.value; };
+
+    const backBtn = document.getElementById("backBusinessBtn");
+    if (backBtn) backBtn.onclick = () => {
+      state.businessForm = null;
+      render();
+    };
+
+    const saveBtn = document.getElementById("saveBusinessTripBtn");
+    if (saveBtn) saveBtn.onclick = async () => {
+      const trip = { ...f.trip, purpose: f.purpose.trim() };
+      state.businessForm = null;
+      await finalizeTrip(trip);
       render();
     };
   }
