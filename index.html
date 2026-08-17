@@ -965,7 +965,7 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 300,
+    unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 500,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
@@ -1764,10 +1764,10 @@ async function geocodeSavedAddressCached(address) {
   return coords;
 }
 
-const SAVED_LOCATION_MATCH_RADIUS_M = 300;
+const SAVED_LOCATION_MATCH_RADIUS_M = 500;
 
 // Auto-fills a fresh route's start field so most drives need zero typing:
-// a saved address (Home/Work/Other) within 300m of the device's current
+// a saved address (Home/Work/Other) within 500m of the device's current
 // position wins — so the field reads "Home", not raw GPS text — otherwise
 // the current position itself is used and flagged so the map can highlight
 // it as a guess rather than a confirmed place. Silent on failure; the user
@@ -2537,7 +2537,7 @@ async function loadData() {
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
-  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 300;
+  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 500;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
