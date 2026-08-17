@@ -1466,7 +1466,7 @@ async function resolveSavedAddressCoords(address) {
 // instead of the exact saved address. If a GPS fix is close enough to a
 // saved Home/Work/Other address, prefer that address's exact text.
 async function matchSavedAddressLabel(lat, lng) {
-  const radius = 150; // metres — tighter than route-tag matching's default, since this should only fire when genuinely at the saved spot
+  const radius = Number(state.settings.routeMatchRadius) || 300; // same knob as route-tag matching (Settings -> Route Match Radius)
   for (const entry of savedAddressList()) {
     const coords = await resolveSavedAddressCoords(entry.address);
     if (coords && haversineMeters(lat, lng, coords.lat, coords.lng) <= radius) return entry.address;
