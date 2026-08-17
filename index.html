@@ -811,8 +811,10 @@ const state = {
   preTripEstimateError: "",
   locatingStart: false,
   locateError: "",
+  startDriveBusy: false,
   endDriveBusy: false,
   endDriveError: "",
+  manualDistanceFallback: "",
   driveSummary: null,
   confirmingCancelDrive: false,
   businessForm: null,
@@ -2649,7 +2651,12 @@ function renderQuickDriveSection() {
       </div>
       <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
 
-      ${state.endDriveError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 14px;">${state.endDriveError}</p>` : ""}
+      ${state.endDriveError ? `
+      <p class="settings-desc" style="color:var(--work);margin:0 0 10px;">${state.endDriveError}</p>
+      <label class="field-label">Distance (${unitLabel()})</label>
+      <input id="manualDistanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.manualDistanceFallback}" style="margin-bottom:10px;" />
+      <button id="saveManualDistanceBtn" class="btn btn-ghost" style="margin-bottom:14px;">${icons.check} Save with this distance</button>
+      ` : ""}
 
       <button id="endDriveBtn" class="btn btn-stop" ${state.endDriveBusy ? "disabled" : ""}>${icons.stop} ${state.endDriveBusy ? "Ending Drive…" : "End Drive"}</button>
     </div>
@@ -2704,7 +2711,7 @@ function renderQuickDriveSection() {
       <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
     </div>` : ""; })()}
 
-    <button id="startTripBtn" class="btn btn-amber">${icons.play} Start Drive</button>
+    <button id="startTripBtn" class="btn btn-amber" ${state.startDriveBusy ? "disabled" : ""}>${icons.play} ${state.startDriveBusy ? "Starting…" : "Start Drive"}</button>
   </div>
   ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
 }
@@ -4192,6 +4199,24 @@ function attachAppHandlers() {
 
       const startBtn = document.getElementById("startTripBtn");
       if (startBtn) startBtn.onclick = async () => {
+        // A typed/auto-filled address may not have come with coordinates
+        // (e.g. reverse-geocoding hadn't finished). Grab a GPS fix now if we
+        // don't have one, so the trip always starts with coordinates —
+        // without them, End Drive has nothing to calculate distance from.
+        let startLat = state.startCoords ? state.startCoords.lat : null;
+        let startLng = state.startCoords ? state.startCoords.lng : null;
+        if (startLat == null) {
+          state.startDriveBusy = true;
+          render();
+          try {
+            const coords = await getCurrentPosition();
+            startLat = coords.latitude; startLng = coords.longitude;
+          } catch (e) {
+            // No GPS fix available — the drive starts without coordinates.
+          }
+          state.startDriveBusy = false;
+        }
+
         const trip = {
           tag: state.settings.driveType === "work" ? "work" : state.settings.driveType === "supervised" ? "supervised" : "normal",
           startPoint: state.startPointInput.trim() || "Unspecified",
@@ -4199,7 +4224,7 @@ function attachAppHandlers() {
           date: todayStr(),
           startedAt: Date.now(),
         };
-        if (state.startCoords) { trip.startLat = state.startCoords.lat; trip.startLng = state.startCoords.lng; }
+        if (startLat != null) { trip.startLat = startLat; trip.startLng = startLng; }
         state.active = trip;
         state.startPointInput = "";
         state.startCoords = null;
@@ -4209,6 +4234,7 @@ function attachAppHandlers() {
         state.preTripEstimateError = "";
         state.preTripEstimating = false;
         state.endDriveError = "";
+        state.manualDistanceFallback = "";
         await storageSet(ACTIVE_KEY, trip);
         startTicker();
         render();
@@ -4223,6 +4249,28 @@ function attachAppHandlers() {
       attachActiveStartMarquee();
       const endDriveBtn = document.getElementById("endDriveBtn");
       if (endDriveBtn) endDriveBtn.onclick = beginEndDrive;
+
+      const mdi = document.getElementById("manualDistanceInput");
+      if (mdi) mdi.oninput = (e) => {
+        state.manualDistanceFallback = e.target.value.replace(/[^0-9.]/g, "");
+        e.target.value = state.manualDistanceFallback;
+      };
+      const saveManualBtn = document.getElementById("saveManualDistanceBtn");
+      if (saveManualBtn) saveManualBtn.onclick = () => {
+        const distVal = parseFloat(state.manualDistanceFallback);
+        if (!state.manualDistanceFallback || isNaN(distVal) || distVal <= 0) return;
+        const a = state.active;
+        const trip = {
+          id: uid(), date: a.date, startTime: a.startTime, endTime: nowTimeStr(),
+          distance: displayToKm(distVal), startPoint: a.startPoint,
+          endPoint: "Unspecified", tag: a.tag,
+        };
+        if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
+        state.endDriveError = "";
+        state.manualDistanceFallback = "";
+        state.driveSummary = { trip };
+        render();
+      };
     }
 
     document.querySelectorAll(".plannerStartSavedBtn").forEach(btn => {
