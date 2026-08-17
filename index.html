@@ -877,6 +877,7 @@ const state = {
   logEstimateForm: null,
   savedAddresses: { home: "", work: "", other: [] },
   addingSavedOther: false,
+  editingSavedOtherId: null,
   newSavedOtherName: "",
   newSavedOtherAddress: "",
   editingTrip: null,
@@ -3142,14 +3143,14 @@ function renderSettingsTab() {
     <label class="field-label">Home</label>
     <div class="input-icon" style="margin-bottom:14px;">
       ${icons.pin}<div class="loc-field-wrap">
-        <input id="savedHomeInput" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" />
+        <input id="savedHomeInput" placeholder="e.g. 6 Peter Court, Valley View" value="${escAttr(state.savedAddresses.home)}" onfocus="setTimeout(() => this.select())" />
         <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
       </div>
     </div>
     <label class="field-label">Work</label>
     <div class="input-icon" style="margin-bottom:14px;">
       ${icons.pin}<div class="loc-field-wrap">
-        <input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" />
+        <input id="savedWorkInput" placeholder="e.g. 123 Business St" value="${escAttr(state.savedAddresses.work)}" onfocus="setTimeout(() => this.select())" />
         <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
       </div>
     </div>
@@ -3161,6 +3162,7 @@ function renderSettingsTab() {
           <p style="margin:0;font-weight:600;font-size:13px;">${escAttr(o.name)}</p>
           <div class="route-cell" style="padding:0;margin-top:2px;"><div class="route-clip"><span class="route-track settings-desc" style="margin:0;">${escAttr(o.address)}</span></div></div>
         </div>
+        <button class="icon-btn editSavedOtherBtn" data-id="${o.id}" title="Edit">${icons.edit}</button>
         <button class="icon-btn deleteSavedOtherBtn" data-id="${o.id}" title="Remove">${icons.trash}</button>
       </div>
     `).join("") : ""}
@@ -3168,12 +3170,15 @@ function renderSettingsTab() {
     ${state.addingSavedOther ? `
       <div class="card" style="padding:12px;margin-top:10px;">
         <label class="field-label">Name</label>
-        <input id="newSavedOtherName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newSavedOtherName)}" placeholder="e.g. Mum's House" />
+        <input id="newSavedOtherName" class="input" style="margin-bottom:10px;" value="${escAttr(state.newSavedOtherName)}" placeholder="e.g. Mum's House" onfocus="setTimeout(() => this.select())" />
         <label class="field-label">Address</label>
         <div class="input-icon" style="margin-bottom:12px;">
-          ${icons.pin}<input id="newSavedOtherAddress" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" />
+          ${icons.pin}<input id="newSavedOtherAddress" value="${escAttr(state.newSavedOtherAddress)}" placeholder="e.g. 12 Smith St, Adelaide" onfocus="setTimeout(() => this.select())" />
         </div>
-        <button id="saveSavedOtherBtn" class="btn btn-ghost">Add Address</button>
+        <div style="display:flex;gap:10px;">
+          <button id="saveSavedOtherBtn" class="btn btn-ghost">${state.editingSavedOtherId ? "Save Changes" : "Add Address"}</button>
+          <button id="cancelSavedOtherBtn" class="btn btn-ghost" type="button">Cancel</button>
+        </div>
       </div>
     ` : ""}
   </div>
@@ -5057,7 +5062,20 @@ function attachAppHandlers() {
     document.querySelectorAll(".deleteSavedOtherBtn").forEach(btn => {
       btn.onclick = async () => {
         state.savedAddresses.other = state.savedAddresses.other.filter(o => o.id !== btn.dataset.id);
+        if (state.editingSavedOtherId === btn.dataset.id) { state.addingSavedOther = false; state.editingSavedOtherId = null; }
         await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+        render();
+      };
+    });
+
+    document.querySelectorAll(".editSavedOtherBtn").forEach(btn => {
+      btn.onclick = () => {
+        const entry = state.savedAddresses.other.find(o => o.id === btn.dataset.id);
+        if (!entry) return;
+        state.addingSavedOther = true;
+        state.editingSavedOtherId = entry.id;
+        state.newSavedOtherName = entry.name;
+        state.newSavedOtherAddress = entry.address;
         render();
       };
     });
@@ -5065,7 +5083,15 @@ function attachAppHandlers() {
     const addSavedOtherBtn = document.getElementById("addSavedOtherBtn");
     if (addSavedOtherBtn) addSavedOtherBtn.onclick = () => {
       state.addingSavedOther = true;
+      state.editingSavedOtherId = null;
       state.newSavedOtherName = ""; state.newSavedOtherAddress = "";
+      render();
+    };
+
+    const cancelSavedOtherBtn = document.getElementById("cancelSavedOtherBtn");
+    if (cancelSavedOtherBtn) cancelSavedOtherBtn.onclick = () => {
+      state.addingSavedOther = false;
+      state.editingSavedOtherId = null;
       render();
     };
 
@@ -5085,9 +5111,15 @@ function attachAppHandlers() {
       const name = state.newSavedOtherName.trim();
       const address = state.newSavedOtherAddress.trim();
       if (!name || !address) return;
-      state.savedAddresses.other.push({ id: uid(), name, address });
+      if (state.editingSavedOtherId) {
+        const entry = state.savedAddresses.other.find(o => o.id === state.editingSavedOtherId);
+        if (entry) { entry.name = name; entry.address = address; }
+      } else {
+        state.savedAddresses.other.push({ id: uid(), name, address });
+      }
       await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
       state.addingSavedOther = false;
+      state.editingSavedOtherId = null;
       render();
     };
 
