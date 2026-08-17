@@ -2334,6 +2334,70 @@ async function getMapsLibrary() {
   return mapsLibraryPromise;
 }
 
+// Google Maps "Night Mode" style — swapped in on the planner map between
+// sunset and sunrise so it doesn't glare at night.
+const NIGHT_MAP_STYLE = [
+  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "poi.park", elementType: "geometry", stylers: [{ color: "#263c3f" }] },
+  { featureType: "poi.park", elementType: "labels.text.fill", stylers: [{ color: "#6b9a76" }] },
+  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
+  { featureType: "road.highway", elementType: "geometry.stroke", stylers: [{ color: "#1f2835" }] },
+  { featureType: "road.highway", elementType: "labels.text.fill", stylers: [{ color: "#f3d19c" }] },
+  { featureType: "transit", elementType: "geometry", stylers: [{ color: "#2f3948" }] },
+  { featureType: "transit.station", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+  { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+  { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] },
+];
+
+// Sunrise/sunset for a given date + coordinates (NOAA solar position
+// approximation, accurate to within a minute or two — plenty for deciding
+// whether the map should be in night style). Returns Date objects, or
+// null/NaN times at extreme latitudes during polar day/night; callers
+// should fall back to a fixed-hour heuristic when that happens.
+function sunTimesFor(date, lat, lon) {
+  const rad = Math.PI / 180;
+  const dayMs = 86400000, J1970 = 2440588, J2000 = 2451545;
+  const toDays = d => d.getTime() / dayMs - 0.5 + J1970 - J2000;
+  const fromJulian = j => new Date((j + 0.5 - J1970) * dayMs);
+  const e = rad * 23.4397;
+  const lw = rad * -lon, phi = rad * lat;
+  const d = toDays(date);
+  const n = Math.round(d - 0.0009 - lw / (2 * Math.PI));
+  const ds = 0.0009 + lw / (2 * Math.PI) + n;
+  const M = rad * (357.5291 + 0.98560028 * ds);
+  const C = rad * (1.9148 * Math.sin(M) + 0.02 * Math.sin(2 * M) + 0.0003 * Math.sin(3 * M));
+  const L = M + C + rad * 102.9372 + Math.PI;
+  const dec = Math.asin(Math.sin(L) * Math.sin(e));
+  const Jnoon = J2000 + ds + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const w0 = Math.acos((Math.sin(rad * -0.83) - Math.sin(phi) * Math.sin(dec)) / (Math.cos(phi) * Math.cos(dec)));
+  const dsSet = 0.0009 + (w0 + lw) / (2 * Math.PI) + n;
+  const Jset = J2000 + dsSet + 0.0053 * Math.sin(M) - 0.0069 * Math.sin(2 * L);
+  const Jrise = Jnoon - (Jset - Jnoon);
+  return { sunrise: fromJulian(Jrise), sunset: fromJulian(Jset) };
+}
+// True between sunset and sunrise at the given coordinates (or, without a
+// known location, a fixed 7pm-6am fallback).
+function isNightTime(lat, lng, now = new Date()) {
+  if (lat == null || lng == null) {
+    const h = now.getHours();
+    return h >= 19 || h < 6;
+  }
+  const { sunrise, sunset } = sunTimesFor(now, lat, lng);
+  if (isNaN(sunrise.getTime()) || isNaN(sunset.getTime())) {
+    const h = now.getHours();
+    return h >= 19 || h < 6;
+  }
+  return now < sunrise || now >= sunset;
+}
+
 function plannerNextEmptyStopIndex() {
   if (!state.planner) return null;
   const idx = state.planner.stops.findIndex(s => !s.address.trim());
@@ -2399,8 +2463,12 @@ async function ensurePlannerMap() {
       if (!firstStop) { center = myLocation; zoom = 14; }
     } catch { /* keep the world-view fallback — user can still search or tap the map */ }
   }
+  // Best known fix for deciding day/night styling: live position, else the
+  // first resolved stop, else the last GPS fix from an in-progress drive.
+  const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
+  const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
   plannerMapInstance = new Map(canvas, {
-    center, zoom,
+    center, zoom, styles: night ? NIGHT_MAP_STYLE : [],
     disableDefaultUI: true, zoomControl: !driving, gestureHandling: driving ? "none" : "greedy",
   });
 
