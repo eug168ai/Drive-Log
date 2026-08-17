@@ -2711,7 +2711,7 @@ function renderQuickDriveSection() {
       <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
     </div>` : ""; })()}
 
-    <button id="startTripBtn" class="btn btn-amber" ${state.startDriveBusy ? "disabled" : ""}>${icons.play} ${state.startDriveBusy ? "Starting…" : "Start Drive"}</button>
+    <button id="startTripBtn" class="btn btn-amber" ${state.startDriveBusy || !state.startPointInput.trim() ? "disabled" : ""}>${icons.play} ${state.startDriveBusy ? "Starting…" : "Start Drive"}</button>
   </div>
   ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
 }
@@ -4027,6 +4027,17 @@ function armLocationMarquee(inputId) {
   if (m) m.arm();
 }
 
+// Start Drive must not be tappable with no start location at all — that's
+// how a drive ends up as "Unspecified" with no coordinates, leaving End
+// Drive with nothing to calculate distance from. Several inputs can set
+// startPointInput without going through a full render() (typing, tapping a
+// saved-address chip, autocomplete selection), so this syncs the button's
+// disabled state directly after each of them.
+function syncStartTripBtnEnabled() {
+  const btn = document.getElementById("startTripBtn");
+  if (btn && !state.startDriveBusy) btn.disabled = !state.startPointInput.trim();
+}
+
 // The active-trip "From X at HH:MM" line — the start point there is already
 // a confirmed, in-use address, so its preview just needs the same 3s pause.
 function attachActiveStartMarquee() {
@@ -4065,6 +4076,7 @@ function attachAppHandlers() {
     if (targetId === "startPointInput") {
       state.startPointInput = address;
       state.startLocArmed = true;
+      syncStartTripBtnEnabled();
     } else if (targetId === "preTripEndInput") {
       state.preTripEndLocation = address;
       state.endLocArmed = true;
@@ -4144,12 +4156,13 @@ function attachAppHandlers() {
 
       const spi = document.getElementById("startPointInput");
       if (spi) {
-        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; };
+        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; syncStartTripBtnEnabled(); };
         attachPlacesAutocomplete(spi, (desc) => {
           spi.value = desc;
           state.startPointInput = desc;
           state.startLocArmed = true;
           armLocationMarquee("startPointInput");
+          syncStartTripBtnEnabled();
         });
       }
       const locStartBtn = document.getElementById("locateStartBtn");
