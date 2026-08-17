@@ -418,9 +418,11 @@ function getDeviceRegionCode() {
 // Maps the IANA timezone city to its state/territory for the states we have
 // specific government-mandated hour figures for. ACT shares NSW's timezone
 // (Australia/Sydney) so it isn't separately distinguishable from timezone
-// alone — it inherits the NSW figure as a side effect. NT has no figure
-// (marked N/A) and falls back to the generic placeholder below, same as any
-// non-Australian region.
+// alone — it inherits the NSW figure as a side effect (NSW's 120/20 is close
+// to, but not exactly, ACT's real 100/10 — there's no way to tell the two
+// apart from timezone alone). NT genuinely has no mandated minimum, mapped
+// to a null entry below so it's shown as "not required" rather than silently
+// defaulting to the generic placeholder used for non-Australian regions.
 const AU_TIMEZONE_STATE = {
   "Australia/Sydney": "NSW", "Australia/Broken_Hill": "NSW",
   "Australia/Melbourne": "VIC",
@@ -428,6 +430,7 @@ const AU_TIMEZONE_STATE = {
   "Australia/Adelaide": "SA",
   "Australia/Perth": "WA",
   "Australia/Hobart": "TAS", "Australia/Currie": "TAS",
+  "Australia/Darwin": "NT",
 };
 const AU_STATE_LICENCE_HOURS = {
   NSW: { total: 120, night: 20 },
@@ -436,12 +439,13 @@ const AU_STATE_LICENCE_HOURS = {
   SA: { total: 75, night: 15 },
   WA: { total: 50, night: 5 },
   TAS: { total: 80, night: 15 },
+  NT: null, // no mandated minimum
 };
 function getSupervisedHourDefaults() {
   try {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
     const st = AU_TIMEZONE_STATE[timezone];
-    if (st && AU_STATE_LICENCE_HOURS[st]) return AU_STATE_LICENCE_HOURS[st];
+    if (st) return AU_STATE_LICENCE_HOURS[st];
   } catch (e) {}
   return { total: 50, night: 10 };
 }
@@ -2562,8 +2566,10 @@ async function loadData() {
   if (state.settings.lastSyncAt === undefined) state.settings.lastSyncAt = null;
   if (!state.settings.supervisedTotalHoursTarget || !state.settings.supervisedNightHoursTarget) {
     const d = getSupervisedHourDefaults();
-    if (!state.settings.supervisedTotalHoursTarget) state.settings.supervisedTotalHoursTarget = d.total;
-    if (!state.settings.supervisedNightHoursTarget) state.settings.supervisedNightHoursTarget = d.night;
+    if (d) {
+      if (!state.settings.supervisedTotalHoursTarget) state.settings.supervisedTotalHoursTarget = d.total;
+      if (!state.settings.supervisedNightHoursTarget) state.settings.supervisedNightHoursTarget = d.night;
+    }
   }
   if (state.settings.supervisedCompletionNotified === undefined) state.settings.supervisedCompletionNotified = false;
   if (state.settings.learnerName === undefined) state.settings.learnerName = "";
@@ -3855,14 +3861,15 @@ function renderSettingsTab() {
     <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
       <p class="settings-title" style="margin:0 0 10px;">${getDeviceRegionCode() === "au" ? "License Requirements (Learner's Permit)" : "Licence Requirements"}</p>
 
+      ${!getSupervisedHourDefaults() ? `<p class="settings-desc" style="margin:0 0 10px;">Not required in the NT — there's no government-mandated minimum. Set a personal goal below if you'd like to track one anyway.</p>` : ""}
       <div class="row-2">
         <div>
           <label class="field-label">Total Hours</label>
-          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget}" onfocus="setTimeout(() => this.select())" />
+          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget ?? ""}" placeholder="e.g. 100" onfocus="setTimeout(() => this.select())" />
         </div>
         <div>
           <label class="field-label">Night Hours</label>
-          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget}" onfocus="setTimeout(() => this.select())" />
+          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget ?? ""}" placeholder="e.g. 10" onfocus="setTimeout(() => this.select())" />
         </div>
       </div>
 
