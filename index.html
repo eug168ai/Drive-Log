@@ -1227,18 +1227,24 @@ async function useMyLocation() {
 
 async function autoFillCurrentLocation() {
   if (state.active || state.startPointInput || !mapsConfigured()) return;
+  let coords;
   try {
-    const coords = await getCurrentPosition();
-    const address = await reverseGeocode(coords.latitude, coords.longitude);
-    if (!state.active && !state.startPointInput) {
-      state.startPointInput = address;
-      state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-      state.startLocArmed = true;
-      render();
-    }
+    coords = await getCurrentPosition();
   } catch (e) {
-    // Silent fail — user can still type manually or tap the locate button.
+    return; // No GPS fix — user can still type manually or tap the locate button.
   }
+  // Reverse-geocoding is a separate, independently-failable step: if it
+  // errors (e.g. the Maps script hasn't finished loading yet), the GPS fix
+  // itself is still good and must not be thrown away — losing it here means
+  // the drive starts with no coordinates, which later breaks End Drive's
+  // distance calculation entirely.
+  let address = "";
+  try { address = await reverseGeocode(coords.latitude, coords.longitude); } catch (e) {}
+  if (state.active || state.startPointInput) return;
+  state.startPointInput = address || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
+  state.startCoords = { lat: coords.latitude, lng: coords.longitude };
+  state.startLocArmed = true;
+  render();
 }
 
 function escAttr(str) {
@@ -3224,7 +3230,7 @@ function renderDriveSummaryModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>Drive summary</h2>
+      <h2>Drive Summary</h2>
 
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
         <span class="tag ${trip.tag}">${labelFor(DRIVE_TYPES, trip.tag)}</span>
