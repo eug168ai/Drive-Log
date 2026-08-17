@@ -2324,11 +2324,12 @@ function renderSupervisedDashboardCard() {
   const sup = supervisedTotals();
   const totalTarget = state.settings.supervisedTotalHoursTarget || 75;
   const nightTarget = state.settings.supervisedNightHoursTarget || 15;
+  const dayTarget = Math.max(0, totalTarget - nightTarget);
   const completed = sup.hours >= totalTarget && sup.nightHours >= nightTarget;
   const pace = supervisedPaceInfo();
   const paceUnit = state.dashSupPaceUnit;
   const rateMin = pace.ratePerDayMin != null ? (paceUnit === "week" ? pace.ratePerDayMin * 7 : pace.ratePerDayMin) : null;
-  const dayPct = totalTarget ? Math.min(100, ((sup.hours - sup.nightHours) / totalTarget) * 100) : 0;
+  const dayPct = dayTarget ? Math.min(100, ((sup.hours - sup.nightHours) / dayTarget) * 100) : 0;
   const nightPct = nightTarget ? Math.min(100, (sup.nightHours / nightTarget) * 100) : 0;
 
   const period = state.dashSupPeriod, offset = state.dashSupOffset;
@@ -2367,7 +2368,7 @@ function renderSupervisedDashboardCard() {
       <div class="hdr">Day Hours</div>
       <div class="pill-track">
         <div class="pill-fill" style="width:${dayPct}%;background:var(--amber);"></div>
-        <span class="pill-left">${formatHM(Math.max(0, totalTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
+        <span class="pill-left">${formatHM(Math.max(0, dayTarget - (sup.hours - sup.nightHours)) * 60)} left</span>
         <span class="pill-count">${Math.round(dayPct)}%</span>
       </div>
     </div>
