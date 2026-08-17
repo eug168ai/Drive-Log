@@ -257,19 +257,31 @@ window.gm_authFailure = function () {
   render();
 };
 
+// Cached promise so every geocoding/routing/places call can simply await
+// "the script is ready" instead of racing it — app init calls this once,
+// fire-and-forget, but autoFillCurrentLocation() and friends run at nearly
+// the same moment and would otherwise see google.maps as not-yet-defined
+// and give up immediately (showing raw coordinates instead of an address).
+let googleMapsScriptPromise = null;
 function loadGoogleMapsScript() {
-  if (!mapsConfigured()) return;
-  if (document.getElementById("googleMapsScript")) return;
-  const script = document.createElement("script");
-  script.id = "googleMapsScript";
-  script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
-  script.async = true;
-  script.defer = true;
-  script.onerror = () => {
-    state.mapsAuthError = "Google Maps script failed to load — check your connection or the API key setup.";
-    render();
-  };
-  document.head.appendChild(script);
+  if (!mapsConfigured()) return Promise.reject(new Error("Location lookup isn't set up for this app yet."));
+  if (!googleMapsScriptPromise) {
+    googleMapsScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.id = "googleMapsScript";
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        state.mapsAuthError = "Google Maps script failed to load — check your connection or the API key setup.";
+        render();
+        reject(new Error("Google Maps script failed to load."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return googleMapsScriptPromise;
 }
 
 let jsPDFLoadingPromise = null;
@@ -288,7 +300,8 @@ function loadJsPDF() {
 }
 
 let placesLibraryPromise = null;
-function getPlacesLibrary() {
+async function getPlacesLibrary() {
+  try { await loadGoogleMapsScript(); } catch (e) { return null; }
   if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
   if (!placesLibraryPromise) placesLibraryPromise = google.maps.importLibrary("places");
   return placesLibraryPromise;
@@ -649,7 +662,7 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
   const hide = () => { dropdown.innerHTML = ""; dropdown.style.display = "none"; };
   const search = debounce(async () => {
     if (!mapsConfigured()) return;
-    const libraryPromise = getPlacesLibrary();
+    const library = await getPlacesLibrary();
     const query = inputEl.value.trim();
     if (query.length < 3) { hide(); return; }
     const savedMatches = savedAddressList().filter(address => {
@@ -666,9 +679,9 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
       });
       return;
     }
-    if (!libraryPromise) { hide(); return; }
+    if (!library) { hide(); return; }
     try {
-      const { AutocompleteSuggestion, AutocompleteSessionToken } = await libraryPromise;
+      const { AutocompleteSuggestion, AutocompleteSessionToken } = library;
       const request = { input: query, sessionToken: new AutocompleteSessionToken() };
       const region = getDeviceRegionCode();
       if (region) request.includedRegionCodes = [region];
@@ -1165,16 +1178,17 @@ function getCurrentPosition() {
 }
 
 let geocodingLibraryPromise = null;
-function getGeocodingLibrary() {
+async function getGeocodingLibrary() {
+  try { await loadGoogleMapsScript(); } catch (e) { return null; }
   if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
   if (!geocodingLibraryPromise) geocodingLibraryPromise = google.maps.importLibrary("geocoding");
   return geocodingLibraryPromise;
 }
 
 async function reverseGeocode(lat, lng, fullAddress) {
-  const libraryPromise = getGeocodingLibrary();
-  if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
-  const { Geocoder } = await libraryPromise;
+  const library = await getGeocodingLibrary();
+  if (!library) throw new Error("Location lookup isn't ready yet — try again in a moment.");
+  const { Geocoder } = library;
   const geocoder = new Geocoder();
   let response;
   try {
@@ -1303,16 +1317,17 @@ async function addRecentLocations(locs) {
 }
 
 let routesLibraryPromise = null;
-function getRoutesLibrary() {
+async function getRoutesLibrary() {
+  try { await loadGoogleMapsScript(); } catch (e) { return null; }
   if (!window.google || !window.google.maps || typeof google.maps.importLibrary !== "function") return null;
   if (!routesLibraryPromise) routesLibraryPromise = google.maps.importLibrary("routes");
   return routesLibraryPromise;
 }
 
 async function estimateRoute(origin, destination) {
-  const libraryPromise = getRoutesLibrary();
-  if (!libraryPromise) throw new Error("Distance lookup isn't ready yet — try again in a moment.");
-  const { DistanceMatrixService } = await libraryPromise;
+  const library = await getRoutesLibrary();
+  if (!library) throw new Error("Distance lookup isn't ready yet — try again in a moment.");
+  const { DistanceMatrixService } = library;
   const service = new DistanceMatrixService();
   return new Promise((resolve, reject) => {
     service.getDistanceMatrix({
@@ -1420,9 +1435,9 @@ async function beginEndDrive() {
 let plannerDirectionsResult = null;
 
 async function forwardGeocode(address) {
-  const libraryPromise = getGeocodingLibrary();
-  if (!libraryPromise) throw new Error("Location lookup isn't ready yet — try again in a moment.");
-  const { Geocoder } = await libraryPromise;
+  const library = await getGeocodingLibrary();
+  if (!library) throw new Error("Location lookup isn't ready yet — try again in a moment.");
+  const { Geocoder } = library;
   const geocoder = new Geocoder();
   let response;
   try {
@@ -1603,9 +1618,9 @@ async function runPlannerPreview() {
   if (p.stops.some(s => !s.address.trim())) { p.previewError = "Set every stop's location first."; render(); return; }
   p.previewing = true; p.previewError = ""; render();
   try {
-    const libraryPromise = getRoutesLibrary();
-    if (!libraryPromise) throw new Error("Directions service isn't ready yet — try again in a moment.");
-    const { DirectionsService } = await libraryPromise;
+    const library = await getRoutesLibrary();
+    if (!library) throw new Error("Directions service isn't ready yet — try again in a moment.");
+    const { DirectionsService } = library;
     const service = new DirectionsService();
     const locFor = (s) => s.lat != null ? { lat: s.lat, lng: s.lng } : resolveSavedAddress(s.address);
     const origin = locFor(p.stops[0]);
