@@ -1305,14 +1305,35 @@ function attachTimeInput(el, set) {
 }
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-function getCurrentPosition() {
+// A single getCurrentPosition() call often returns the device's first
+// available fix — frequently a coarse Wi-Fi/cell-tower estimate (accuracy
+// in the hundreds of metres) rather than a real GPS lock, which can take a
+// few seconds longer to acquire. watchPosition() keeps delivering updates
+// as the fix improves, so this watches for up to maxWaitMs and returns the
+// most accurate reading seen, resolving early the moment one is "good
+// enough" (accuracy <= desiredAccuracyM).
+function getCurrentPosition({ desiredAccuracyM = 50, maxWaitMs = 8000 } = {}) {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) return reject(new Error("Location isn't available on this device."));
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve(pos.coords),
-      () => reject(new Error("Couldn't get your location — check location permission for this site.")),
-      { enableHighAccuracy: true, timeout: 10000 }
+    let best = null;
+    let settled = false;
+    const watchId = navigator.geolocation.watchPosition(
+      pos => {
+        if (!best || pos.coords.accuracy < best.accuracy) best = pos.coords;
+        if (pos.coords.accuracy <= desiredAccuracyM) finish();
+      },
+      () => { if (!best) finish(); },
+      { enableHighAccuracy: true, timeout: maxWaitMs, maximumAge: 0 }
     );
+    const timer = setTimeout(finish, maxWaitMs);
+    function finish() {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      navigator.geolocation.clearWatch(watchId);
+      if (best) resolve(best);
+      else reject(new Error("Couldn't get your location — check location permission for this site."));
+    }
   });
 }
 
