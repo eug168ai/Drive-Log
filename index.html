@@ -268,7 +268,7 @@
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
   .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0;}
-  .planner-quick-estimate{flex:1;min-width:0;text-align:center;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .planner-saved-list{max-height:min(52vh, 380px);overflow-y:auto;padding-right:2px;}
 
@@ -989,7 +989,6 @@ const state = {
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
     unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 500,
-    autoPauseStationaryMinutes: 5,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
@@ -2068,7 +2067,6 @@ const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it 
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
-const LIVE_STATIONARY_MOVE_M = 10;   // fix-to-fix movement below this doesn't count as "still driving", for auto-pause
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2121,11 +2119,29 @@ let liveDrive = null;
 let liveWatchId = null;
 let liveTickerId = null;
 
+// Opens Google Maps (app on mobile, maps.google.com in a new tab on
+// desktop) with the full planned route pre-filled — real turn-by-turn
+// voice navigation happens there, running in parallel to this app's own
+// live GPS timer/distance tracking underneath.
+function launchGoogleMapsNavigation(p) {
+  const fmt = s => `${s.lat},${s.lng}`;
+  const params = new URLSearchParams({
+    api: "1", origin: fmt(p.stops[0]), destination: fmt(p.stops[p.stops.length - 1]), travelmode: "driving",
+  });
+  const waypoints = p.stops.slice(1, -1).map(fmt);
+  if (waypoints.length) params.set("waypoints", waypoints.join("|"));
+  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank", "noopener");
+}
+
 async function startLiveDrive() {
   const p = state.planner;
   if (!p || !plannerDirectionsResult) return;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
   if (!navigator.geolocation) { p.previewError = "Location isn't available on this device."; render(); return; }
+
+  // Fired synchronously, before any await, so the browser still counts
+  // this as a direct response to the tap and doesn't block the popup.
+  launchGoogleMapsNavigation(p);
 
   let firstFix;
   try { firstFix = await getCurrentPosition(); }
@@ -2141,7 +2157,7 @@ async function startLiveDrive() {
     legDistanceM: 0,
     completedLegs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
-    paused: false, pausedAt: null, autoPaused: false, lastMovementAt: Date.now(),
+    paused: false, pausedAt: null,
   };
   await persistLiveDriveSnapshot();
 
@@ -2160,11 +2176,10 @@ async function startLiveDrive() {
 // forward by however long the pause lasted, so every downstream "Date.now()
 // - startedAt" duration calc naturally excludes the paused interval without
 // needing a separate running total to subtract everywhere.
-function pauseLiveDrive(auto) {
+function pauseLiveDrive() {
   if (!liveDrive || liveDrive.paused) return;
   liveDrive.paused = true;
   liveDrive.pausedAt = Date.now();
-  liveDrive.autoPaused = !!auto;
   persistLiveDriveSnapshot();
   render();
 }
@@ -2175,8 +2190,6 @@ function resumeLiveDrive() {
   liveDrive.legStartedAt += pausedMs;
   liveDrive.paused = false;
   liveDrive.pausedAt = null;
-  liveDrive.autoPaused = false;
-  liveDrive.lastMovementAt = Date.now();
   persistLiveDriveSnapshot();
   render();
 }
@@ -2217,11 +2230,10 @@ function handleLiveFix(pos) {
   updateLiveMarker(lat, lng, heading);
 
   // Paused: keep the marker/position current so resuming isn't stale, but
-  // don't count this fix toward distance, steps, arrival, or auto-pause.
+  // don't count this fix toward distance, steps, or arrival.
   if (liveDrive.paused) { updateLiveDriveDOM(); return; }
 
   if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
-  if (prev && deltaM > LIVE_STATIONARY_MOVE_M) liveDrive.lastMovementAt = Date.now();
 
   let step = liveDrive.steps[liveDrive.stepIdx];
   while (step && step.legIdx === liveDrive.legIdx && haversineMeters(lat, lng, step.endLat, step.endLng) < LIVE_STEP_ADVANCE_M) {
@@ -2314,15 +2326,6 @@ function startLiveTicker() {
   stopLiveTicker();
   liveTickerId = setInterval(() => {
     if (!liveDrive) return;
-    // Runs every second regardless of GPS fix cadence, so stationary
-    // auto-pause still fires even when fixes go quiet while parked.
-    if (!liveDrive.paused) {
-      const autoPauseMin = Number(state.settings.autoPauseStationaryMinutes) || 0;
-      if (autoPauseMin > 0 && Date.now() - liveDrive.lastMovementAt >= autoPauseMin * 60000) {
-        pauseLiveDrive(true);
-        return;
-      }
-    }
     if (liveDrive.paused) return; // elapsed display stays frozen while paused
     const el = document.getElementById("plannerElapsedVal");
     if (!el) return;
@@ -2425,7 +2428,7 @@ async function resumeLiveDriveIfAny() {
     legDistanceM: saved.legDistanceM || 0,
     completedLegs: saved.completedLegs || [],
     lastFix: null,
-    paused: !!saved.paused, pausedAt: saved.pausedAt || null, autoPaused: false, lastMovementAt: Date.now(),
+    paused: !!saved.paused, pausedAt: saved.pausedAt || null,
   };
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
@@ -2757,7 +2760,6 @@ async function loadData() {
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
   if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 500;
-  if (state.settings.autoPauseStationaryMinutes === undefined) state.settings.autoPauseStationaryMinutes = 5;
   if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
@@ -4144,16 +4146,6 @@ function renderSettingsTab() {
       </div>
       <p class="settings-desc" style="margin:4px 0 0;">How close a Drive Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
       ` : ""}
-    </div>
-    <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;">
-      <div>
-        <p class="settings-title" style="margin:0;">Auto-pause Live Drive</p>
-        <p class="settings-desc" style="margin:2px 0 0;">Pauses the timer after this long stationary. 0 = off.</p>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-        <input id="autoPauseMinutesInput" class="input mono" type="number" min="0" max="60" step="1" value="${state.settings.autoPauseStationaryMinutes}" style="width:60px;padding:6px 8px;text-align:right;" onfocus="setTimeout(() => this.select())" />
-        <span class="settings-desc" style="margin:0;">min</span>
-      </div>
     </div>
   </div>
 
@@ -6008,7 +6000,7 @@ function attachAppHandlers() {
       const endDriveBtn = document.getElementById("plannerEndDriveBtn");
       if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
-      if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(false); };
+      if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
       updateLiveDriveDOM();
     }
 
@@ -6068,14 +6060,6 @@ function attachAppHandlers() {
     if (routeMatchRadiusInput) routeMatchRadiusInput.onchange = async (e) => {
       const val = Math.max(50, Math.min(2000, parseInt(e.target.value, 10) || 300));
       state.settings.routeMatchRadius = val;
-      e.target.value = val;
-      await storageSet(SETTINGS_KEY, state.settings);
-    };
-
-    const autoPauseMinutesInput = document.getElementById("autoPauseMinutesInput");
-    if (autoPauseMinutesInput) autoPauseMinutesInput.onchange = async (e) => {
-      const val = Math.max(0, Math.min(60, parseInt(e.target.value, 10) || 0));
-      state.settings.autoPauseStationaryMinutes = val;
       e.target.value = val;
       await storageSet(SETTINGS_KEY, state.settings);
     };
