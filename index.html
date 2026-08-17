@@ -18,11 +18,13 @@
     --bg:#14171C; --bg-rgb:20,23,28; --surface:#1E2229; --surface-rgb:30,34,41; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
     --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#F7CB89;
+    --grey-card:#27272A; --grey-border:#3F3F46; --grey-tag-bg:#3F3F46; --grey-tag-text:#D4D4D8; --grey-btn:#52525B; --grey-btn-text:#F4F4F5;
   }
   html[data-theme="light"]{
     --bg:#EEF0F3; --bg-rgb:238,240,243; --surface:#FFFFFF; --surface-rgb:255,255,255; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
     --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#85540B;
+    --grey-card:#F4F4F5; --grey-border:#D4D4D8; --grey-tag-bg:#E4E4E7; --grey-tag-text:#52525B; --grey-btn:#71717A; --grey-btn-text:#FFFFFF;
   }
   /* Accent theme colors — override --amber (primary) / --cost (secondary
      series) / --time (third series) only; amber's own values above are the
@@ -111,6 +113,7 @@
   .btn-amber{background:var(--amber);color:var(--bg);}
   .btn-stop{background:var(--work);color:#fff;}
   .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px;}
+  .btn-grey{background:var(--grey-btn);color:var(--grey-btn-text);}
   .btn:disabled{opacity:.4;cursor:not-allowed;}
   .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10px;
        font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
@@ -120,6 +123,10 @@
   .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
             background:rgba(var(--amber-rgb),.18);color:var(--amber);border:1px solid rgba(var(--amber-rgb),.35);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
+  .construction-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+            background:var(--grey-tag-bg);color:var(--grey-tag-text);border:1px solid var(--grey-border);
+            border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
+  .card-construction{background:var(--grey-card);border-color:var(--grey-border);}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
@@ -3511,10 +3518,9 @@ function renderPlanTab() {
 
   if (!p) {
     const plannerEntry = state.active ? "" : `
-    <div class="card">
-      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="beta-tag">Beta</span></p>
-      <p class="settings-desc" style="margin:0 0 12px;">Plan a route with stops, tag each leg Personal or Business, then save it or start driving.</p>
-      <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} New Route</button>
+    <div class="card card-construction">
+      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="construction-tag">Under Construction</span></p>
+      <button type="button" id="newPlannerRouteBtn" class="btn btn-grey">${icons.route} New Drive</button>
     </div>
     ${renderSavedRoutesList()}`;
     return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
