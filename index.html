@@ -232,19 +232,21 @@
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
-    padding:calc(env(safe-area-inset-top) + 14px) 14px 16px;
+    padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.95) 0%, rgba(var(--bg-rgb),.8) 65%, transparent 100%);}
   .planner-back{display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;}
   .planner-back:active{opacity:.7;}
   .planner-back .chevron{width:30px;height:30px;border-radius:50%;background:rgba(var(--surface-rgb),.9);
     border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .planner-back .chevron .icon{width:16px;height:16px;}
-  .planner-back b{display:block;font-size:14.5px;font-weight:700;}
-  .planner-back span{display:block;font-size:10.5px;color:var(--muted);margin-top:1px;}
+  .planner-back-text{display:flex;flex:1;align-items:baseline;gap:6px;min-width:0;}
+  .planner-back-text b{display:inline-flex;align-items:center;gap:5px;font-size:14.5px;font-weight:700;white-space:nowrap;flex-shrink:0;}
+  .planner-back-text span{flex:1;min-width:0;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .planner-field-block{margin-bottom:6px;}
   .planner-field-row{display:flex;align-items:center;gap:6px;}
-  .planner-field-row .input-icon{flex:1;background:rgba(var(--surface-rgb),.94);box-shadow:0 6px 18px rgba(0,0,0,.25);}
+  .planner-field-row .input-icon{flex:1;background:rgba(var(--surface-rgb),.55);box-shadow:0 6px 18px rgba(0,0,0,.2);padding:0 8px;}
+  .planner-field-row .input-icon input{padding:6px 0;}
   .planner-field-row .input-icon .icon{color:var(--muted);}
   .planner-field-row .input-icon.start .icon{color:var(--amber);}
   .planner-field-row .input-icon.stop .icon{color:var(--blue);}
@@ -253,7 +255,7 @@
     color:var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-remove-btn:hover{color:var(--work);background:rgba(224,100,44,.12);}
 
-  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 2px 0;}
+  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 0 0;}
   .planner-pill-row.show{display:flex;}
   .planner-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border-radius:999px;
     font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--muted);
@@ -263,10 +265,10 @@
   .planner-chip-more{display:inline-flex;align-items:center;white-space:nowrap;padding:5px 11px;border-radius:999px;
     font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--muted);
     background:rgba(var(--surface-rgb),.9);cursor:pointer;flex-shrink:0;width:auto;}
-  .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
+  .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:6px 12px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 2px 0;}
+  .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 0;}
   .planner-quick-estimate{font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
@@ -275,28 +277,28 @@
   .planner-recenter-fab .icon{width:18px;height:18px;}
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
-    padding:14px 14px calc(14px + env(safe-area-inset-bottom));
+    padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);}
   .planner-route-summary{background:rgba(var(--surface-rgb),.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:14px;
-    padding:12px 14px;margin-bottom:10px;max-height:46vh;overflow-y:auto;}
+    padding:10px 12px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
   .planner-route-badge{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
-    text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
+    text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;}
   .planner-route-badge .icon{width:13px;height:13px;}
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
-  .planner-route-metrics .metric .v{font-size:17px;font-weight:700;}
+  .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
   .planner-route-metrics .metric .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
-  .planner-route-metrics .div{width:1px;height:26px;background:var(--border);}
-  .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:9px;padding-top:9px;
+  .planner-route-metrics .div{width:1px;height:24px;background:var(--border);}
+  .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:7px;padding-top:7px;
     border-top:1px solid var(--border);color:var(--work);}
   .planner-hazard-row .icon{width:15px;height:15px;flex-shrink:0;color:var(--work);}
   .planner-hazard-row .route-clip{color:var(--work);font-size:12px;font-weight:600;}
-  .planner-legtags{margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
-  .planner-legtags .planner-leg-row{padding:6px 0;}
+  .planner-legtags{margin-top:7px;padding-top:7px;border-top:1px solid var(--border);}
+  .planner-legtags .planner-leg-row{padding:5px 0;}
 
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
-    padding:calc(env(safe-area-inset-top) + 14px) 14px 16px;
+    padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.97) 0%, rgba(var(--bg-rgb),.82) 80%, transparent 100%);
     display:flex;align-items:center;gap:14px;}
   .planner-turn-icon{width:52px;height:52px;border-radius:14px;background:var(--amber);color:var(--bg);flex-shrink:0;
@@ -311,7 +313,7 @@
   .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
-    padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+    padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);
     display:flex;align-items:center;gap:14px;}
   .planner-eta-metrics{display:flex;gap:16px;flex:1;}
@@ -3546,7 +3548,7 @@ function renderPlanTab() {
     <div class="planner-topbar">
       <div class="planner-back" id="plannerBackBtn">
         <span class="chevron">${icons.chevronLeft}</span>
-        <div><b>Drive Planner</b><span>Tap to return to Drive</span></div>
+        <div class="planner-back-text"><b>${icons.car} Drive Log</b><span>Tap to return to Drive</span></div>
       </div>
       ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
       ${mapsError}
