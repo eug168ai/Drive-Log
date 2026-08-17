@@ -948,6 +948,7 @@ const state = {
   preTripEstimateError: "",
   locatingStart: false,
   locateError: "",
+  locateDiagnostic: null,
   startDriveBusy: false,
   endDriveBusy: false,
   endDriveError: "",
@@ -1394,6 +1395,8 @@ async function useMyLocation() {
     state.startPointInput = address;
     state.startCoords = { lat: coords.latitude, lng: coords.longitude };
     state.startLocArmed = true;
+    const nearest = await nearestSavedAddressDistance(coords.latitude, coords.longitude).catch(() => null);
+    state.locateDiagnostic = `GPS accuracy ~${Math.round(coords.accuracy)}m${nearest ? ` · Nearest saved (${nearest.name}) is ${Math.round(nearest.meters)}m away` : ""}`;
   } catch (e) {
     state.locateError = e.message || "Couldn't get your location.";
   }
@@ -1419,6 +1422,8 @@ async function autoFillCurrentLocation() {
   state.startPointInput = address || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
   state.startCoords = { lat: coords.latitude, lng: coords.longitude };
   state.startLocArmed = true;
+  const nearest = await nearestSavedAddressDistance(coords.latitude, coords.longitude).catch(() => null);
+  state.locateDiagnostic = `GPS accuracy ~${Math.round(coords.accuracy)}m${nearest ? ` · Nearest saved (${nearest.name}) is ${Math.round(nearest.meters)}m away` : ""}`;
   render();
 }
 
@@ -1655,6 +1660,21 @@ async function resolveLocationLabel(lat, lng) {
   const saved = await matchSavedAddressLabel(lat, lng).catch(() => null);
   if (saved) return saved;
   try { return await reverseGeocode(lat, lng); } catch (e) { return ""; }
+}
+
+// Temporary diagnostic: tells apart a poor GPS fix from a saved address
+// that's geocoding to the wrong spot entirely, by surfacing the actual
+// numbers instead of guessing. Distance is measured against whichever
+// saved address is nearest, regardless of the match radius.
+async function nearestSavedAddressDistance(lat, lng) {
+  let nearest = null;
+  for (const entry of savedAddressList()) {
+    const coords = await resolveSavedAddressCoords(entry.address);
+    if (!coords) continue;
+    const meters = haversineMeters(lat, lng, coords.lat, coords.lng);
+    if (!nearest || meters < nearest.meters) nearest = { name: entry.name, meters, lat: coords.lat, lng: coords.lng };
+  }
+  return nearest;
 }
 
 // Suggests a Personal/Business tag for a start->end pair from geographic
@@ -3467,6 +3487,7 @@ function renderQuickDriveSection() {
       <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
     </div>
     ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
+    ${state.locateDiagnostic ? `<p class="settings-desc" style="margin:-10px 0 14px;">${escAttr(state.locateDiagnostic)}</p>` : ""}
 
     <label class="field-label">End Location</label>
     ${renderSavedAddressChips("preTripEndInput")}
@@ -5479,7 +5500,7 @@ function attachAppHandlers() {
 
       const spi = document.getElementById("startPointInput");
       if (spi) {
-        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; syncStartTripBtnEnabled(); };
+        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; state.locateDiagnostic = null; syncStartTripBtnEnabled(); };
         attachPlacesAutocomplete(spi, (desc) => {
           spi.value = desc;
           state.startPointInput = desc;
@@ -5567,6 +5588,7 @@ function attachAppHandlers() {
         state.active = trip;
         state.startPointInput = "";
         state.startCoords = null;
+        state.locateDiagnostic = null;
         state.preTripEndLocation = "";
         state.preTripDistance = null;
         state.preTripDuration = null;
