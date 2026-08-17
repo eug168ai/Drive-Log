@@ -59,6 +59,7 @@
                   color:var(--normal);border:1px solid rgba(76,159,112,.3);padding:3px 10px;
                   border-radius:999px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
   .brand{display:flex;align-items:center;gap:8px;}
+  .brand-logo{width:34px;height:34px;border-radius:9px;flex-shrink:0;}
   .brand h1{font-size:18px;font-weight:700;letter-spacing:-0.02em;margin:0;line-height:1;}
   .brand p{color:var(--faint);font-size:12px;margin:2px 0 0;}
   .odo-label{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;text-align:center;}
@@ -226,6 +227,18 @@
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
+    /* Keep the odometer/gear beside the brand instead of wrapping under it
+       on narrower phones (e.g. Samsung One UI's default screen-zoom setting
+       renders at ~360-380 CSS px instead of the device's full 412). */
+    .wrap{padding:12px 12px 12px;}
+    .header{gap:6px;}
+    .brand{gap:6px;}
+    .brand-logo{width:28px;height:28px;}
+    .brand h1{font-size:16px;}
+    .stats-row{gap:6px;}
+    .odo-label{font-size:9px;letter-spacing:.03em;}
+    .odo{padding:4px 5px;}
+    .odo span{font-size:14px;width:0.75ch;}
   }
 </style>
 </head>
@@ -2848,7 +2861,7 @@ function renderApp() {
   <div class="wrap">
     <div id="appHomeBtn" class="header" style="cursor:pointer;" title="Go to Drive">
       <div class="brand" style="align-items:flex-start;">
-        <img src="icons/icon-192.png?v=2" alt="Drive Log" style="width:34px;height:34px;border-radius:9px;flex-shrink:0;" />
+        <img src="icons/icon-192.png?v=2" alt="Drive Log" class="brand-logo" />
         <div><h1>Drive Log</h1><p>${state.profile.name}</p></div>
       </div>
       <div class="stats-row">
@@ -2866,7 +2879,7 @@ function renderApp() {
 
     <div class="tabs">
       <button class="tab-btn ${state.tab === "drive" ? "active" : ""}" data-tab="drive">Drive</button>
-      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">History</button>
+      <button class="tab-btn ${state.tab === "history" ? "active" : ""}" data-tab="history">Log</button>
     </div>
 
     ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
