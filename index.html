@@ -814,6 +814,7 @@ const state = {
   endDriveBusy: false,
   endDriveError: "",
   driveSummary: null,
+  confirmingCancelDrive: false,
   businessForm: null,
   filterTag: "all",
   filterFrom: "",
@@ -2774,7 +2775,7 @@ function renderApp() {
     </div>
 
     ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
-    ${state.driveSummary ? renderDriveSummaryModal() : ""}
+    ${state.confirmingCancelDrive ? renderCancelDriveModal() : state.driveSummary ? renderDriveSummaryModal() : ""}
     ${state.businessForm ? renderBusinessDetailsModal() : ""}
     ${state.pendingTrip ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
@@ -3203,6 +3204,20 @@ const TRAFFIC_LEVELS = [{ v: "light", l: "Light" }, { v: "medium", l: "Medium" }
 // Display labels only — the underlying "normal"/"work" values stay as-is
 // in storage, settings keys and data attributes for backward compatibility.
 const DRIVE_TYPES = [{ v: "normal", l: "Personal" }, { v: "work", l: "Business" }, { v: "supervised", l: "Supervised" }];
+
+function renderCancelDriveModal() {
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2 style="color:var(--work);">Cancel this drive?</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">This drive will not be saved. This action can't be undone.</p>
+      <div class="row-2">
+        <button id="keepDriveBtn" class="btn btn-ghost">Keep Drive</button>
+        <button id="confirmCancelDriveBtn" class="btn btn-stop">Discard Drive</button>
+      </div>
+    </div>
+  </div>`;
+}
 
 function renderDriveSummaryModal() {
   const { trip } = state.driveSummary;
@@ -4717,10 +4732,29 @@ function attachAppHandlers() {
     };
   }
 
-  if (state.driveSummary) {
+  if (state.confirmingCancelDrive) {
+    const keepBtn = document.getElementById("keepDriveBtn");
+    if (keepBtn) keepBtn.onclick = () => {
+      state.confirmingCancelDrive = false;
+      render();
+    };
+
+    const confirmCancelBtn = document.getElementById("confirmCancelDriveBtn");
+    if (confirmCancelBtn) confirmCancelBtn.onclick = async () => {
+      state.confirmingCancelDrive = false;
+      state.driveSummary = null;
+      state.active = null;
+      state.startPointInput = "";
+      state.endDriveError = "";
+      await storageDelete(ACTIVE_KEY);
+      stopTicker();
+      autoFillCurrentLocation();
+      render();
+    };
+  } else if (state.driveSummary) {
     const cancelBtn = document.getElementById("cancelDriveSummaryBtn");
     if (cancelBtn) cancelBtn.onclick = () => {
-      state.driveSummary = null;
+      state.confirmingCancelDrive = true;
       render();
     };
 
