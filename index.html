@@ -3098,11 +3098,11 @@ function renderSettingsTab() {
       <div class="row-2">
         <div>
           <label class="field-label">Total Hours</label>
-          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget}" />
+          <input id="supHoursTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedTotalHoursTarget}" onfocus="setTimeout(() => this.select())" />
         </div>
         <div>
           <label class="field-label">Night Hours</label>
-          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget}" />
+          <input id="supNightTargetInput" class="input mono" inputmode="numeric" style="text-align:center;" value="${state.settings.supervisedNightHoursTarget}" onfocus="setTimeout(() => this.select())" />
         </div>
       </div>
 
@@ -3123,7 +3123,7 @@ function renderSettingsTab() {
       <div style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:10px;">
         <span class="settings-desc" style="margin:0;">Route match radius</span>
         <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
-          <input id="routeMatchRadiusInput" class="input mono" type="number" min="50" max="2000" step="50" value="${state.settings.routeMatchRadius}" style="width:80px;padding:6px 8px;text-align:right;" />
+          <input id="routeMatchRadiusInput" class="input mono" type="number" min="50" max="2000" step="50" value="${state.settings.routeMatchRadius}" style="width:80px;padding:6px 8px;text-align:right;" onfocus="setTimeout(() => this.select())" />
           <span class="settings-desc" style="margin:0;">m</span>
         </div>
       </div>
@@ -3206,11 +3206,11 @@ function renderSettingsTab() {
       <div class="row-2" style="margin-bottom:6px;">
         <div>
           <label class="field-label">Fuel Usage<br>(${state.settings.unit === "mi" ? "MPG" : "L/100km"})</label>
-          <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" />
+          <input id="fuelRateInput" class="input" inputmode="decimal" placeholder="${state.settings.unit === "mi" ? "e.g. 32" : "e.g. 7.5"}" value="${escAttr(state.settings.fuelRate)}" onfocus="setTimeout(() => this.select())" />
         </div>
         <div>
           <label class="field-label">Fuel Price<br>(per ${state.settings.unit === "mi" ? "gallon" : "litre"})</label>
-          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" />
+          <input id="fuelPriceInput" class="input" inputmode="decimal" placeholder="e.g. 1.85" value="${escAttr(state.settings.fuelPrice)}" onfocus="setTimeout(() => this.select())" />
         </div>
       </div>
       <p class="settings-desc" style="margin:6px 0 0;">Estimates each drive's cost from these figures.</p>
@@ -3434,22 +3434,22 @@ function renderEditTripModal() {
 
       <label class="field-label">Start / end time (24hr)</label>
       <div class="field-row" style="margin-bottom:14px;">
-        <input id="editStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.startTime))}" />
+        <input id="editStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.startTime))}" onfocus="setTimeout(() => this.select())" />
         <span class="settings-desc">–</span>
-        <input id="editEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.endTime))}" />
+        <input id="editEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(formatTime24(t.endTime))}" onfocus="setTimeout(() => this.select())" />
       </div>
 
       <label class="field-label">Start Location</label>
-      <input id="editStartPoint" class="input" value="${escAttr(t.startPoint)}" style="margin-bottom:14px;" />
+      <input id="editStartPoint" class="input" value="${escAttr(t.startPoint)}" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
 
       <label class="field-label">End Location</label>
-      <input id="editEndPoint" class="input" value="${escAttr(t.endPoint)}" style="margin-bottom:14px;" />
+      <input id="editEndPoint" class="input" value="${escAttr(t.endPoint)}" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
 
       <label class="field-label">Purpose / notes (optional)</label>
-      <input id="editPurpose" class="input" value="${escAttr(t.purpose || "")}" placeholder="e.g. Client visit" style="margin-bottom:14px;" />
+      <input id="editPurpose" class="input" value="${escAttr(t.purpose || "")}" placeholder="e.g. Client visit" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
 
       <label class="field-label">Distance (${unitLabel()})</label>
-      <input id="editDistance" class="input" inputmode="decimal" value="${t.distance}" style="margin-bottom:14px;" />
+      <input id="editDistance" class="input" inputmode="decimal" value="${t.distance}" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
 
       <label class="field-label">Type</label>
       <div class="toggle-row" style="margin-bottom:${t.tag === "supervised" ? "14" : "20"}px;">
@@ -3594,7 +3594,7 @@ function renderOdometerPromptModal() {
         Enter your car's current odometer reading to reconcile it against your logged drives.
       </p>
       <label class="field-label">Current odometer (${unitLabel()})</label>
-      <input id="odometerReadingInput" class="input" inputmode="decimal" placeholder="0" value="${escAttr(p.value)}" style="margin-bottom:6px;" />
+      <input id="odometerReadingInput" class="input" inputmode="decimal" placeholder="0" value="${escAttr(p.value)}" style="margin-bottom:6px;" onfocus="setTimeout(() => this.select())" />
       ${p.error ? `<p class="err" style="margin:0 0 12px;">${p.error}</p>` : ""}
       <div class="row-2" style="margin-top:12px;">
         <button id="skipOdometerBtn" class="btn btn-ghost">Skip</button>
@@ -3647,11 +3647,11 @@ function renderFuelFillupModal() {
       <label class="field-label">Date</label>
       <input id="fillupDate" type="date" class="input" value="${f.date}" style="margin-bottom:14px;" />
       <label class="field-label">Odometer (${unitLabel()}) — optional</label>
-      <input id="fillupOdometer" class="input" inputmode="decimal" placeholder="e.g. 48250" value="${escAttr(f.odometer)}" style="margin-bottom:14px;" />
+      <input id="fillupOdometer" class="input" inputmode="decimal" placeholder="e.g. 48250" value="${escAttr(f.odometer)}" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
       <label class="field-label">${volLabel}</label>
-      <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" />
+      <input id="fillupAmount" class="input" inputmode="decimal" placeholder="0.0" value="${escAttr(f.amount)}" style="margin-bottom:14px;" onfocus="setTimeout(() => this.select())" />
       <label class="field-label">Total price paid</label>
-      <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" />
+      <input id="fillupPrice" class="input" inputmode="decimal" placeholder="0.00" value="${escAttr(f.price)}" style="margin-bottom:6px;" onfocus="setTimeout(() => this.select())" />
       <p class="settings-desc" style="margin:0 0 6px;">Always fill the tank completely — a partial fill throws off the usage figure.</p>
       ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2" style="margin-top:14px;">
@@ -3814,10 +3814,10 @@ function renderLogBookModal() {
       <p class="settings-desc" style="margin:0 0 16px;">Fills out the Daytime and Night-time driving hour tables from your supervised drive history. Print it and get the Learner's and Supervisor's signature boxes signed by hand — that part can't be done for you.</p>
 
       <label class="field-label">Learner's full name</label>
-      <input id="logBookName" class="input" style="margin-bottom:12px;" value="${escAttr(f.learnerName)}" placeholder="e.g. Jordan Smith" />
+      <input id="logBookName" class="input" style="margin-bottom:12px;" value="${escAttr(f.learnerName)}" placeholder="e.g. Jordan Smith" onfocus="setTimeout(() => this.select())" />
 
       <label class="field-label">Learner's permit number</label>
-      <input id="logBookPermitNo" class="input" style="margin-bottom:12px;" value="${escAttr(f.permitNo)}" placeholder="e.g. L1234567" />
+      <input id="logBookPermitNo" class="input" style="margin-bottom:12px;" value="${escAttr(f.permitNo)}" placeholder="e.g. L1234567" onfocus="setTimeout(() => this.select())" />
 
       <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;cursor:pointer;">
         <input type="checkbox" id="logBookForeign" ${f.hasForeignLicence ? "checked" : ""} style="width:16px;height:16px;accent-color:var(--amber);" />
@@ -3828,11 +3828,11 @@ function renderLogBookModal() {
       <div class="row-2" style="margin-bottom:12px;">
         <div>
           <label class="field-label">Country / State</label>
-          <input id="logBookForeignPlace" class="input" value="${escAttr(f.foreignCountryState)}" placeholder="e.g. UK" />
+          <input id="logBookForeignPlace" class="input" value="${escAttr(f.foreignCountryState)}" placeholder="e.g. UK" onfocus="setTimeout(() => this.select())" />
         </div>
         <div>
           <label class="field-label">Years held</label>
-          <input id="logBookForeignYears" class="input" type="number" min="0" step="1" value="${escAttr(f.foreignYearsHeld)}" />
+          <input id="logBookForeignYears" class="input" type="number" min="0" step="1" value="${escAttr(f.foreignYearsHeld)}" onfocus="setTimeout(() => this.select())" />
         </div>
       </div>
       <label class="field-label">Licence expiry date</label>
