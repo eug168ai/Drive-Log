@@ -257,10 +257,11 @@
   .planner-remove-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
     color:var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-remove-btn:hover{color:var(--work);background:rgba(224,100,44,.12);}
-  .planner-save-address-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
-    color:var(--amber);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-save-address-btn{flex-shrink:0;background:none;border:none;padding:4px;margin:0 -4px 0 2px;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-save-address-btn .icon{width:16px;height:16px;}
   .planner-save-address-btn:disabled{opacity:.3;cursor:not-allowed;}
+  .planner-field-row .input-icon .planner-save-address-btn .icon{color:var(--amber);}
 
   .planner-leg-toggle-row{display:flex;justify-content:center;margin:6px 0;}
   .planner-leg-business-btn{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:none;
@@ -3610,8 +3611,8 @@ function renderPlannerFieldBlock(stop, idx, total) {
           <input id="plannerStopInput-${idx}" class="plannerStopInput" data-stopidx="${idx}" placeholder="${placeholder}" value="${escAttr(stop.address)}" autocomplete="off" />
           <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
         </div>
+        <button type="button" class="planner-save-address-btn plannerSaveAddressBtn" data-stopidx="${idx}" title="${isSavedAddress ? "Saved address" : "Save this address"}" ${(stop.lat == null || isSavedAddress) ? "disabled" : ""}>${isSavedAddress ? icons.starFilled : icons.starOutline}</button>
       </div>
-      <button type="button" class="planner-save-address-btn plannerSaveAddressBtn" data-stopidx="${idx}" title="${isSavedAddress ? "Saved address" : "Save this address"}" ${(stop.lat == null || isSavedAddress) ? "disabled" : ""}>${isSavedAddress ? icons.starFilled : icons.starOutline}</button>
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
