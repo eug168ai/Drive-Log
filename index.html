@@ -232,7 +232,8 @@
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
-    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;}
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.7) 0%, transparent 100%);}
   .planner-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .planner-header .brand{cursor:pointer;}
   .planner-header .brand:active{opacity:.7;}
@@ -241,10 +242,13 @@
   .planner-header-icon .icon{width:19px;height:19px;}
   .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
+  .planner-header-star{color:var(--amber);}
+  .planner-header-star .icon{width:23px;height:23px;}
+  .planner-header-star.active{background:rgba(var(--amber-rgb),.15);border-radius:999px;}
 
   .planner-field-block{margin-bottom:6px;}
   .planner-field-row{display:flex;align-items:center;gap:6px;}
-  .planner-field-row .input-icon{flex:1;background:rgba(var(--surface-rgb),.55);box-shadow:0 6px 18px rgba(0,0,0,.2);padding:0 8px;}
+  .planner-field-row .input-icon{flex:1;background:rgba(var(--surface-rgb),.9);box-shadow:0 6px 18px rgba(0,0,0,.2);padding:0 8px;}
   .planner-field-row .input-icon input{padding:6px 0;}
   .planner-field-row .input-icon .icon{color:var(--muted);}
   .planner-field-row .input-icon.start .icon{color:var(--amber);}
@@ -253,6 +257,16 @@
   .planner-remove-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
     color:var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-remove-btn:hover{color:var(--work);background:rgba(224,100,44,.12);}
+  .planner-save-address-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
+    color:var(--amber);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-save-address-btn .icon{width:16px;height:16px;}
+  .planner-save-address-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+  .planner-leg-toggle-row{display:flex;justify-content:center;margin:6px 0;}
+  .planner-leg-business-btn{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:none;
+    border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-leg-business-btn .icon{width:15px;height:15px;}
+  .planner-leg-business-btn.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
 
   .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 0 0;}
   .planner-pill-row.show{display:flex;}
@@ -271,6 +285,7 @@
   .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   .planner-saved-list{max-height:min(52vh, 380px);overflow-y:auto;padding-right:2px;}
+  .planner-saved-list .card{background:rgba(var(--surface-rgb),.9);}
 
   .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
@@ -280,26 +295,26 @@
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);}
-  .planner-route-summary{background:rgba(var(--surface-rgb),.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  .planner-route-summary{background:rgba(var(--surface-rgb),.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:14px;
-    padding:10px 12px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
-  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;}
+    padding:8px 10px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
+  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;}
   .planner-route-badge-label{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.04em;}
   .planner-route-badge .icon{width:13px;height:13px;}
-  .planner-save-star{padding:2px;}
-  .planner-save-star .icon{width:15px;height:15px;}
+  .planner-save-star{padding:2px;color:var(--amber);}
+  .planner-save-star .icon{width:18px;height:18px;}
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
   .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
   .planner-route-metrics .metric .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
   .planner-route-metrics .div{width:1px;height:24px;background:var(--border);}
-  .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:7px;padding-top:7px;
+  .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:6px;padding-top:6px;
     border-top:1px solid var(--border);color:var(--work);}
   .planner-hazard-row .icon{width:15px;height:15px;flex-shrink:0;color:var(--work);}
   .planner-hazard-row .route-clip{color:var(--work);font-size:12px;font-weight:600;}
-  .planner-legtags{margin-top:7px;padding-top:7px;border-top:1px solid var(--border);}
-  .planner-legtags .planner-leg-row{padding:5px 0;}
+  .planner-legtags{margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
+  .planner-legtags .planner-leg-row{padding:4px 0;}
 
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
     padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
@@ -1025,6 +1040,7 @@ const state = {
   logEstimateForm: null,
   plannerLogForm: null,
   plannerSaveRouteForm: null,
+  plannerSaveAddressForm: null,
   savedAddresses: { home: "", work: "", other: [] },
   addingSavedOther: false,
   editingSavedOtherId: null,
@@ -1084,6 +1100,7 @@ const icons = {
   starOutline: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   starFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   pause: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`,
+  briefcase: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="M2 13h20"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1918,6 +1935,18 @@ function plannerSetLegTag(idx, tag) {
   render();
 }
 
+// Quick business-drive toggle shown inline between addresses while
+// building the route, ahead of the full Personal/Business toggle-row
+// that appears later in the route summary — both read/write the same
+// leg.tag so they always stay in sync with each other.
+function plannerToggleLegBusiness(idx) {
+  const leg = state.planner.legs[idx];
+  if (!leg) return;
+  if (leg.tag === "work") { leg.tag = null; leg.tagSource = null; }
+  else { leg.tag = "work"; leg.tagSource = "manual"; }
+  render();
+}
+
 async function runPlannerPreview() {
   const p = state.planner;
   if (!mapsConfigured()) { p.previewError = "Maps isn't set up for this app yet."; render(); return; }
@@ -1991,6 +2020,27 @@ async function unsavePlannerRoute() {
   state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== p.savedRouteId);
   p.savedRouteId = null;
   await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
+  render();
+}
+
+// The small star at the far right of each planner search box: prompts for
+// a name, then adds that stop's resolved address to Settings > Saved
+// Addresses ("Other") so it shows up as a chip next time.
+function openPlannerSaveAddressPrompt(idx) {
+  const p = state.planner;
+  const stop = p && p.stops[idx];
+  if (!stop || stop.lat == null) return;
+  state.plannerSaveAddressForm = { stopIdx: idx, name: "" };
+  render();
+}
+async function savePlannerStopAsAddress(idx, name) {
+  const p = state.planner;
+  const stop = p && p.stops[idx];
+  const address = stop && stop.address.trim();
+  if (!address) return;
+  state.savedAddresses.other.push({ id: uid(), name: (name || "").trim() || address, address });
+  await storageSet(SAVED_ADDRESSES_KEY, state.savedAddresses);
+  state.plannerSaveAddressForm = null;
   render();
 }
 
@@ -3548,6 +3598,8 @@ function renderPlannerFieldBlock(stop, idx, total) {
   const kind = plannerFieldKind(idx, total);
   const removable = kind === "stop";
   const placeholder = kind === "start" ? "Start location" : kind === "end" ? "End location" : "Add a stop";
+  const trimmed = stop.address.trim();
+  const isSavedAddress = !!trimmed && savedAddressList().some(a => a.address.trim().toLowerCase() === trimmed.toLowerCase());
   return `
   <div class="planner-field-block" data-stopblock="${idx}">
     <div class="planner-field-row">
@@ -3559,6 +3611,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
           <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
         </div>
       </div>
+      <button type="button" class="planner-save-address-btn plannerSaveAddressBtn" data-stopidx="${idx}" title="${isSavedAddress ? "Saved address" : "Save this address"}" ${(stop.lat == null || isSavedAddress) ? "disabled" : ""}>${isSavedAddress ? icons.starFilled : icons.starOutline}</button>
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
@@ -3579,8 +3632,22 @@ function renderPlannerToolbarRow() {
   return `
   <div class="planner-toolbar-row">
     <span class="planner-quick-estimate mono">${estimateText}</span>
+    ${renderPlannerLegBusinessBtn(0)}
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
+}
+
+function renderPlannerLegBusinessBtn(legIdx) {
+  const leg = state.planner.legs[legIdx];
+  const on = leg && leg.tag === "work";
+  return `<button type="button" class="planner-leg-business-btn plannerLegBusinessBtn ${on ? "on" : ""}" data-legidx="${legIdx}" title="${on ? "Business drive — tap to clear" : "Mark this leg as Business"}">${icons.briefcase}</button>`;
+}
+
+// Extra gap row for legs beyond the first (3+ stop routes) — the first
+// leg's business toggle lives in the toolbar row above, between Start and
+// the rest of the stops.
+function renderPlannerLegToggleRow(legIdx) {
+  return `<div class="planner-leg-toggle-row">${renderPlannerLegBusinessBtn(legIdx)}</div>`;
 }
 
 function renderPlannerLegRow(leg, idx, stops) {
@@ -3732,7 +3799,7 @@ function renderPlanTab() {
           <div><h1>Drive Log</h1><p>${escAttr(state.profile.name)}</p></div>
         </div>
         <div class="planner-header-actions">
-          <button type="button" class="icon-btn ${p.showSavedList ? "active" : ""}" id="plannerBrowseSavedBtn" title="Saved routes">${icons.starFilled}</button>
+          <button type="button" class="icon-btn planner-header-star ${p.showSavedList ? "active" : ""}" id="plannerBrowseSavedBtn" title="Saved routes">${icons.starFilled}</button>
           <button type="button" class="icon-btn" id="plannerSettingsBtn" title="Settings">${icons.gear}</button>
         </div>
       </div>
@@ -3744,7 +3811,7 @@ function renderPlanTab() {
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
       ${p.stops[0].lat != null ? `
       ${renderPlannerToolbarRow()}
-      ${p.stops.slice(1).map((s, i) => renderPlannerFieldBlock(s, i + 1, n)).join("")}
+      ${p.stops.slice(1).map((s, i) => (i > 0 ? renderPlannerLegToggleRow(i) : "") + renderPlannerFieldBlock(s, i + 1, n)).join("")}
       ` : ""}
       `}
     </div>`}
@@ -3762,6 +3829,7 @@ function renderPlanTab() {
       ` : ""}
     </div>`)}
     ${state.plannerSaveRouteForm ? renderPlannerSaveRouteModal() : ""}
+    ${state.plannerSaveAddressForm ? renderPlannerSaveAddressModal() : ""}
     ${state.plannerLogForm ? renderPlannerLogModal() : ""}
   </div>`;
 }
@@ -3788,8 +3856,7 @@ function renderPlannerRouteSummary() {
     <div class="planner-legtags">
       ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
     </div>
-  </div>
-  <p class="settings-desc" style="margin:0 0 10px;text-align:center;">Drag the route on the map to route through another point — distance and time recalculate.</p>`;
+  </div>`;
 }
 
 function renderPlannerDrivingBanner() {
@@ -3826,6 +3893,22 @@ function renderPlannerSaveRouteModal() {
       <div class="row-2">
         <button id="plannerSaveRouteCancelBtn" class="btn btn-ghost">Cancel</button>
         <button id="plannerSaveRouteConfirmBtn" class="btn btn-amber">Save</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderPlannerSaveAddressModal() {
+  const f = state.plannerSaveAddressForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Save this address</h2>
+      <label class="field-label">Name</label>
+      <input id="plannerSaveAddressNameInput" class="input" type="text" placeholder="e.g. Mum's House" value="${escAttr(f.name)}" style="margin-bottom:20px;" />
+      <div class="row-2">
+        <button id="plannerSaveAddressCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="plannerSaveAddressConfirmBtn" class="btn btn-amber">Save</button>
       </div>
     </div>
   </div>`;
@@ -5889,6 +5972,14 @@ function attachAppHandlers() {
         btn.onclick = () => plannerRemoveStop(parseInt(btn.dataset.stopidx, 10));
       });
 
+      document.querySelectorAll(".plannerSaveAddressBtn").forEach(btn => {
+        btn.onclick = () => openPlannerSaveAddressPrompt(parseInt(btn.dataset.stopidx, 10));
+      });
+
+      document.querySelectorAll(".plannerLegBusinessBtn").forEach(btn => {
+        btn.onclick = () => plannerToggleLegBusiness(parseInt(btn.dataset.legidx, 10));
+      });
+
       document.querySelectorAll(".plannerStopInput").forEach(input => {
         const idx = parseInt(input.dataset.stopidx, 10);
         const stop = p.stops[idx];
@@ -5976,6 +6067,16 @@ function attachAppHandlers() {
         if (srCancel) srCancel.onclick = () => { state.plannerSaveRouteForm = null; render(); };
         const srConfirm = document.getElementById("plannerSaveRouteConfirmBtn");
         if (srConfirm) srConfirm.onclick = () => savePlannerRoute(f.name);
+      }
+
+      if (state.plannerSaveAddressForm) {
+        const f = state.plannerSaveAddressForm;
+        const nameInput = document.getElementById("plannerSaveAddressNameInput");
+        if (nameInput) { nameInput.oninput = (e) => { f.name = e.target.value; }; nameInput.focus(); nameInput.select(); }
+        const saCancel = document.getElementById("plannerSaveAddressCancelBtn");
+        if (saCancel) saCancel.onclick = () => { state.plannerSaveAddressForm = null; render(); };
+        const saConfirm = document.getElementById("plannerSaveAddressConfirmBtn");
+        if (saConfirm) saConfirm.onclick = () => savePlannerStopAsAddress(f.stopIdx, f.name);
       }
 
       if (state.plannerLogForm) {
