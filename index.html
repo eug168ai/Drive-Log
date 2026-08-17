@@ -1235,13 +1235,12 @@ async function autoFillCurrentLocation() {
   } catch (e) {
     return; // No GPS fix — user can still type manually or tap the locate button.
   }
-  // Reverse-geocoding is a separate, independently-failable step: if it
+  // Resolving a label is a separate, independently-failable step: if it
   // errors (e.g. the Maps script hasn't finished loading yet), the GPS fix
   // itself is still good and must not be thrown away — losing it here means
   // the drive starts with no coordinates, which later breaks End Drive's
   // distance calculation entirely.
-  let address = "";
-  try { address = await reverseGeocode(coords.latitude, coords.longitude); } catch (e) {}
+  const address = await resolveLocationLabel(coords.latitude, coords.longitude);
   if (state.active || state.startPointInput) return;
   state.startPointInput = address || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
   state.startCoords = { lat: coords.latitude, lng: coords.longitude };
@@ -1367,7 +1366,7 @@ async function beginEndDrive() {
   try {
     const coords = await getCurrentPosition();
     endLat = coords.latitude; endLng = coords.longitude;
-    try { endAddress = await reverseGeocode(endLat, endLng); } catch (e) { endAddress = ""; }
+    endAddress = await resolveLocationLabel(endLat, endLng);
   } catch (e) {
     // GPS not active/available — handled below once we know if any distance is computable.
   }
@@ -1443,6 +1442,44 @@ function haversineMeters(lat1, lng1, lat2, lng2) {
   const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(Math.min(1, a)));
+}
+
+// Forward-geocoding a saved address (Home/Work/Other) is the same lookup
+// every time, so cache it in memory keyed by the address text — an edited
+// saved address just gets a fresh cache entry under its new text.
+const savedAddressCoordsCache = {};
+async function resolveSavedAddressCoords(address) {
+  if (!address) return null;
+  if (savedAddressCoordsCache[address]) return savedAddressCoordsCache[address];
+  try {
+    const { lat, lng } = await forwardGeocode(address);
+    const coords = { lat, lng };
+    savedAddressCoordsCache[address] = coords;
+    return coords;
+  } catch (e) {
+    return null;
+  }
+}
+
+// GPS drift plus reverse-geocoding both introduce enough error that "at
+// home" can resolve to a neighbour's address or just a nearby street name
+// instead of the exact saved address. If a GPS fix is close enough to a
+// saved Home/Work/Other address, prefer that address's exact text.
+async function matchSavedAddressLabel(lat, lng) {
+  const radius = 150; // metres — tighter than route-tag matching's default, since this should only fire when genuinely at the saved spot
+  for (const entry of savedAddressList()) {
+    const coords = await resolveSavedAddressCoords(entry.address);
+    if (coords && haversineMeters(lat, lng, coords.lat, coords.lng) <= radius) return entry.address;
+  }
+  return null;
+}
+
+// Best label for a GPS fix: the exact saved address if we're standing at
+// one, otherwise a reverse-geocoded street address.
+async function resolveLocationLabel(lat, lng) {
+  const saved = await matchSavedAddressLabel(lat, lng).catch(() => null);
+  if (saved) return saved;
+  try { return await reverseGeocode(lat, lng); } catch (e) { return ""; }
 }
 
 // Suggests a Personal/Business tag for a start->end pair from geographic
