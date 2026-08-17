@@ -232,16 +232,14 @@
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
-    padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.95) 0%, rgba(var(--bg-rgb),.8) 65%, transparent 100%);}
-  .planner-back{display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:12px;}
-  .planner-back:active{opacity:.7;}
-  .planner-back .chevron{width:30px;height:30px;border-radius:50%;background:rgba(var(--surface-rgb),.9);
-    border:1px solid var(--border);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .planner-back .chevron .icon{width:16px;height:16px;}
-  .planner-back-text{display:flex;flex:1;align-items:baseline;gap:6px;min-width:0;}
-  .planner-back-text b{display:inline-flex;align-items:center;gap:5px;font-size:14.5px;font-weight:700;white-space:nowrap;flex-shrink:0;}
-  .planner-back-text span{flex:1;min-width:0;font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;}
+  .planner-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .planner-header .brand{cursor:pointer;}
+  .planner-header .brand:active{opacity:.7;}
+  .planner-header-icon{width:34px;height:34px;border-radius:9px;background:rgba(var(--amber-rgb),.16);
+    color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .planner-header-icon .icon{width:19px;height:19px;}
+  .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
 
   .planner-field-block{margin-bottom:6px;}
   .planner-field-row{display:flex;align-items:center;gap:6px;}
@@ -268,8 +266,7 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:6px 12px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-toolbar-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 0;}
-  .planner-quick-estimate{font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .planner-toolbar-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0;}
 
   .planner-recenter-fab{position:absolute;right:14px;bottom:200px;width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
@@ -1013,7 +1010,6 @@ const state = {
   selectedTripIds: [],
   confirmingDeleteSelected: false,
   logEstimateForm: null,
-  plannerLogForm: null,
   savedAddresses: { home: "", work: "", other: [] },
   addingSavedOther: false,
   editingSavedOtherId: null,
@@ -1070,6 +1066,8 @@ const icons = {
   straight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V4"/><path d="M6 10l6-6 6 6"/></svg>`,
   flag: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 21V4"/><path d="M5 4h13l-3 4 3 4H5"/></svg>`,
   navArrow: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2 4 21l8-5 8 5z"/></svg>`,
+  starOutline: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
+  starFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -1718,7 +1716,7 @@ function startPlanner() {
     stage: "build",
     previewing: false,
     previewError: "",
-    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
+    savedRouteId: null,
   };
   plannerDirectionsResult = null;
   render();
@@ -1755,6 +1753,7 @@ function plannerRemoveStop(idx) {
   p.stage = "build";
   plannerDirectionsResult = null;
   render();
+  if (p.stops.every(s => s.lat != null)) runPlannerPreview();
 }
 
 // Called after a stop's address is set (autocomplete pick, map click, or a
@@ -1783,10 +1782,8 @@ async function plannerResolveStop(stop, address, coords, fromCurrentLocation) {
   }
   autoSuggestPlannerTags();
   render();
-  updatePlannerQuickEstimate();
   // Every stop (including this one) now has coordinates — draw the actual
-  // route on the map immediately instead of waiting for a manual "Preview
-  // Route" tap, which remains available afterward to refresh it.
+  // route on the map immediately, live, without a manual "Preview" tap.
   if (state.planner && state.planner.stops.every(s => s.lat != null)) {
     runPlannerPreview();
   }
@@ -1840,41 +1837,6 @@ async function autoFillPlannerStart() {
   } catch (e) {
     // Silent fail — user can still type manually or tap a chip.
   }
-}
-
-// Lightweight start->end estimate shown inline while building a route, so
-// distance/time appear as soon as an end location is picked instead of
-// waiting for the full multi-stop Preview. Ignores any waypoints in
-// between — it's just a quick heads-up, not the final numbers.
-async function updatePlannerQuickEstimate() {
-  const p = state.planner;
-  if (!p) return;
-  const start = p.stops[0], end = p.stops[p.stops.length - 1];
-  const startAddr = start && start.address.trim();
-  const endAddr = end && end.address.trim();
-  if (!startAddr || !endAddr || start.lat == null || end.lat == null || !mapsConfigured()) {
-    if (p.quickDistanceKm != null || p.quickDurationMin != null) {
-      p.quickDistanceKm = null; p.quickDurationMin = null; p._quickEstimateKey = null; render();
-    }
-    return;
-  }
-  const key = `${startAddr}|${endAddr}`;
-  if (p._quickEstimateKey === key) return;
-  p._quickEstimateKey = key;
-  p.quickEstimating = true;
-  render();
-  try {
-    const { distanceKm, durationMin } = await estimateRoute(startAddr, endAddr);
-    if (!state.planner || state.planner._quickEstimateKey !== key) return;
-    state.planner.quickDistanceKm = distanceKm;
-    state.planner.quickDurationMin = durationMin;
-  } catch (e) {
-    if (!state.planner || state.planner._quickEstimateKey !== key) return;
-    state.planner.quickDistanceKm = null;
-    state.planner.quickDurationMin = null;
-  }
-  state.planner.quickEstimating = false;
-  render();
 }
 
 // Fills in any untagged leg whose two endpoints both have coordinates,
@@ -1937,17 +1899,25 @@ async function runPlannerPreview() {
   render();
 }
 
-async function savePlannedRoute() {
+// Star toggle in the planner header: saves the current route to the saved
+// list (filled star) or, tapped again, removes it (empty star) — doesn't
+// exit the builder either way, unlike the old standalone Save Route button.
+async function togglePlannerSaved() {
   const p = state.planner;
-  const route = {
-    id: uid(), createdAt: Date.now(),
-    stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
-    legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
-  };
-  state.plannedRoutes = [route, ...state.plannedRoutes];
+  if (!p || p.stage !== "preview") return;
+  if (p.savedRouteId) {
+    state.plannedRoutes = state.plannedRoutes.filter(r => r.id !== p.savedRouteId);
+    p.savedRouteId = null;
+  } else {
+    const route = {
+      id: uid(), createdAt: Date.now(),
+      stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
+      legs: p.legs.map((l, i) => ({ fromIdx: i, toIdx: i + 1, distanceKm: l.distanceKm, durationMin: l.durationMin, tag: l.tag })),
+    };
+    state.plannedRoutes = [route, ...state.plannedRoutes];
+    p.savedRouteId = route.id;
+  }
   await storageSet(PLANNED_ROUTES_KEY, state.plannedRoutes);
-  state.planner = null;
-  plannerDirectionsResult = null;
   render();
 }
 
@@ -1957,19 +1927,21 @@ async function deletePlannedRoute(id) {
   render();
 }
 
-// Reopens a saved route so it can be edited, re-previewed, or driven again.
+// Reopens a saved route so it can be edited or driven again — always
+// re-runs the live preview so the map's route line is fresh rather than
+// trusting the saved leg distances, which is why it's already starred.
 function openSavedRouteInPlanner(route) {
   state.planner = {
     stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "", fromCurrentLocation: false })),
     legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
-    stage: route.legs.every(l => l.distanceKm != null) ? "preview" : "build",
+    stage: "build",
     previewing: false,
     previewError: "",
-    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
+    savedRouteId: route.id,
   };
-  plannerDirectionsResult = null; // re-Preview redraws the map line; leg data itself still shows without it
+  plannerDirectionsResult = null;
   render();
-  updatePlannerQuickEstimate();
+  if (state.planner.stops.every(s => s.lat != null)) runPlannerPreview();
 }
 
 function minutesToTimeStr(totalMinutes) {
@@ -1977,40 +1949,8 @@ function minutesToTimeStr(totalMinutes) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
-// Manual "Log Drive" path: commits every leg as a logged trip, back-to-back
-// from a chosen date/start time, using each leg's estimated Directions
-// duration as its drive time — for logging a drive that already happened
-// (or that you don't want live-tracked) rather than live GPS tracking.
-async function logPlannedRouteNow(date, startTimeStr) {
-  const p = state.planner;
-  if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
-  let cursor = startTimeStr != null ? (parseInt(startTimeStr.slice(0, 2), 10) * 60 + parseInt(startTimeStr.slice(3, 5), 10)) : (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
-  const trips = [];
-  for (let i = 0; i < p.legs.length; i++) {
-    const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
-    const tripStartTime = minutesToTimeStr(cursor);
-    cursor += leg.durationMin || 1;
-    const endTime = minutesToTimeStr(cursor);
-    const trip = {
-      id: uid(), date: date || todayStr(), startTime: tripStartTime, endTime,
-      distance: leg.distanceKm || 0,
-      startPoint: from.address.trim() || "Unspecified",
-      endPoint: to.address.trim() || "Unspecified",
-      tag: leg.tag,
-    };
-    if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
-    if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
-    trips.push(trip);
-  }
-  for (const trip of trips) await finalizeTrip(trip);
-  state.planner = null;
-  plannerDirectionsResult = null;
-  state.tab = "history";
-  render();
-}
-
 // --- Trip Planner: real GPS live-tracking driving mode -----------------------
-// "Start Drive" (unlike Log Drive above) tracks the device's actual position
+// "Start Drive" tracks the device's actual position
 // with watchPosition rather than assuming the Directions estimate — distance
 // and duration logged at the end are what was really driven, split across
 // legs by proximity to each planned stop, with turn-by-turn advanced by
@@ -2071,11 +2011,29 @@ let liveDrive = null;
 let liveWatchId = null;
 let liveTickerId = null;
 
+// Opens Google Maps (app on mobile, maps.google.com in a new tab on
+// desktop) with the full planned route pre-filled — turn-by-turn voice
+// navigation happens there, while this app just tracks elapsed time/
+// distance in the background for the eventual trip log.
+function launchGoogleMapsNavigation(p) {
+  const fmt = s => `${s.lat},${s.lng}`;
+  const params = new URLSearchParams({
+    api: "1", origin: fmt(p.stops[0]), destination: fmt(p.stops[p.stops.length - 1]), travelmode: "driving",
+  });
+  const waypoints = p.stops.slice(1, -1).map(fmt);
+  if (waypoints.length) params.set("waypoints", waypoints.join("|"));
+  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank", "noopener");
+}
+
 async function startLiveDrive() {
   const p = state.planner;
   if (!p || !plannerDirectionsResult) return;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
   if (!navigator.geolocation) { p.previewError = "Location isn't available on this device."; render(); return; }
+
+  // Fired synchronously, before any await, so the browser still counts
+  // this as a direct response to the tap and doesn't block the popup.
+  launchGoogleMapsNavigation(p);
 
   let firstFix;
   try { firstFix = await getCurrentPosition(); }
@@ -3454,18 +3412,11 @@ function renderPlannerFieldBlock(stop, idx, total) {
   </div>`;
 }
 
-// Row between the Start field and the rest of the stops: the quick
-// start->end estimate (once an end location is picked) on the left, Add
-// Stop pushed to the far right.
+// Row between the Start field and the rest of the stops: just the Add
+// Stop pill, centered between the two search bars.
 function renderPlannerToolbarRow() {
-  const p = state.planner;
-  const end = p.stops[p.stops.length - 1];
-  const estimateText = p.quickEstimating ? "Calculating…"
-    : (end.address.trim() && p.quickDistanceKm != null) ? `${kmToDisplay(p.quickDistanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(p.quickDurationMin)}`
-    : "";
   return `
   <div class="planner-toolbar-row">
-    <span class="planner-quick-estimate mono">${estimateText}</span>
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
 }
@@ -3604,7 +3555,6 @@ function renderPlanTab() {
   }
 
   const n = p.stops.length;
-  const allSet = p.stops.every(s => s.address.trim());
   const driving = p.stage === "driving";
 
   return `
@@ -3614,9 +3564,12 @@ function renderPlanTab() {
 
     ${driving ? renderPlannerDrivingBanner() : `
     <div class="planner-topbar">
-      <div class="planner-back" id="plannerBackBtn">
-        <span class="chevron">${icons.chevronLeft}</span>
-        <div class="planner-back-text"><b>${icons.car} Drive Log</b><span>Tap to return to Drive</span></div>
+      <div class="planner-header">
+        <div class="brand" id="plannerBackBtn" title="Tap to return to Drive">
+          <span class="planner-header-icon">${icons.steeringWheel}</span>
+          <div><h1>Drive Log</h1><p>${escAttr(state.profile.name)}</p></div>
+        </div>
+        <button type="button" class="icon-btn ${p.savedRouteId ? "active" : ""}" id="plannerSaveBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this route"}" ${p.stage !== "preview" ? "disabled" : ""}>${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
       </div>
       ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
       ${mapsError}
@@ -3630,20 +3583,10 @@ function renderPlanTab() {
     ${driving ? renderPlannerEtaBar() : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
+      ${p.previewing && !plannerDirectionsResult ? `<p class="settings-desc" style="text-align:center;margin:0 0 8px;">${icons.route} Calculating route…</p>` : ""}
       ${p.stage === "preview" ? renderPlannerRouteSummary() : ""}
-      <div style="display:flex;gap:8px;">
-        <button type="button" id="plannerCancelBtn" class="btn btn-ghost" style="width:auto;flex:1;">Cancel</button>
-        <button type="button" id="plannerPreviewBtn" class="btn ${p.stage === "preview" ? "btn-ghost" : "btn-amber"}" style="width:auto;flex:2;" ${p.previewing || !allSet ? "disabled" : ""}>${p.previewing ? "Calculating…" : `${icons.route} ${p.stage === "preview" ? "Refresh Route" : "Preview Route"}`}</button>
-      </div>
-      ${p.stage === "preview" ? `
-      <button type="button" id="plannerSaveBtn" class="btn btn-ghost" style="margin-top:8px;">${icons.check} Save Route</button>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button type="button" id="plannerLogDriveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
-        <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:1;">${icons.play} Start Drive</button>
-      </div>
-      ` : ""}
+      ${p.stage === "preview" ? `<button type="button" id="plannerStartDrivingBtn" class="btn btn-amber">${icons.play} Start Drive</button>` : ""}
     </div>`}
-    ${state.plannerLogForm ? renderPlannerLogModal() : ""}
   </div>`;
 }
 
@@ -3688,27 +3631,6 @@ function renderPlannerEtaBar() {
       <div class="m"><div class="v mono" id="plannerElapsedVal">00:00</div><div class="l">Elapsed</div></div>
     </div>
     <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
-  </div>`;
-}
-
-function renderPlannerLogModal() {
-  const f = state.plannerLogForm;
-  const p = state.planner;
-  const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
-  return `
-  <div class="modal-backdrop">
-    <div class="modal-card">
-      <h2>Log this Drive</h2>
-      <p class="settings-desc" style="margin:0 0 18px;">Logs every leg back-to-back from the time below, using the estimated durations from Preview (~${formatDuration(totalMin)} total) instead of live tracking.</p>
-      <label class="field-label">Date</label>
-      <input id="plannerLogDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
-      <label class="field-label">Start time (24hr)</label>
-      <input id="plannerLogStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
-      <div class="row-2">
-        <button id="plannerLogCancelBtn" class="btn btn-ghost">Cancel</button>
-        <button id="plannerLogConfirmBtn" class="btn btn-amber">Save Drive</button>
-      </div>
-    </div>
   </div>`;
 }
 
@@ -5726,8 +5648,6 @@ function attachAppHandlers() {
     if (p && p.stage !== "driving") {
       const backBtn = document.getElementById("plannerBackBtn");
       if (backBtn) backBtn.onclick = cancelPlanner;
-      const cancelBtn = document.getElementById("plannerCancelBtn");
-      if (cancelBtn) cancelBtn.onclick = cancelPlanner;
 
       const recenterBtn = document.getElementById("plannerRecenterBtn");
       if (recenterBtn) recenterBtn.onclick = async () => {
@@ -5816,34 +5736,10 @@ function attachAppHandlers() {
         btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
       });
 
-      const previewBtn = document.getElementById("plannerPreviewBtn");
-      if (previewBtn) previewBtn.onclick = runPlannerPreview;
       const saveBtn = document.getElementById("plannerSaveBtn");
-      if (saveBtn) saveBtn.onclick = savePlannedRoute;
-      const logDriveBtn = document.getElementById("plannerLogDriveBtn");
-      if (logDriveBtn) logDriveBtn.onclick = () => {
-        state.plannerLogForm = { date: todayStr(), startTime: nowTimeStr() };
-        render();
-      };
+      if (saveBtn) saveBtn.onclick = togglePlannerSaved;
       const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
       if (startDrivingBtn) startDrivingBtn.onclick = startLiveDrive;
-
-      if (state.plannerLogForm) {
-        const f = state.plannerLogForm;
-        const pld = document.getElementById("plannerLogDate");
-        if (pld) pld.onchange = (e) => { f.date = e.target.value; };
-        attachTimeInput(document.getElementById("plannerLogStartTime"), (v) => { f.startTime = v; });
-        const plCancel = document.getElementById("plannerLogCancelBtn");
-        if (plCancel) plCancel.onclick = () => { state.plannerLogForm = null; render(); };
-        const plConfirm = document.getElementById("plannerLogConfirmBtn");
-        if (plConfirm) plConfirm.onclick = async () => {
-          if (!f.date || !f.startTime) return;
-          const startTime = clampTimeValue(f.startTime);
-          const date = f.date;
-          state.plannerLogForm = null;
-          await logPlannedRouteNow(date, startTime);
-        };
-      }
 
       armStaticHazardMarquee();
     } else if (p && p.stage === "driving") {
