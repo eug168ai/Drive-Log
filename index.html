@@ -260,6 +260,9 @@
     background:rgba(var(--surface-rgb),.9);cursor:pointer;flex-shrink:0;}
   .planner-chip:hover{color:var(--text);border-color:var(--faint);}
   .planner-chip.current .icon{color:var(--blue);}
+  .planner-chip-more{display:inline-flex;align-items:center;white-space:nowrap;padding:5px 11px;border-radius:999px;
+    font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--muted);
+    background:rgba(var(--surface-rgb),.9);cursor:pointer;flex-shrink:0;width:auto;}
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
@@ -274,7 +277,8 @@
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 14px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);}
-  .planner-route-summary{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  .planner-route-summary{background:rgba(var(--surface-rgb),.78);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    border:1px solid var(--border);border-radius:14px;
     padding:12px 14px;margin-bottom:10px;max-height:46vh;overflow-y:auto;}
   .planner-route-badge{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px;}
@@ -1797,18 +1801,17 @@ async function geocodeSavedAddressCached(address) {
   return coords;
 }
 
-const SAVED_LOCATION_MATCH_RADIUS_M = 500;
-
 // Auto-fills a fresh route's start field so most drives need zero typing:
-// a saved address (Home/Work/Other) within 500m of the device's current
-// position wins — so the field reads "Home", not raw GPS text — otherwise
-// the current position itself is used and flagged so the map can highlight
-// it as a guess rather than a confirmed place. Silent on failure; the user
-// can still search or tap a chip manually.
+// a saved address (Home/Work/Other) within the Settings > Route Match Radius
+// of the device's current position wins — so the field reads "Home", not raw
+// GPS text — otherwise the current position itself is used and flagged so
+// the map can highlight it as a guess rather than a confirmed place. Silent
+// on failure; the user can still search or tap a chip manually.
 async function autoFillPlannerStart() {
   const p = state.planner;
   if (!p || p.stops[0].address.trim() || !mapsConfigured()) return;
   const stop = p.stops[0];
+  const radius = Number(state.settings.routeMatchRadius) || 500;
   const stillRelevant = () => state.planner && state.planner.stops[0] === stop && !stop.address.trim();
   try {
     const coords = await getCurrentPosition();
@@ -1817,7 +1820,7 @@ async function autoFillPlannerStart() {
     for (const a of savedAddressList()) {
       try {
         const geo = await geocodeSavedAddressCached(a.address);
-        if (haversineMeters(coords.latitude, coords.longitude, geo.lat, geo.lng) <= SAVED_LOCATION_MATCH_RADIUS_M) {
+        if (haversineMeters(coords.latitude, coords.longitude, geo.lat, geo.lng) <= radius) {
           matched = { address: a.address, lat: geo.lat, lng: geo.lng };
           break;
         }
@@ -2382,14 +2385,16 @@ async function ensurePlannerMap() {
   const firstStop = p && p.stops.find(s => s.lat != null);
   let center = firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 };
   let zoom = firstStop ? 12 : 2;
-  if (!firstStop && mapsConfigured()) {
-    // Fullscreen map opens centered on the device's current location when
-    // nothing has been picked yet, rather than a world view.
+  // Grab the device's live position once up front — used both to center the
+  // fullscreen map on open (when nothing's picked yet) and to drop the
+  // "you are here" blue dot below, regardless of where the start ends up.
+  let myLocation = null;
+  if (!driving && mapsConfigured()) {
     try {
       const coords = await getCurrentPosition();
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
-      center = { lat: coords.latitude, lng: coords.longitude };
-      zoom = 14;
+      myLocation = { lat: coords.latitude, lng: coords.longitude };
+      if (!firstStop) { center = myLocation; zoom = 14; }
     } catch { /* keep the world-view fallback — user can still search or tap the map */ }
   }
   plannerMapInstance = new Map(canvas, {
@@ -2442,23 +2447,25 @@ async function ensurePlannerMap() {
     updateLiveMarker(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
   }
 
-  // The start field was auto-filled from the device's raw position (no
-  // saved-address match) — highlight it on the map since it's a guess, not
-  // a confirmed place, so it's obvious at a glance and easy to correct.
-  if (!driving && p && p.stops[0] && p.stops[0].fromCurrentLocation && p.stops[0].lat != null) {
+  // "You are here" — a standard soft-halo-plus-solid-dot blue marker at the
+  // device's actual GPS position, shown regardless of what the start field
+  // ended up resolving to (a saved address, a search result, or a manual
+  // pin), so it always reads as "this is you" rather than a place pick.
+  if (myLocation) {
     try {
       const { Marker } = await google.maps.importLibrary("marker");
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
       new Marker({
-        map: plannerMapInstance,
-        position: { lat: p.stops[0].lat, lng: p.stops[0].lng },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE, scale: 12,
-          fillColor: "#4C9FF2", fillOpacity: 0.35, strokeColor: "#4C9FF2", strokeWeight: 2,
-        },
-        zIndex: 1,
+        map: plannerMapInstance, position: myLocation,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 16, fillColor: "#4C9FF2", fillOpacity: 0.18, strokeWeight: 0 },
+        zIndex: 4, clickable: false,
       });
-    } catch { /* map still usable without the highlight */ }
+      new Marker({
+        map: plannerMapInstance, position: myLocation,
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: "#4C9FF2", fillOpacity: 1, strokeColor: "#FFFFFF", strokeWeight: 2 },
+        zIndex: 5, title: "Your location",
+      });
+    } catch { /* map still usable without the dot */ }
   }
 }
 
@@ -3347,7 +3354,7 @@ function renderPlannerFieldPills(idx) {
   let html = `<button type="button" class="planner-chip current" data-stopidx="${idx}" data-currentloc="1">${icons.locate} Current Location</button>`;
   html += pills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
   if (overflow.length) {
-    html += `<select class="input plannerAddressOverflowSelect" data-stopidx="${idx}" style="flex:0 0 auto;width:auto;min-width:110px;font-size:11.5px;padding:5px 8px;border-radius:999px;">
+    html += `<select class="planner-chip-more plannerAddressOverflowSelect" data-stopidx="${idx}">
       <option value="">+${overflow.length} more…</option>
       ${overflow.map(a => `<option value="${escAttr(a.address)}">${escAttr(a.name)}</option>`).join("")}
     </select>`;
@@ -3519,7 +3526,7 @@ function renderPlanTab() {
   if (!p) {
     const plannerEntry = state.active ? "" : `
     <div class="card card-construction">
-      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Trip Planner<span class="construction-tag">Under Construction</span></p>
+      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Drive Planner<span class="construction-tag">Under Construction</span></p>
       <button type="button" id="newPlannerRouteBtn" class="btn btn-grey">${icons.route} New Drive</button>
     </div>
     ${renderSavedRoutesList()}`;
@@ -3539,7 +3546,7 @@ function renderPlanTab() {
     <div class="planner-topbar">
       <div class="planner-back" id="plannerBackBtn">
         <span class="chevron">${icons.chevronLeft}</span>
-        <div><b>Plan Route</b><span>Tap to return to Drive</span></div>
+        <div><b>Drive Planner</b><span>Tap to return to Drive</span></div>
       </div>
       ${!mapsConfigured() ? `<p class="settings-desc" style="margin:0 0 8px;">Map isn't set up for this app yet — you can still plan by typing addresses.</p>` : ""}
       ${mapsError}
@@ -3927,7 +3934,7 @@ function renderSettingsTab() {
           <span class="settings-desc" style="margin:0;">m</span>
         </div>
       </div>
-      <p class="settings-desc" style="margin:4px 0 0;">How close a Trip Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
+      <p class="settings-desc" style="margin:4px 0 0;">How close a Drive Planner route's start and end need to be to a previously-tagged route to auto-suggest its tag.</p>
       ` : ""}
     </div>
   </div>
