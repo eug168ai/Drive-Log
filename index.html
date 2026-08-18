@@ -225,6 +225,8 @@
   .planner-leg-info{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
   .planner-leg-route{font-size:13px;font-weight:600;color:var(--text);}
   .planner-leg-meta{font-size:12px;color:var(--muted);}
+  .planner-leg-tag-icon{display:inline-flex;color:var(--work);}
+  .planner-leg-tag-icon .icon{width:16px;height:16px;}
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
 
@@ -236,7 +238,7 @@
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.9) 0%, transparent 100%);}
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);}
   .planner-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .planner-header .brand{cursor:pointer;}
   .planner-header .brand:active{opacity:.7;}
@@ -304,7 +306,7 @@
   .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
-  .planner-angle-fab.active{background:var(--amber);border-color:var(--amber);color:var(--bg);}
+  .planner-angle-fab.active{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
   .planner-angle-fab .icon{width:18px;height:18px;}
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
@@ -2144,7 +2146,7 @@ const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
 const LIVE_MIN_ROTATE_SPEED_MS = 1.4; // ~5 km/h — below this GPS course is noisy or absent, so the map holds its last heading instead of spinning on the noise
 const LIVE_HEADING_SMOOTHING = 0.35; // low-pass factor for the heading used to rotate the map
 const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used for the marker/camera (raw fixes still drive distance/arrival math)
-const LIVE_LOOKAHEAD_OFFSET_M = 55;  // shifts the camera center behind the driver so more of the road ahead is visible
+const LIVE_LOOKAHEAD_OFFSET_M = 95;  // shifts the camera center behind the driver so more of the road ahead is visible
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
 const LIVE_TILT_MIN_DEG = 20;        // faster — flatter, more top-down, to show more of the road ahead
@@ -2152,12 +2154,16 @@ const LIVE_TILT_MAX_DEG = 58;        // stopped/slow — steeper 3D angle, like 
 const LIVE_ZOOM_MIN = 16;            // faster — zoomed out to show more road ahead
 const LIVE_ZOOM_MAX = 19;            // stopped/slow — zoomed in tight
 const LIVE_DYNAMIC_SPEED_FULL_MS = 25; // ~90 km/h and above reaches the flattest/most-zoomed-out end of the tilt/zoom range
-// While driving, labels on the raster map tiles would rotate along with
-// everything else (see rotateLiveMap) and end up sideways or upside-down at
-// many headings — turned off here rather than left rotated-but-unreadable;
-// the turn banner and street-name callouts already carry that information
-// in on-screen text that stays upright regardless of map rotation.
-const DRIVING_LABEL_HIDE_STYLE = [{ elementType: "labels", stylers: [{ visibility: "off" }] }];
+// While driving, labels on the raster map tiles rotate along with
+// everything else (see rotateLiveMap), so at some headings a label reads
+// sideways or upside-down — an accepted tradeoff for seeing the current
+// road and the roads branching off it on the map itself. Non-essential
+// clutter (POIs, transit, admin-area names) is still turned off.
+const DRIVING_LABEL_HIDE_STYLE = [
+  { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
+  { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
+];
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2652,11 +2658,13 @@ function updateLiveDriveDOM() {
     turnIconWrap.innerHTML = rerouting ? icons.route : arrived ? icons.flag : junctionStep ? maneuverIcon(junctionStep.maneuver) : icons.straight;
   }
   if (turnMain) {
+    // The coming street — the road the turn (named below, in the smaller
+    // text) leads onto — not the one currently being driven along.
     turnMain.textContent = rerouting ? "Rerouting…" : arrived ? "You have arrived"
-      : junctionStep ? maneuverLabel(junctionStep.maneuver)
+      : junctionStep ? stepStreetName(junctionStep.instructions)
       : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
-  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? stepStreetName(junctionStep.instructions) : "";
+  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
   if (turnDistVal) {
     if (rerouting || arrived || !junctionStep) { turnDistVal.textContent = "–"; }
     else {
@@ -2926,7 +2934,7 @@ async function ensurePlannerMap() {
   const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
   plannerMapInstance = new Map(canvas, {
     center, zoom, styles: [...(night ? NIGHT_MAP_STYLE : []), ...(driving ? DRIVING_LABEL_HIDE_STYLE : [])],
-    disableDefaultUI: true, zoomControl: !driving, gestureHandling: driving ? "none" : "greedy",
+    disableDefaultUI: true, zoomControl: !driving, gestureHandling: "greedy",
   });
 
   if (!driving) {
@@ -3893,27 +3901,24 @@ function plannerFieldKind(idx, total) {
   return idx === 0 ? "start" : idx === total - 1 ? "end" : "stop";
 }
 
-// Saved-place pills for one stop's field: the Business toggle (start/end
-// fields only — the leg leaving Start or the leg arriving at the
-// destination), every saved address as a candidate pill, a "more saved
-// addresses" trigger (a native <select>, invisibly overlaid on the icon —
-// hidden until fitPlannerPillRow finds pills that don't fit and moves them
-// here), and an Add Stop pill sized like the rest — hidden by default via
-// CSS (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
-function renderPlannerFieldPills(idx, kind, total) {
+// Saved-place pills for one stop's field: every saved address as a
+// candidate pill, a "more saved addresses" trigger (a native <select>,
+// invisibly overlaid on the icon — hidden until fitPlannerPillRow finds
+// pills that don't fit and moves them here), and an Add Stop pill sized
+// like the rest, pinned to the far right regardless of pill count — hidden
+// by default via CSS (.planner-pill-row.show), revealed on focus by
+// attachPlannerFieldEvents. The Business toggle lives only in the toolbar
+// row between the two addresses, not per-field.
+function renderPlannerFieldPills(idx) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
   const others = list.filter(a => a.id !== "home" && a.id !== "work");
   const allPills = [...homeWork, ...others];
-  let html = "";
-  if (kind === "start" || kind === "end") {
-    html += renderPlannerLegBusinessBtn(kind === "start" ? 0 : Math.max(0, total - 2));
-  }
-  html += allPills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
+  let html = allPills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
   html += `<span class="planner-chip-icon planner-pill-more" title="More saved addresses" style="display:none;">${icons.moreDots}
     <select class="plannerAddressOverflowSelect" data-stopidx="${idx}"><option value=""></option></select>
   </span>`;
-  html += `<button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>`;
+  html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
   return html;
 }
 
@@ -3938,7 +3943,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
-    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx, kind, total)}</div>
+    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
   </div>`;
 }
 
@@ -4016,7 +4021,9 @@ function renderPlannerLegRow(leg, idx, stops) {
       <span class="planner-leg-route">${fromLabel} → ${toLabel}</span>
       <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
     </div>
-    <span class="tag ${leg.tag}">${labelFor(DRIVE_TYPES, leg.tag)}</span>
+    ${leg.tag === "work" ? `<span class="planner-leg-tag-icon" title="Business">${icons.briefcaseFilled}</span>`
+      : leg.tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>`
+      : ""}
     ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route</p>` : ""}
   </div>`;
 }
