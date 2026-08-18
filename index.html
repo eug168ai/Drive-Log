@@ -148,7 +148,7 @@
   .route-track{display:inline-block;white-space:nowrap;will-change:transform;}
   .loc-field-wrap{position:relative;flex:1;min-width:0;}
   .loc-field-wrap input{width:100%;overflow:hidden;text-overflow:ellipsis;}
-  .loc-overlay{position:absolute;inset:0;display:none;align-items:center;background:var(--bg);cursor:text;font-size:14px;}
+  .loc-overlay{position:absolute;inset:0;display:none;align-items:center;background:var(--surface);cursor:text;font-size:14px;}
   .loc-overlay .route-clip{width:100%;}
   .empty{text-align:center;color:var(--faint);padding:24px;}
   .login-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
@@ -240,8 +240,8 @@
   .planner-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .planner-header .brand{cursor:pointer;}
   .planner-header .brand:active{opacity:.7;}
-  .planner-header-icon{width:34px;height:34px;border-radius:9px;background:rgba(var(--amber-rgb),.16);
-    color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .planner-header-icon{width:34px;height:34px;border-radius:9px;background:transparent;
+    color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .planner-header-icon .icon{width:19px;height:19px;}
   .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
@@ -267,23 +267,23 @@
   .planner-field-row .input-icon .planner-save-address-btn .icon{color:var(--amber);}
 
   .planner-leg-toggle-row{display:flex;justify-content:center;margin:6px 0;}
-  .planner-leg-business-btn{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:none;
-    border:1px solid var(--border);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;}
-  .planner-leg-business-btn .icon{width:15px;height:15px;}
-  .planner-leg-business-btn.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
+  .planner-leg-business-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;padding:0;
+    border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);background:rgba(var(--amber-rgb),.1);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-leg-business-btn .icon{width:14px;height:14px;}
+  .planner-leg-business-btn.on{background:var(--work);border-color:var(--work);color:#fff;}
 
   .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 0 0;
     padding:1px 14px 3px 1px;scroll-padding-right:14px;}
   .planner-pill-row.show{display:flex;}
   .planner-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border-radius:999px;
-    font-size:11.5px;font-weight:600;border:1px solid var(--border);color:var(--muted);
-    background:rgba(var(--surface-rgb),.9);cursor:pointer;flex-shrink:0;}
-  .planner-chip:hover{color:var(--text);border-color:var(--faint);}
-  .planner-chip.current .icon{color:var(--blue);}
+    font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);
+    background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
+  .planner-chip:hover{border-color:var(--amber);}
   .planner-chip-icon{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;
-    border-radius:50%;border:1px solid var(--border);color:var(--muted);background:rgba(var(--surface-rgb),.9);
+    border-radius:50%;border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);background:rgba(var(--amber-rgb),.1);
     cursor:pointer;flex-shrink:0;position:relative;}
-  .planner-chip-icon:hover{color:var(--text);border-color:var(--faint);}
+  .planner-chip-icon:hover{border-color:var(--amber);}
   .planner-chip-icon .icon{width:14px;height:14px;}
   .planner-chip-icon select{position:absolute;inset:0;opacity:0;border:none;cursor:pointer;font-size:16px;}
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
@@ -311,9 +311,9 @@
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);}
   .planner-route-summary{background:rgba(var(--surface-rgb),.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
-    border:1px solid var(--border);border-radius:14px;
-    padding:8px 10px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
-  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:5px;}
+    border:1px solid var(--border);border-radius:12px;
+    padding:6px 8px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
+  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;}
   .planner-route-badge-label{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.04em;}
   .planner-route-badge .icon{width:13px;height:13px;}
@@ -1957,16 +1957,8 @@ function autoSuggestPlannerTags() {
   });
 }
 
-function plannerSetLegTag(idx, tag) {
-  const leg = state.planner.legs[idx];
-  leg.tag = tag;
-  leg.tagSource = "manual";
-  render();
-}
-
 // Quick business-drive toggle shown inline between addresses while
-// building the route, ahead of the full Personal/Business toggle-row
-// that appears later in the route summary — both read/write the same
+// building the route, and again in the route summary — both read/write the same
 // leg.tag so they always stay in sync with each other.
 function plannerToggleLegBusiness(idx) {
   const leg = state.planner.legs[idx];
@@ -2880,9 +2872,6 @@ function updatePlannerRouteSummaryDOM() {
   wrap.innerHTML = renderPlannerRouteSummary();
   const fresh = wrap.querySelector(".planner-route-summary");
   if (fresh) el.replaceWith(fresh);
-  document.querySelectorAll(".planner-legtags [data-legtag]").forEach(btn => {
-    btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
-  });
   armStaticHazardMarquee();
 }
 
@@ -3904,28 +3893,26 @@ function plannerFieldKind(idx, total) {
   return idx === 0 ? "start" : idx === total - 1 ? "end" : "stop";
 }
 
-// Saved-place pills for one stop's field: an icon-only "Current Location"
-// pill, the usual Home/Work/Other saved addresses (same list as
-// renderSavedAddressChips elsewhere), any overflow behind an icon-only
-// trigger (a native <select>, invisibly overlaid on the icon), and an
-// Add Stop pill sized like the rest — hidden by default via CSS
-// (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
-function renderPlannerFieldPills(idx) {
+// Saved-place pills for one stop's field: the Business toggle (start/end
+// fields only — the leg leaving Start or the leg arriving at the
+// destination), every saved address as a candidate pill, a "more saved
+// addresses" trigger (a native <select>, invisibly overlaid on the icon —
+// hidden until fitPlannerPillRow finds pills that don't fit and moves them
+// here), and an Add Stop pill sized like the rest — hidden by default via
+// CSS (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
+function renderPlannerFieldPills(idx, kind, total) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
   const others = list.filter(a => a.id !== "home" && a.id !== "work");
-  const pills = [...homeWork, ...others.slice(0, 2)];
-  const overflow = others.slice(2);
-  let html = `<button type="button" class="planner-chip planner-chip-icon current" data-stopidx="${idx}" data-currentloc="1" title="Current location">${icons.locate}</button>`;
-  html += pills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
-  if (overflow.length) {
-    html += `<span class="planner-chip-icon" title="More saved addresses">${icons.moreDots}
-      <select class="plannerAddressOverflowSelect" data-stopidx="${idx}">
-        <option value=""></option>
-        ${overflow.map(a => `<option value="${escAttr(a.address)}">${escAttr(a.name)}</option>`).join("")}
-      </select>
-    </span>`;
+  const allPills = [...homeWork, ...others];
+  let html = "";
+  if (kind === "start" || kind === "end") {
+    html += renderPlannerLegBusinessBtn(kind === "start" ? 0 : Math.max(0, total - 2));
   }
+  html += allPills.map(a => `<button type="button" class="planner-chip" data-stopidx="${idx}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`).join("");
+  html += `<span class="planner-chip-icon planner-pill-more" title="More saved addresses" style="display:none;">${icons.moreDots}
+    <select class="plannerAddressOverflowSelect" data-stopidx="${idx}"><option value=""></option></select>
+  </span>`;
   html += `<button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>`;
   return html;
 }
@@ -3951,8 +3938,39 @@ function renderPlannerFieldBlock(stop, idx, total) {
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
-    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
+    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx, kind, total)}</div>
   </div>`;
+}
+
+// Collapses saved-address pills that don't fit a row into the "more"
+// dropdown instead, so a pill row never actually needs its scrollbar — run
+// after render (widths aren't knowable before layout) and again whenever a
+// row is freshly revealed on focus. Pills stay in the DOM (just hidden)
+// rather than being removed/recreated, so their click handlers, attached
+// once after render, keep working across repeated fit passes.
+function fitPlannerPillRow(row) {
+  if (!row) return;
+  const moreEl = row.querySelector(".planner-pill-more");
+  const select = moreEl && moreEl.querySelector("select");
+  if (!moreEl || !select) return;
+  const pills = Array.from(row.querySelectorAll(".planner-chip[data-address]"));
+  pills.forEach(el => { el.style.display = ""; });
+  while (select.options.length > 1) select.remove(1);
+  moreEl.style.display = "none";
+  let guard = 0;
+  while (row.scrollWidth > row.clientWidth + 1 && guard++ < pills.length) {
+    const last = [...pills].reverse().find(el => el.style.display !== "none");
+    if (!last) break;
+    last.style.display = "none";
+    const opt = document.createElement("option");
+    opt.value = last.dataset.address;
+    opt.textContent = last.textContent;
+    select.appendChild(opt);
+    moreEl.style.display = "";
+  }
+}
+function fitPlannerPillRows() {
+  document.querySelectorAll(".planner-pill-row").forEach(fitPlannerPillRow);
 }
 
 // Row between the Start field and the rest of the stops, shown once both
@@ -3985,6 +4003,9 @@ function renderPlannerLegToggleRow(legIdx) {
   return `<div class="planner-leg-toggle-row">${renderPlannerLegBusinessBtn(legIdx)}</div>`;
 }
 
+// Personal/Supervised is the default for every leg (see defaultPlannerLegTag)
+// and Business is opt-in via the briefcase toggle, so this just shows the
+// resulting tag — no separate Personal/Business buttons to click here.
 function renderPlannerLegRow(leg, idx, stops) {
   const fromLabel = plannerStopLabel(idx, stops.length);
   const toLabel = plannerStopLabel(idx + 1, stops.length);
@@ -3995,11 +4016,8 @@ function renderPlannerLegRow(leg, idx, stops) {
       <span class="planner-leg-route">${fromLabel} → ${toLabel}</span>
       <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
     </div>
-    <div class="toggle-row planner-leg-tags">
-      <button type="button" class="toggle normal ${leg.tag === "normal" ? "on" : ""}" data-legidx="${idx}" data-legtag="normal">Personal</button>
-      <button type="button" class="toggle work ${leg.tag === "work" ? "on" : ""}" data-legidx="${idx}" data-legtag="work">Business</button>
-    </div>
-    ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route — tap to change</p>` : ""}
+    <span class="tag ${leg.tag}">${labelFor(DRIVE_TYPES, leg.tag)}</span>
+    ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route</p>` : ""}
   </div>`;
 }
 
@@ -6330,7 +6348,7 @@ function attachAppHandlers() {
         };
         input.onfocus = () => {
           setTimeout(() => input.select());
-          if (pillRow && !input.value.trim()) pillRow.classList.add("show");
+          if (pillRow && !input.value.trim()) { pillRow.classList.add("show"); fitPlannerPillRow(pillRow); }
         };
         input.onblur = () => {
           setTimeout(() => { if (pillRow) pillRow.classList.toggle("show", !stop.address.trim()); }, 150);
@@ -6348,6 +6366,7 @@ function attachAppHandlers() {
         setupLocationMarquee(input.id);
         if (stop.lat != null) armLocationMarquee(input.id);
       });
+      fitPlannerPillRows();
 
       document.querySelectorAll(".planner-chip").forEach(el => {
         el.onmousedown = async (e) => {
@@ -6355,19 +6374,7 @@ function attachAppHandlers() {
           const idx = parseInt(el.dataset.stopidx, 10);
           const stop = p.stops[idx];
           if (!stop) return;
-          if (el.dataset.currentloc) {
-            if (!mapsConfigured()) { stop.resolveError = "Location lookup isn't set up for this app yet."; render(); return; }
-            try {
-              const coords = await getCurrentPosition();
-              const address = await reverseGeocode(coords.latitude, coords.longitude);
-              await plannerResolveStop(stop, address, { lat: coords.latitude, lng: coords.longitude }, true);
-            } catch (err) {
-              stop.resolveError = err.message || "Couldn't get your location.";
-              render();
-            }
-          } else {
-            await plannerResolveStop(stop, el.dataset.address, null);
-          }
+          await plannerResolveStop(stop, el.dataset.address, null);
         };
       });
       document.querySelectorAll(".plannerAddressOverflowSelect").forEach(sel => {
@@ -6379,10 +6386,6 @@ function attachAppHandlers() {
           sel.value = "";
           if (stop) await plannerResolveStop(stop, address, null);
         };
-      });
-
-      document.querySelectorAll(".planner-leg-tags [data-legtag]").forEach(btn => {
-        btn.onclick = () => plannerSetLegTag(parseInt(btn.dataset.legidx, 10), btn.dataset.legtag);
       });
 
       const saveRouteBtn = document.getElementById("plannerSaveRouteBtn");
