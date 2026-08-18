@@ -230,6 +230,8 @@
 
   /* Trip Planner: fullscreen map builder + live GPS driving mode */
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
+  .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
+  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .3s linear;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
@@ -337,10 +339,10 @@
     background:linear-gradient(to top, rgba(var(--bg-rgb),.97) 55%, transparent 100%);
     display:flex;align-items:center;gap:14px;}
   .planner-eta-metrics{display:flex;gap:16px;flex:1;}
-  .planner-eta-metrics .m .v{font-size:16px;font-weight:800;}
-  .planner-eta-metrics .m.eta .v{color:var(--amber);}
+  .planner-eta-metrics .m .v{font-size:13px;font-weight:700;color:var(--text);}
+  .planner-eta-metrics .m.remain .v{font-size:19px;font-weight:800;color:var(--amber);}
   .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
-  .planner-eta-bar.paused .planner-eta-metrics .m.eta .v{color:var(--muted);}
+  .planner-eta-bar.paused .planner-eta-metrics .m.remain .v{color:var(--muted);}
   .planner-pause-drive-btn{width:46px;height:46px;border-radius:50%;background:rgba(var(--surface-rgb),.94);
     border:1px solid var(--border);color:var(--text);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
@@ -2148,6 +2150,16 @@ function stepPlainInstruction(html) {
   div.innerHTML = html || "";
   return div.textContent || div.innerText || "";
 }
+// Google's step instructions bold the road name(s) inline (e.g. "Turn
+// <b>right</b> onto <b>Main St</b>") — the last bold run is the road being
+// turned onto or continued along, which reads cleaner under the maneuver
+// label than the full sentence.
+function stepStreetName(html) {
+  const div = document.createElement("div");
+  div.innerHTML = html || "";
+  const bolds = Array.from(div.querySelectorAll("b")).map(b => b.textContent.trim()).filter(Boolean);
+  return bolds.length ? bolds[bolds.length - 1] : stepPlainInstruction(html);
+}
 // Every step across every leg, in order, each tagged with which leg it
 // belongs to — turn-by-turn advances through this independent of the
 // coarser per-leg distance/duration already shown in the route summary.
@@ -2168,7 +2180,6 @@ function flattenDirectionsSteps(result) {
 
 let liveDrive = null;
 let liveWatchId = null;
-let liveTickerId = null;
 
 // Opens Google Maps (app on mobile, maps.google.com in a new tab on
 // desktop) with the full planned route pre-filled — real turn-by-turn
@@ -2219,11 +2230,10 @@ async function startLiveDrive() {
   liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => { /* a missed fix just means no update this tick */ }, {
     enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
   });
-  startLiveTicker();
 }
 
-// Pausing shifts nothing yet — it just freezes the ticker and stops counting
-// fixes toward distance/duration. Resuming shifts startedAt/legStartedAt
+// Pausing shifts nothing yet — it just stops counting fixes toward
+// distance/duration. Resuming shifts startedAt/legStartedAt
 // forward by however long the pause lasted, so every downstream "Date.now()
 // - startedAt" duration calc naturally excludes the paused interval without
 // needing a separate running total to subtract everywhere.
@@ -2303,7 +2313,18 @@ function handleLiveFix(pos) {
   updateLiveDriveDOM();
 }
 
+// Rotates the whole map DOM (tiles, route line, and marker together) so
+// direction-of-travel always points up the screen, nav-app style. The
+// marker's own icon rotation stays heading-relative-to-north (set below),
+// which cancels out against this counter-rotation to leave the arrow
+// pointing straight up on screen.
+function rotateLiveMap(heading) {
+  const wrap = document.getElementById("plannerMapRotateWrap");
+  if (wrap) wrap.style.transform = `rotate(${-(heading || 0)}deg)`;
+}
+
 async function updateLiveMarker(lat, lng, heading) {
+  rotateLiveMap(heading);
   if (!plannerMapInstance || !window.google || !google.maps.importLibrary) return;
   try {
     const { Marker } = await google.maps.importLibrary("marker");
@@ -2358,7 +2379,7 @@ function updateLiveDriveDOM() {
     turnIconWrap.innerHTML = arrived ? icons.flag : maneuverIcon(step.maneuver);
   }
   if (turnMain) turnMain.textContent = arrived ? "You have arrived" : maneuverLabel(step.maneuver);
-  if (turnSub) turnSub.textContent = arrived ? "" : stepPlainInstruction(step.instructions);
+  if (turnSub) turnSub.textContent = arrived ? "" : stepStreetName(step.instructions);
   if (turnDistVal) {
     if (arrived || !liveDrive.lastFix) { turnDistVal.textContent = "–"; }
     else {
@@ -2367,24 +2388,13 @@ function updateLiveDriveDOM() {
     }
   }
   const remain = computeLiveRemaining();
+  const remainTimeVal = document.getElementById("plannerRemainTimeVal");
   const etaVal = document.getElementById("plannerEtaVal");
-  const remainVal = document.getElementById("plannerRemainVal");
-  if (etaVal) etaVal.textContent = arrived ? "Arrived" : remain.etaStr;
-  if (remainVal) remainVal.textContent = arrived ? "0.0 " + unitLabel() : `${kmToDisplay(remain.km).toFixed(1)} ${unitLabel()}`;
+  const remainDistVal = document.getElementById("plannerRemainVal");
+  if (remainTimeVal) remainTimeVal.textContent = arrived ? "Arrived" : formatDuration(remain.min);
+  if (etaVal) etaVal.textContent = arrived ? "–" : remain.etaStr;
+  if (remainDistVal) remainDistVal.textContent = arrived ? "0.0 " + unitLabel() : `${kmToDisplay(remain.km).toFixed(1)} ${unitLabel()}`;
 }
-
-function startLiveTicker() {
-  stopLiveTicker();
-  liveTickerId = setInterval(() => {
-    if (!liveDrive) return;
-    if (liveDrive.paused) return; // elapsed display stays frozen while paused
-    const el = document.getElementById("plannerElapsedVal");
-    if (!el) return;
-    const elapsedSec = Math.floor((Date.now() - liveDrive.startedAt) / 1000);
-    el.textContent = `${String(Math.floor(elapsedSec / 60)).padStart(2, "0")}:${String(elapsedSec % 60).padStart(2, "0")}`;
-  }, 1000);
-}
-function stopLiveTicker() { if (liveTickerId) clearInterval(liveTickerId); liveTickerId = null; }
 
 // Stop & Save: finalizes whatever's left of the leg in progress (its end
 // point becomes the current, reverse-geocoded location rather than the
@@ -2395,7 +2405,6 @@ async function endLiveDrive() {
   if (!liveDrive || !state.planner) return;
   const p = state.planner;
   if (liveWatchId != null) { navigator.geolocation.clearWatch(liveWatchId); liveWatchId = null; }
-  stopLiveTicker();
 
   // Ending while paused: exclude the still-ongoing paused interval from the
   // final leg's duration, same math as a resume — just without restarting tracking.
@@ -2455,7 +2464,7 @@ async function endLiveDrive() {
   render();
 }
 
-// Best-effort resume after a refresh mid-drive: restores the elapsed timer,
+// Best-effort resume after a refresh mid-drive: restores the start time,
 // completed legs so far, and current leg's accumulated distance. The turn
 // list itself isn't persisted (it's a live Google object graph), so
 // turn-by-turn just goes quiet until the next fix re-derives it once Maps
@@ -2485,7 +2494,6 @@ async function resumeLiveDriveIfAny() {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
       enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
     });
-    startLiveTicker();
   }
 }
 
@@ -2626,6 +2634,13 @@ async function ensurePlannerMap() {
       if (!firstStop) { center = myLocation; zoom = 14; }
     } catch { /* keep the world-view fallback — user can still search or tap the map */ }
   }
+  // Driving: zoom in to street level and center on the driver's actual
+  // position rather than the route's start, so the very first render of the
+  // driving view already reads as "zoomed in and following you".
+  if (driving && liveDrive && liveDrive.lastFix) {
+    center = { lat: liveDrive.lastFix.lat, lng: liveDrive.lastFix.lng };
+    zoom = 17;
+  }
   // Best known fix for deciding day/night styling: live position, else the
   // first resolved stop, else the last GPS fix from an in-progress drive.
   const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
@@ -2655,6 +2670,9 @@ async function ensurePlannerMap() {
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
       plannerDirectionsRenderer = new DirectionsRenderer({
         map: plannerMapInstance, suppressMarkers: false, draggable: !driving,
+        // Otherwise setDirections() below re-fits the viewport to the whole
+        // route, undoing the street-level zoom/center just set above.
+        preserveViewport: driving,
       });
       plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
       if (!driving) {
@@ -3789,7 +3807,7 @@ function renderPlanTab() {
 
   return `
   <div class="planner-fullscreen">
-    <div id="plannerMapCanvas"></div>
+    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${(!driving && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : `
@@ -3874,9 +3892,9 @@ function renderPlannerEtaBar() {
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
     <div class="planner-eta-metrics">
-      <div class="m eta"><div class="v mono" id="plannerEtaVal">${paused ? "Paused" : "–"}</div><div class="l">ETA</div></div>
-      <div class="m"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Remaining</div></div>
-      <div class="m"><div class="v mono" id="plannerElapsedVal">00:00</div><div class="l">Elapsed</div></div>
+      <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
+      <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
+      <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
     </div>
     <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
     <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
