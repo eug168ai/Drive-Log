@@ -231,10 +231,10 @@
   .planner-route-card{cursor:pointer;}
 
   /* Trip Planner: fullscreen map builder + live GPS driving mode */
-  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 78%;}
+  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 83%;}
   .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
   .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .35s ease-out;}
-  .planner-map-rotate-wrap.driving.angled{top:-70%;left:-70%;right:-70%;bottom:-70%;width:240%;height:240%;}
+  .planner-map-rotate-wrap.driving.angled{top:-160%;left:-160%;right:-160%;bottom:-160%;width:420%;height:420%;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
@@ -2146,24 +2146,32 @@ const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
 const LIVE_MIN_ROTATE_SPEED_MS = 1.4; // ~5 km/h — below this GPS course is noisy or absent, so the map holds its last heading instead of spinning on the noise
 const LIVE_HEADING_SMOOTHING = 0.35; // low-pass factor for the heading used to rotate the map
 const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used for the marker/camera (raw fixes still drive distance/arrival math)
-const LIVE_LOOKAHEAD_OFFSET_M = 95;  // shifts the camera center behind the driver so more of the road ahead is visible
+const LIVE_MARKER_SCREEN_FRACTION = 5 / 6; // how far down the screen the driver marker sits (see lookAheadCenter)
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
 const LIVE_TILT_MIN_DEG = 20;        // faster — flatter, more top-down, to show more of the road ahead
-const LIVE_TILT_MAX_DEG = 58;        // stopped/slow — steeper 3D angle, like Google's close-up nav view
+const LIVE_TILT_MAX_DEG = 52;        // stopped/slow — steeper 3D angle, like Google's close-up nav view
 const LIVE_ZOOM_MIN = 16;            // faster — zoomed out to show more road ahead
 const LIVE_ZOOM_MAX = 19;            // stopped/slow — zoomed in tight
 const LIVE_DYNAMIC_SPEED_FULL_MS = 25; // ~90 km/h and above reaches the flattest/most-zoomed-out end of the tilt/zoom range
-// While driving, labels on the raster map tiles rotate along with
-// everything else (see rotateLiveMap), so at some headings a label reads
-// sideways or upside-down — an accepted tradeoff for seeing the current
-// road and the roads branching off it on the map itself. Non-essential
-// clutter (POIs, transit, admin-area names) is still turned off.
-const DRIVING_LABEL_HIDE_STYLE = [
-  { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
-  { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
-];
+// Road labels on the raster map tiles rotate along with everything else
+// (see rotateLiveMap), so past roughly a quarter turn from north-up they'd
+// read sideways-to-upside-down — genuinely hard to read, not just tilted.
+// Rather than either always showing them (sometimes unreadable) or always
+// hiding them (never seeing road names), updateLiveMapLabelVisibility
+// toggles them off only while the map is rotated past that point, and back
+// on once heading swings back closer to upright. POIs/transit/admin labels
+// are always off — clutter the turn banner already covers better.
+const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 70;
+function drivingMapStyles(showRoadLabels) {
+  const hide = [
+    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
+    { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
+  ];
+  if (!showRoadLabels) hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
+  return [...(plannerMapIsNight ? NIGHT_MAP_STYLE : []), ...hide];
+}
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2267,9 +2275,9 @@ function distanceToLiveRouteMeters(lat, lng) {
 }
 
 // Destination point a given distance/bearing from (lat, lng) — used to push
-// the camera's look-at point behind the driver (see lookAheadCenter) so the
-// live marker sits lower on screen instead of dead center, leaving more of
-// the road ahead visible.
+// the camera's look-at point ahead of the driver (see lookAheadCenter) so
+// the live marker sits low on screen instead of dead center, leaving more
+// of the road ahead visible.
 function offsetLatLng(lat, lng, bearingDeg, distanceM) {
   const R = 6371000;
   const brng = bearingDeg * Math.PI / 180;
@@ -2278,9 +2286,26 @@ function offsetLatLng(lat, lng, bearingDeg, distanceM) {
   const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(distanceM / R) * Math.cos(lat1), Math.cos(distanceM / R) - Math.sin(lat1) * Math.sin(lat2));
   return { lat: lat2 * 180 / Math.PI, lng: lng2 * 180 / Math.PI };
 }
-function lookAheadCenter(lat, lng, headingDeg) {
+// Meters represented by one screen pixel at a given zoom/latitude (Web
+// Mercator) — lets the camera offset target a fixed fraction of the actual
+// screen height regardless of the current (now dynamic) zoom level.
+function metersPerPixelAtZoom(zoom, lat) {
+  return 156543.03392 * Math.cos((lat || 0) * Math.PI / 180) / Math.pow(2, zoom);
+}
+// The map is always centered (by Maps itself) at 50% of the screen. Panning
+// that center to a point AHEAD of the driver — rather than the driver's own
+// position — leaves the driver below the 50% line, at LIVE_MARKER_SCREEN_FRACTION
+// of the way down, so most of the screen shows the road still ahead of them.
+function lookAheadCenter(lat, lng, headingDeg, zoom) {
   if (headingDeg == null) return { lat, lng };
-  return offsetLatLng(lat, lng, headingDeg + 180, LIVE_LOOKAHEAD_OFFSET_M);
+  // Not #plannerMapCanvas's own height — when angled, its wrapper (and so
+  // the canvas filling it) is scaled up to 420% to cover the tilt, so only
+  // the fixed, always-viewport-sized .planner-fullscreen reports the actual
+  // visible screen height.
+  const heightPx = window.innerHeight || 700;
+  const mpp = metersPerPixelAtZoom(zoom || LIVE_DRIVING_ZOOM, lat);
+  const offsetM = (LIVE_MARKER_SCREEN_FRACTION - 0.5) * heightPx * mpp;
+  return offsetLatLng(lat, lng, headingDeg, offsetM);
 }
 // Circular low-pass filter — averages across the shorter arc between the two
 // angles so smoothing near the 0/360 wrap (e.g. 350deg -> 10deg) doesn't
@@ -2560,10 +2585,25 @@ function rotateLiveMap(headingDeg, speedMs) {
   if (delta > 180) delta -= 360;
   if (delta < -180) delta += 360;
   liveMapRotationDeg += delta;
+  updateLiveMapLabelVisibility();
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (!wrap) return;
   const tilt = liveDrive && liveDrive.angledView ? `rotateX(${dynamicTiltZoomForSpeed(liveMapLastSpeedMs).tilt.toFixed(1)}deg) ` : "";
   wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
+}
+// Toggles road labels off only while the map is rotated far enough from
+// upright that they'd read sideways-to-upside-down (see drivingMapStyles) —
+// re-styling the map is a real (if cheap) operation, so this only actually
+// calls setOptions on the rare crossing of that threshold, not every fix.
+let liveMapLabelsVisible = true;
+function updateLiveMapLabelVisibility() {
+  if (!plannerMapInstance) return;
+  const norm = ((liveMapRotationDeg % 360) + 360) % 360;
+  const angleFromUpright = norm > 180 ? 360 - norm : norm;
+  const shouldShow = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
+  if (shouldShow === liveMapLabelsVisible) return;
+  liveMapLabelsVisible = shouldShow;
+  plannerMapInstance.setOptions({ styles: drivingMapStyles(shouldShow) });
 }
 // Zoom is a real map property (not a CSS transform), so it's applied
 // directly rather than through the wrapper — throttled to avoid firing
@@ -2614,10 +2654,10 @@ async function updateLiveMarker(lat, lng, heading, speedMs) {
       const icon = plannerLiveMarker.getIcon();
       if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
     }
-    // Pan to a point offset behind the driver (rather than centering on
-    // them exactly) so the marker sits lower on screen, leaving more of the
-    // road ahead visible.
-    plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading));
+    // Pan to a point offset ahead of the driver (rather than centering on
+    // them exactly) so the marker sits low on screen, leaving most of the
+    // screen showing the road still ahead of them.
+    plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
   } catch { /* marker library unavailable — position tracking still works without the on-map arrow */ }
 }
 
@@ -2868,6 +2908,7 @@ let plannerDirectionsRenderer = null;
 let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
 let plannerTripStartMarker = null;
+let plannerMapIsNight = false;
 
 // Live-updates just the distance/time/hazard/leg-tag card in place, without
 // a full render() — used after a drag-to-reroute (directions_changed can
@@ -2925,15 +2966,17 @@ async function ensurePlannerMap() {
   // route's start, so the very first render of the driving view already
   // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
-    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
     zoom = LIVE_DRIVING_ZOOM;
+    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom);
   }
   // Best known fix for deciding day/night styling: live position, else the
   // first resolved stop, else the last GPS fix from an in-progress drive.
   const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
   const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
+  plannerMapIsNight = night;
+  liveMapLabelsVisible = true;
   plannerMapInstance = new Map(canvas, {
-    center, zoom, styles: [...(night ? NIGHT_MAP_STYLE : []), ...(driving ? DRIVING_LABEL_HIDE_STYLE : [])],
+    center, zoom, styles: driving ? drivingMapStyles(true) : (night ? NIGHT_MAP_STYLE : []),
     disableDefaultUI: true, zoomControl: !driving, gestureHandling: "greedy",
   });
 
