@@ -229,9 +229,10 @@
   .planner-route-card{cursor:pointer;}
 
   /* Trip Planner: fullscreen map builder + live GPS driving mode */
-  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
+  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 78%;}
   .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
-  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .3s linear;}
+  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .35s ease-out;}
+  .planner-map-rotate-wrap.driving.angled{top:-70%;left:-70%;right:-70%;bottom:-70%;width:240%;height:240%;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
@@ -294,6 +295,12 @@
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-recenter-fab .icon{width:18px;height:18px;}
+
+  .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
+    background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  .planner-angle-fab.active{background:var(--amber);border-color:var(--amber);color:var(--bg);}
+  .planner-angle-fab .icon{width:18px;height:18px;}
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
@@ -1104,6 +1111,13 @@ const icons = {
   starFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   pause: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`,
   briefcase: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="M2 13h20"/></svg>`,
+  roundaboutLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="6"/><path d="M13 7 7 2"/><path d="M7 6V2h4"/></svg>`,
+  roundaboutRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="13" r="6"/><path d="M11 7l6-5"/><path d="M17 6V2h-4"/></svg>`,
+  uturn: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 20V10a4 4 0 1 1 8 0v3"/><path d="M19 13l-3 3-3-3"/></svg>`,
+  merge: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 20V14a4 4 0 0 1 4-4h2"/><path d="M17 4v6a4 4 0 0 1-4 4h-2"/><path d="M14 7l3-3 3 3"/></svg>`,
+  forkLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M7 9V6h3"/></svg>`,
+  forkRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M17 9V6h-3"/></svg>`,
+  angleView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 6h6l5 12z"/><path d="M4 18h16"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -2123,6 +2137,11 @@ const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this lar
 const LIVE_OFFROUTE_M = 50;          // further than this from the route's own path counts as "off route"
 const LIVE_OFFROUTE_CONFIRM_FIXES = 3; // consecutive off-route fixes required before rerouting, so one noisy fix doesn't trigger it
 const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
+const LIVE_MIN_ROTATE_SPEED_MS = 1.4; // ~5 km/h — below this GPS course is noisy or absent, so the map holds its last heading instead of spinning on the noise
+const LIVE_HEADING_SMOOTHING = 0.35; // low-pass factor for the heading used to rotate the map
+const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used for the marker/camera (raw fixes still drive distance/arrival math)
+const LIVE_LOOKAHEAD_OFFSET_M = 55;  // shifts the camera center behind the driver so more of the road ahead is visible
+const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2134,8 +2153,15 @@ const MANEUVER_LABELS = {
   "straight": "Continue straight",
 };
 function maneuverIcon(m) {
-  if (m && m.includes("left")) return icons.turnLeft;
-  if (m && m.includes("right")) return icons.turnRight;
+  if (!m) return icons.straight;
+  if (m.startsWith("roundabout-left")) return icons.roundaboutLeft;
+  if (m.startsWith("roundabout-right")) return icons.roundaboutRight;
+  if (m.startsWith("uturn")) return icons.uturn;
+  if (m === "merge") return icons.merge;
+  if (m.startsWith("fork-left") || m.startsWith("ramp-left")) return icons.forkLeft;
+  if (m.startsWith("fork-right") || m.startsWith("ramp-right")) return icons.forkRight;
+  if (m.includes("left")) return icons.turnLeft;
+  if (m.includes("right")) return icons.turnRight;
   return icons.straight;
 }
 function maneuverLabel(m) { return MANEUVER_LABELS[m] || "Continue"; }
@@ -2218,6 +2244,50 @@ function distanceToLiveRouteMeters(lat, lng) {
   return min;
 }
 
+// Destination point a given distance/bearing from (lat, lng) — used to push
+// the camera's look-at point behind the driver (see lookAheadCenter) so the
+// live marker sits lower on screen instead of dead center, leaving more of
+// the road ahead visible.
+function offsetLatLng(lat, lng, bearingDeg, distanceM) {
+  const R = 6371000;
+  const brng = bearingDeg * Math.PI / 180;
+  const lat1 = lat * Math.PI / 180, lng1 = lng * Math.PI / 180;
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(distanceM / R) + Math.cos(lat1) * Math.sin(distanceM / R) * Math.cos(brng));
+  const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(distanceM / R) * Math.cos(lat1), Math.cos(distanceM / R) - Math.sin(lat1) * Math.sin(lat2));
+  return { lat: lat2 * 180 / Math.PI, lng: lng2 * 180 / Math.PI };
+}
+function lookAheadCenter(lat, lng, headingDeg) {
+  if (headingDeg == null) return { lat, lng };
+  return offsetLatLng(lat, lng, headingDeg + 180, LIVE_LOOKAHEAD_OFFSET_M);
+}
+// Circular low-pass filter — averages across the shorter arc between the two
+// angles so smoothing near the 0/360 wrap (e.g. 350deg -> 10deg) doesn't
+// swing the wrong way round.
+function smoothHeadingDeg(prevDeg, nextDeg, alpha) {
+  const diff = ((nextDeg - prevDeg + 540) % 360) - 180;
+  return (prevDeg + diff * alpha + 360) % 360;
+}
+// Steps without a maneuver are just the route continuing along the same
+// road (a gentle curve, a name change) — not a real decision point, so the
+// turn banner looks past them to the next step that actually is one.
+function nextJunctionStepIdx(fromIdx) {
+  for (let i = fromIdx; i < liveDrive.steps.length; i++) {
+    if (liveDrive.steps[i].maneuver) return i;
+  }
+  return -1; // no more turns ahead — the route just continues to the destination
+}
+// Distance from the current fix to the end of `toStepIdx`, walking the full
+// length of every step between the current one and it — used to give a
+// distance countdown to a junction that isn't the very next step (the turns
+// in between it and here having been filtered out by nextJunctionStepIdx).
+function distanceToStepEndMeters(toStepIdx) {
+  const first = liveDrive.steps[liveDrive.stepIdx];
+  if (!first || !liveDrive.lastFix) return null;
+  let d = haversineMeters(liveDrive.lastFix.lat, liveDrive.lastFix.lng, first.endLat, first.endLng);
+  for (let i = liveDrive.stepIdx + 1; i <= toStepIdx; i++) d += liveDrive.steps[i].distanceM;
+  return d;
+}
+
 let liveDrive = null;
 let liveWatchId = null;
 
@@ -2261,7 +2331,10 @@ async function startLiveDrive() {
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
+    smoothFix: null, smoothHeading: null, angledView: false,
   };
+  liveMapRotationDeg = 0;
+  liveMapLastHeadingDeg = 0;
   await persistLiveDriveSnapshot();
 
   p.stage = "driving";
@@ -2324,12 +2397,29 @@ function finishCurrentLiveLeg() {
 
 function handleLiveFix(pos) {
   if (!liveDrive) return;
-  const { latitude: lat, longitude: lng, accuracy, heading } = pos.coords;
+  const { latitude: lat, longitude: lng, accuracy, heading, speed } = pos.coords;
   if (accuracy != null && accuracy > LIVE_MAX_FIX_ACCURACY_M) return;
   const prev = liveDrive.lastFix;
   const deltaM = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : 0;
+  const dtS = prev ? Math.max(0.001, (Date.now() - prev.t) / 1000) : 0;
+  const estSpeedMs = speed != null ? speed : (prev ? deltaM / dtS : 0);
   liveDrive.lastFix = { lat, lng, heading, t: Date.now() };
-  updateLiveMarker(lat, lng, heading);
+
+  // Smoothed position/heading drive the visual marker and camera only — the
+  // raw fix above still drives distance, step-advance, off-route and
+  // arrival math below, so smoothing can never skew the logged trip data.
+  if (!liveDrive.smoothFix) liveDrive.smoothFix = { lat, lng };
+  else {
+    liveDrive.smoothFix.lat += (lat - liveDrive.smoothFix.lat) * LIVE_POSITION_SMOOTHING;
+    liveDrive.smoothFix.lng += (lng - liveDrive.smoothFix.lng) * LIVE_POSITION_SMOOTHING;
+  }
+  // GPS course is noisy or simply absent below walking speed — hold the
+  // last stable heading rather than snapping/spinning the map on that noise
+  // (the usual cause of the map appearing to spin while stopped or crawling).
+  if (heading != null && estSpeedMs > LIVE_MIN_ROTATE_SPEED_MS) {
+    liveDrive.smoothHeading = liveDrive.smoothHeading == null ? heading : smoothHeadingDeg(liveDrive.smoothHeading, heading, LIVE_HEADING_SMOOTHING);
+  }
+  updateLiveMarker(liveDrive.smoothFix.lat, liveDrive.smoothFix.lng, liveDrive.smoothHeading);
 
   // Paused: keep the marker/position current so resuming isn't stale, but
   // don't count this fix toward distance, steps, or arrival.
@@ -2412,13 +2502,43 @@ async function rerouteLiveDrive(lat, lng) {
 }
 
 // Rotates the whole map DOM (tiles, route line, and marker together) so
-// direction-of-travel always points up the screen, nav-app style. The
-// marker's own icon rotation stays heading-relative-to-north (set below),
-// which cancels out against this counter-rotation to leave the arrow
-// pointing straight up on screen.
-function rotateLiveMap(heading) {
+// direction-of-travel points up the screen, nav-app style. The marker's own
+// icon rotation stays heading-relative-to-north (set below), which cancels
+// out against this counter-rotation to leave the arrow pointing straight up.
+//
+// liveMapRotationDeg is deliberately never wrapped back to a 0-360 range —
+// only the shortest delta from its current value is ever added to it — so
+// the CSS transition always takes the short way around. A naive
+// `rotate(${-heading}deg)` set fresh from a mod-360 heading each fix will,
+// whenever heading crosses the 0/360 boundary (e.g. 359deg -> 1deg), animate
+// the LONG way around (the browser interpolates the raw degree values, not
+// the visual angle) — that's the map "spinning" the user was seeing.
+let liveMapRotationDeg = 0;
+let liveMapLastHeadingDeg = 0;
+function rotateLiveMap(headingDeg) {
+  liveMapLastHeadingDeg = headingDeg || 0;
+  const target = ((-liveMapLastHeadingDeg % 360) + 360) % 360;
+  const current = ((liveMapRotationDeg % 360) + 360) % 360;
+  let delta = target - current;
+  if (delta > 180) delta -= 360;
+  if (delta < -180) delta += 360;
+  liveMapRotationDeg += delta;
   const wrap = document.getElementById("plannerMapRotateWrap");
-  if (wrap) wrap.style.transform = `rotate(${-(heading || 0)}deg)`;
+  if (!wrap) return;
+  const tilt = liveDrive && liveDrive.angledView ? "rotateX(55deg) " : "";
+  wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
+}
+// Toggles the pseudo-3D angled view (a CSS tilt on the same rotating map
+// wrapper) — a plain targeted DOM update, not a render(), so it doesn't
+// interrupt live tracking or recreate the map.
+function toggleLiveAngledView() {
+  if (!liveDrive) return;
+  liveDrive.angledView = !liveDrive.angledView;
+  const wrap = document.getElementById("plannerMapRotateWrap");
+  if (wrap) wrap.classList.toggle("angled", liveDrive.angledView);
+  const btn = document.getElementById("plannerAngleBtn");
+  if (btn) btn.classList.toggle("active", liveDrive.angledView);
+  rotateLiveMap(liveMapLastHeadingDeg);
 }
 
 async function updateLiveMarker(lat, lng, heading) {
@@ -2442,7 +2562,10 @@ async function updateLiveMarker(lat, lng, heading) {
       const icon = plannerLiveMarker.getIcon();
       if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
     }
-    plannerMapInstance.panTo({ lat, lng });
+    // Pan to a point offset behind the driver (rather than centering on
+    // them exactly) so the marker sits lower on screen, leaving more of the
+    // road ahead visible.
+    plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading));
   } catch { /* marker library unavailable — position tracking still works without the on-map arrow */ }
 }
 
@@ -2473,17 +2596,26 @@ function updateLiveDriveDOM() {
   const turnDistVal = document.getElementById("plannerTurnDistVal");
   const arrived = !step;
   const rerouting = !!liveDrive.rerouting;
+  // The upcoming junction (if any) rather than the raw current step — a
+  // step with no maneuver is just the route continuing along a curve or
+  // through a name change, not something worth announcing as a "turn".
+  const junctionIdx = arrived || rerouting ? -1 : nextJunctionStepIdx(liveDrive.stepIdx + 1);
+  const junctionStep = junctionIdx === -1 ? null : liveDrive.steps[junctionIdx];
   if (turnIconWrap) {
     turnIconWrap.className = arrived && !rerouting ? "planner-turn-icon arrive" : "planner-turn-icon";
-    turnIconWrap.innerHTML = rerouting ? icons.route : (arrived ? icons.flag : maneuverIcon(step.maneuver));
+    turnIconWrap.innerHTML = rerouting ? icons.route : arrived ? icons.flag : junctionStep ? maneuverIcon(junctionStep.maneuver) : icons.straight;
   }
-  if (turnMain) turnMain.textContent = rerouting ? "Rerouting…" : (arrived ? "You have arrived" : maneuverLabel(step.maneuver));
-  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : (arrived ? "" : stepStreetName(step.instructions));
+  if (turnMain) {
+    turnMain.textContent = rerouting ? "Rerouting…" : arrived ? "You have arrived"
+      : junctionStep ? maneuverLabel(junctionStep.maneuver)
+      : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
+  }
+  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? stepStreetName(junctionStep.instructions) : "";
   if (turnDistVal) {
-    if (rerouting || arrived || !liveDrive.lastFix) { turnDistVal.textContent = "–"; }
+    if (rerouting || arrived || !junctionStep) { turnDistVal.textContent = "–"; }
     else {
-      const distM = haversineMeters(liveDrive.lastFix.lat, liveDrive.lastFix.lng, step.endLat, step.endLng);
-      turnDistVal.textContent = formatLiveTurnDistance(distM);
+      const distM = distanceToStepEndMeters(junctionIdx - 1);
+      turnDistVal.textContent = distM == null ? "–" : formatLiveTurnDistance(distM);
     }
   }
   const remain = computeLiveRemaining();
@@ -2589,6 +2721,7 @@ async function resumeLiveDriveIfAny() {
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
+    smoothFix: null, smoothHeading: null, angledView: false,
   };
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
@@ -2680,6 +2813,7 @@ let plannerMapClickListener = null;
 let plannerDirectionsRenderer = null;
 let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
+let plannerTripStartMarker = null;
 
 // Live-updates just the distance/time/hazard/leg-tag card in place, without
 // a full render() — used after a drag-to-reroute (directions_changed can
@@ -2711,6 +2845,7 @@ async function ensurePlannerMap() {
   plannerDirectionsChangedListener = null;
   plannerMapInstance = null;
   plannerLiveMarker = null;
+  plannerTripStartMarker = null;
   if (!canvas || !mapsConfigured()) return;
   const library = await getMapsLibrary();
   if (!library) return;
@@ -2735,11 +2870,12 @@ async function ensurePlannerMap() {
     } catch { /* keep the world-view fallback — user can still search or tap the map */ }
   }
   // Driving: zoom in to street level and center on the driver's actual
-  // position rather than the route's start, so the very first render of the
-  // driving view already reads as "zoomed in and following you".
+  // position (offset behind them, see lookAheadCenter) rather than the
+  // route's start, so the very first render of the driving view already
+  // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
-    center = { lat: liveDrive.lastFix.lat, lng: liveDrive.lastFix.lng };
-    zoom = 17;
+    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
+    zoom = LIVE_DRIVING_ZOOM;
   }
   // Best known fix for deciding day/night styling: live position, else the
   // first resolved stop, else the last GPS fix from an in-progress drive.
@@ -2769,7 +2905,12 @@ async function ensurePlannerMap() {
       const { DirectionsRenderer } = await getRoutesLibrary();
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
       plannerDirectionsRenderer = new DirectionsRenderer({
-        map: plannerMapInstance, suppressMarkers: false, draggable: !driving,
+        map: plannerMapInstance, draggable: !driving,
+        // While driving, a reroute replaces this result with one whose
+        // origin is wherever the car currently is — its own A/B pins would
+        // then jump around on every reroute. Suppressed here in favor of
+        // the dedicated, reroute-proof start marker placed below.
+        suppressMarkers: driving,
         // Otherwise setDirections() below re-fits the viewport to the whole
         // route, undoing the street-level zoom/center just set above.
         preserveViewport: driving,
@@ -2796,6 +2937,23 @@ async function ensurePlannerMap() {
 
   if (driving && liveDrive && liveDrive.lastFix) {
     updateLiveMarker(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading);
+  }
+
+  // A small, fixed marker at the trip's original starting point — placed
+  // once here and never touched by a reroute (which only ever replaces the
+  // DirectionsRenderer's own line/markers), so where the drive began stays
+  // visible on the map no matter how many times the route ahead changes.
+  if (driving && p.stops[0] && p.stops[0].lat != null) {
+    try {
+      const { Marker } = await google.maps.importLibrary("marker");
+      if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      plannerTripStartMarker = new Marker({
+        map: plannerMapInstance,
+        position: { lat: p.stops[0].lat, lng: p.stops[0].lng },
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#8B92A0", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+        zIndex: 3, title: "Start",
+      });
+    } catch { /* map still usable without the start pin */ }
   }
 
   // "You are here" — a standard soft-halo-plus-solid-dot blue marker at the
@@ -3907,8 +4065,9 @@ function renderPlanTab() {
 
   return `
   <div class="planner-fullscreen">
-    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
+    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${driving && liveDrive && liveDrive.angledView ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${(!driving && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angledView ? "active" : ""}" id="plannerAngleBtn" title="Toggle angled view">${icons.angleView}</button>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : `
     <div class="planner-topbar">
@@ -6221,6 +6380,8 @@ function attachAppHandlers() {
       if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
       if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
+      const angleBtn = document.getElementById("plannerAngleBtn");
+      if (angleBtn) angleBtn.onclick = toggleLiveAngledView;
       updateLiveDriveDOM();
     }
 
