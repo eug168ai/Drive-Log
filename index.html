@@ -2120,6 +2120,9 @@ const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it 
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
+const LIVE_OFFROUTE_M = 50;          // further than this from the route's own path counts as "off route"
+const LIVE_OFFROUTE_CONFIRM_FIXES = 3; // consecutive off-route fixes required before rerouting, so one noisy fix doesn't trigger it
+const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
 const MANEUVER_LABELS = {
   "turn-left": "Turn left", "turn-right": "Turn right",
   "turn-slight-left": "Bear left", "turn-slight-right": "Bear right",
@@ -2173,9 +2176,46 @@ function flattenDirectionsSteps(result) {
       distanceM: step.distance ? step.distance.value : 0,
       durationS: step.duration ? step.duration.value : 0,
       endLat: step.end_location.lat(), endLng: step.end_location.lng(),
+      path: (step.path || []).map(pt => ({ lat: pt.lat(), lng: pt.lng() })),
     }));
   });
   return steps;
+}
+
+// How far (lat, lng) is from the driving route, for off-route detection.
+// Distances are short enough (well under a step's length) that a flat local
+// projection scaled by degrees-to-meters at this latitude is accurate
+// enough — no need for great-circle segment math.
+function distanceToSegmentMeters(lat, lng, aLat, aLng, bLat, bLng) {
+  const mPerLat = 111320, mPerLng = 111320 * Math.cos(lat * Math.PI / 180);
+  const px = (lng - aLng) * mPerLng, py = (lat - aLat) * mPerLat;
+  const dx = (bLng - aLng) * mPerLng, dy = (bLat - aLat) * mPerLat;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq)) : 0;
+  const ex = px - dx * t, ey = py - dy * t;
+  return Math.sqrt(ex * ex + ey * ey);
+}
+function distanceToPathMeters(lat, lng, path) {
+  if (!path || !path.length) return Infinity;
+  if (path.length === 1) return haversineMeters(lat, lng, path[0].lat, path[0].lng);
+  let min = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const d = distanceToSegmentMeters(lat, lng, path[i].lat, path[i].lng, path[i + 1].lat, path[i + 1].lng);
+    if (d < min) min = d;
+  }
+  return min;
+}
+// Checked against the current step and the next one (rather than just the
+// current step) so a fix that's already crossed into the next step's path
+// — but hasn't tripped the step-advance threshold yet — doesn't read as
+// off-route.
+function distanceToLiveRouteMeters(lat, lng) {
+  let min = Infinity;
+  for (let i = liveDrive.stepIdx; i < Math.min(liveDrive.stepIdx + 2, liveDrive.steps.length); i++) {
+    const d = distanceToPathMeters(lat, lng, liveDrive.steps[i].path);
+    if (d < min) min = d;
+  }
+  return min;
 }
 
 let liveDrive = null;
@@ -2220,6 +2260,7 @@ async function startLiveDrive() {
     completedLegs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
+    offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
   };
   await persistLiveDriveSnapshot();
 
@@ -2310,6 +2351,63 @@ function handleLiveFix(pos) {
     }
   }
 
+  checkLiveRouteDeviation(lat, lng);
+  updateLiveDriveDOM();
+}
+
+// Off-route detection: a handful of consecutive fixes that land too far
+// from the route's own path (not just occasional GPS noise) triggers a
+// fresh Directions call from here to the remaining stops, replacing the
+// rest of the turn-by-turn and the drawn route line in place.
+function checkLiveRouteDeviation(lat, lng) {
+  if (!liveDrive || liveDrive.rerouting || !liveDrive.steps.length) return;
+  const p = state.planner;
+  if (!p || liveDrive.legIdx >= p.legs.length) return; // no remaining stop to reroute toward
+  const offRoute = distanceToLiveRouteMeters(lat, lng) > LIVE_OFFROUTE_M;
+  liveDrive.offRouteStrikes = offRoute ? liveDrive.offRouteStrikes + 1 : 0;
+  if (liveDrive.offRouteStrikes < LIVE_OFFROUTE_CONFIRM_FIXES) return;
+  if (Date.now() - liveDrive.lastRerouteAt < LIVE_REROUTE_COOLDOWN_MS) return;
+  liveDrive.offRouteStrikes = 0;
+  rerouteLiveDrive(lat, lng);
+}
+
+// Recomputes the route from the current position to the remaining stops
+// (skipping stops already arrived at) and splices it in as the new
+// turn-by-turn — the already-driven distance/duration already banked in
+// completedLegs/legDistanceM is untouched, only the guidance ahead changes.
+async function rerouteLiveDrive(lat, lng) {
+  const p = state.planner;
+  if (!p || !liveDrive || liveDrive.rerouting) return;
+  const remainingStops = p.stops.slice(liveDrive.legIdx + 1);
+  if (!remainingStops.length) return;
+  liveDrive.rerouting = true;
+  liveDrive.lastRerouteAt = Date.now();
+  updateLiveDriveDOM();
+  try {
+    const library = await getRoutesLibrary();
+    if (!library) throw new Error("Directions service isn't ready");
+    const { DirectionsService } = library;
+    const service = new DirectionsService();
+    const destination = remainingStops[remainingStops.length - 1];
+    const waypoints = remainingStops.slice(0, -1).map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true }));
+    const result = await new Promise((resolve, reject) => {
+      service.route({
+        origin: { lat, lng }, destination: { lat: destination.lat, lng: destination.lng }, waypoints,
+        travelMode: google.maps.TravelMode.DRIVING,
+      }, (res, status) => {
+        if (status !== "OK") { reject(new Error(status)); return; }
+        resolve(res);
+      });
+    });
+    if (!liveDrive || !state.planner) return; // drive ended while this was in flight
+    const legOffset = liveDrive.legIdx;
+    liveDrive.steps = flattenDirectionsSteps(result).map(s => ({ ...s, legIdx: s.legIdx + legOffset }));
+    liveDrive.stepIdx = 0;
+    plannerDirectionsResult = result;
+    if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
+  } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
+  if (!liveDrive) return;
+  liveDrive.rerouting = false;
   updateLiveDriveDOM();
 }
 
@@ -2374,14 +2472,15 @@ function updateLiveDriveDOM() {
   const turnSub = document.getElementById("plannerTurnSub");
   const turnDistVal = document.getElementById("plannerTurnDistVal");
   const arrived = !step;
+  const rerouting = !!liveDrive.rerouting;
   if (turnIconWrap) {
-    turnIconWrap.className = arrived ? "planner-turn-icon arrive" : "planner-turn-icon";
-    turnIconWrap.innerHTML = arrived ? icons.flag : maneuverIcon(step.maneuver);
+    turnIconWrap.className = arrived && !rerouting ? "planner-turn-icon arrive" : "planner-turn-icon";
+    turnIconWrap.innerHTML = rerouting ? icons.route : (arrived ? icons.flag : maneuverIcon(step.maneuver));
   }
-  if (turnMain) turnMain.textContent = arrived ? "You have arrived" : maneuverLabel(step.maneuver);
-  if (turnSub) turnSub.textContent = arrived ? "" : stepStreetName(step.instructions);
+  if (turnMain) turnMain.textContent = rerouting ? "Rerouting…" : (arrived ? "You have arrived" : maneuverLabel(step.maneuver));
+  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : (arrived ? "" : stepStreetName(step.instructions));
   if (turnDistVal) {
-    if (arrived || !liveDrive.lastFix) { turnDistVal.textContent = "–"; }
+    if (rerouting || arrived || !liveDrive.lastFix) { turnDistVal.textContent = "–"; }
     else {
       const distM = haversineMeters(liveDrive.lastFix.lat, liveDrive.lastFix.lng, step.endLat, step.endLng);
       turnDistVal.textContent = formatLiveTurnDistance(distM);
@@ -2489,6 +2588,7 @@ async function resumeLiveDriveIfAny() {
     completedLegs: saved.completedLegs || [],
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
+    offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
   };
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
