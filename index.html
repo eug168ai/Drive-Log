@@ -1028,7 +1028,19 @@ async function findExistingDriveLogSheets(token) {
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,webViewLink,modifiedTime)&orderBy=modifiedTime desc`, {
     headers: { "Authorization": "Bearer " + token },
   });
-  if (!res.ok) throw new Error("Drive search failed: " + res.status);
+  if (!res.ok) {
+    // The status code alone doesn't say why: a 403 here could mean the
+    // Drive API isn't enabled for this app's Google Cloud project, or that
+    // the drive.metadata.readonly scope was never actually granted — very
+    // different fixes, so surface Google's own reason/message when present.
+    let detail = "";
+    try {
+      const body = await res.json();
+      const err = body && body.error;
+      detail = err && (err.status || err.message) ? ` (${[err.status, err.message].filter(Boolean).join(": ")})` : "";
+    } catch (e) { /* body wasn't JSON — status code is all we have */ }
+    throw new Error("Drive search failed: " + res.status + detail);
+  }
   const data = await res.json();
   return (data.files || []).map(f => ({ spreadsheetId: f.id, url: f.webViewLink, name: f.name, modifiedTime: f.modifiedTime }));
 }
