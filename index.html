@@ -225,8 +225,6 @@
   .planner-leg-route-line{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow-x:auto;}
   .planner-leg-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
   .planner-leg-meta-row .planner-leg-business-btn{flex-shrink:0;}
-  .planner-leg-business-btn.static{cursor:default;}
-  .planner-leg-business-btn.static:not(.on){opacity:.5;}
   .planner-leg-meta{font-size:12px;color:var(--muted);flex-shrink:0;margin-left:auto;}
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
@@ -2957,14 +2955,17 @@ async function endLiveDrive() {
     else if (!to && liveDrive.lastFix) { trip.endLat = liveDrive.lastFix.lat; trip.endLng = liveDrive.lastFix.lng; }
     trips.push(trip);
   }
-  for (const trip of trips) await finalizeTrip(trip);
 
-  // Show the completed route (green, static) with a summary card before
-  // dropping into history — built from what was actually driven
+  // Nothing is logged yet — show the completed route (green, static) with a
+  // summary card first, its briefcase toggles still editable, and defer
+  // actually committing these trips until Save Drive is tapped (see
+  // plannerCompleteDoneBtn's handler), which re-reads each leg's tag at that
+  // point in case it was changed here. Built from what was actually driven
   // (completedLegs), not the original Directions estimate still sitting in
   // p.legs.distanceKm/durationMin.
   p.completeSummary = {
     legs: liveDrive.completedLegs.map((cl, i) => ({ tag: p.legs[i] ? p.legs[i].tag : null, distanceKm: cl.distanceKm, durationMin: cl.durationMin })),
+    trips,
   };
   p.stage = "complete";
   liveDrive = null;
@@ -4245,24 +4246,26 @@ function renderPlannerLegBusinessBtn(legIdx) {
 // horizontally rather than truncating with an ellipsis.
 //
 // The business toggle only appears here (in the route summary), not
-// between the address fields — `editable` is false for the read-only
-// post-drive summary, where retagging wouldn't update the trip already
-// logged from these same legs, so it renders as a plain (non-clickable)
-// icon there instead of a button.
-function renderPlannerLegRow(leg, idx, stops, editable) {
+// between the address fields. Used for both the pre-drive summary and the
+// post-drive "Drive Complete" one — the tag stays changeable right up
+// until Save Drive actually commits the trips (see endLiveDrive /
+// plannerCompleteDoneBtn), so this always reads the *live*
+// state.planner.legs tag rather than the `leg` param's own (which, for the
+// complete summary, is a distanceKm/durationMin snapshot of what was
+// actually driven — real numbers that shouldn't shift, unlike the tag).
+function renderPlannerLegRow(leg, idx, stops) {
   const fromStop = stops[idx], toStop = stops[idx + 1];
   const fromLabel = (fromStop && (fromStop.roadSuburb || fromStop.address)) || plannerStopLabel(idx, stops.length);
   const toLabel = (toStop && (toStop.roadSuburb || toStop.address)) || plannerStopLabel(idx + 1, stops.length);
   const hasDistance = leg.distanceKm != null;
-  const businessOn = leg.tag === "work";
-  const briefcase = editable ? renderPlannerLegBusinessBtn(idx)
-    : `<span class="planner-leg-business-btn static ${businessOn ? "on" : ""}" title="${businessOn ? "Business" : "Personal"}">${businessOn ? icons.briefcaseFilled : icons.briefcase}</span>`;
+  const liveLeg = state.planner && state.planner.legs[idx];
+  const tag = liveLeg ? liveLeg.tag : leg.tag;
   return `
   <div class="planner-leg-row">
     <div class="planner-leg-route-line">${escAttr(fromLabel)} → ${escAttr(toLabel)}</div>
     <div class="planner-leg-meta-row">
-      ${briefcase}
-      ${leg.tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>` : ""}
+      ${renderPlannerLegBusinessBtn(idx)}
+      ${tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>` : ""}
       <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
     </div>
   </div>`;
@@ -4423,7 +4426,7 @@ function renderPlanTab() {
     ${driving ? renderPlannerEtaBar() : complete ? `
     <div class="planner-bottom-sheet">
       ${renderPlannerCompleteSummary()}
-      <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Done</button>
+      <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>
     </div>` : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
@@ -4462,7 +4465,7 @@ function renderPlannerRouteSummary() {
     <div class="planner-hazard-row">${icons.warning}<div class="loc-field-wrap"><div class="route-clip" id="plannerHazardClip"><span class="route-track" id="plannerHazardTrack">${escAttr(warnings.join(" · "))}</span></div></div></div>
     ` : ""}
     <div class="planner-legtags">
-      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops, true)).join(`<div class="divider"></div>`)}
+      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
     </div>
   </div>`;
 }
@@ -4470,7 +4473,10 @@ function renderPlannerRouteSummary() {
 // Same card as renderPlannerRouteSummary, styled the same way, but built
 // from what was actually driven (endLiveDrive's p.completeSummary.legs —
 // real GPS distance/duration) rather than the pre-drive Directions
-// estimate still sitting in p.legs.
+// estimate still sitting in p.legs. Nothing is logged yet at this point —
+// the briefcase toggles stay editable and Save Drive (plannerCompleteDoneBtn)
+// is what actually commits the trips, using whatever tag is set at that
+// moment.
 function renderPlannerCompleteSummary() {
   const p = state.planner;
   const legs = p.completeSummary.legs;
@@ -4487,7 +4493,7 @@ function renderPlannerCompleteSummary() {
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
     </div>
     <div class="planner-legtags">
-      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops, false)).join(`<div class="divider"></div>`)}
+      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
     </div>
   </div>`;
 }
@@ -6614,7 +6620,15 @@ function attachAppHandlers() {
       const backBtn = document.getElementById("plannerBackBtn");
       if (backBtn) backBtn.onclick = cancelPlanner;
       const completeDoneBtn = document.getElementById("plannerCompleteDoneBtn");
-      if (completeDoneBtn) completeDoneBtn.onclick = () => {
+      if (completeDoneBtn) completeDoneBtn.onclick = async () => {
+        if (completeDoneBtn.disabled) return; // already saving — ignore a double-tap
+        completeDoneBtn.disabled = true;
+        // Tag per leg is read live here, not whatever it was when the drive
+        // ended — the briefcase toggles on this screen stay editable right up
+        // until this tap actually commits the trips.
+        const trips = p.completeSummary.trips;
+        trips.forEach((trip, i) => { if (p.legs[i]) trip.tag = p.legs[i].tag; });
+        for (const trip of trips) await finalizeTrip(trip);
         state.planner = null;
         plannerDirectionsResult = null;
         state.tab = "history";
