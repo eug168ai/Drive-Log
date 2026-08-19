@@ -244,7 +244,7 @@
   .planner-header .brand:active{opacity:.7;}
   .planner-header-icon{width:34px;height:34px;border-radius:9px;background:transparent;
     color:var(--text);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .planner-header-icon .icon{width:19px;height:19px;}
+  .planner-header-icon .icon{width:27px;height:27px;}
   .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
   .planner-header-star{color:var(--amber);}
@@ -275,8 +275,8 @@
   .planner-leg-business-btn .icon{width:14px;height:14px;}
   .planner-leg-business-btn.on{background:var(--work);border-color:var(--work);color:#fff;}
 
-  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;margin:6px 0 0;
-    padding:1px 14px 3px 1px;scroll-padding-right:14px;}
+  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:hidden;margin:6px 0 0;
+    padding:1px 0 3px;}
   .planner-pill-row.show{display:flex;}
   .planner-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border-radius:999px;
     font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);
@@ -308,14 +308,24 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-angle-fab.active{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
   .planner-angle-fab .icon{width:18px;height:18px;}
+  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 148px);z-index:31;
+    padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
+    color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
+  .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
+  @keyframes plannerAngleFlash{
+    0%{opacity:0;transform:translateY(-4px);}
+    12%{opacity:1;transform:translateY(0);}
+    75%{opacity:1;}
+    100%{opacity:0;}
+  }
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);}
   .planner-route-summary{background:rgba(var(--surface-rgb),.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:12px;
-    padding:6px 8px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
-  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;}
+    padding:5px 7px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
+  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px;}
   .planner-route-badge-label{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.04em;}
   .planner-route-badge .icon{width:13px;height:13px;}
@@ -342,19 +352,22 @@
   .planner-turn-icon.arrive{background:var(--normal);}
   .planner-turn-icon .icon{width:26px;height:26px;}
   .planner-turn-text{min-width:0;flex:1;}
-  .planner-turn-text b{display:block;font-size:17px;font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .planner-turn-text b{display:block;font-size:20px;font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;}
-  .planner-turn-dist .v{font-size:19px;font-weight:800;color:var(--amber);}
+  .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
+  .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
   .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
     display:flex;align-items:center;gap:14px;}
-  .planner-eta-metrics{display:flex;gap:16px;flex:1;}
-  .planner-eta-metrics .m .v{font-size:13px;font-weight:700;color:var(--text);}
-  .planner-eta-metrics .m.remain .v{font-size:19px;font-weight:800;color:var(--amber);}
+  .planner-eta-metrics{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;flex:1;min-width:0;}
+  .planner-eta-metrics .m.remain{text-align:center;}
+  .planner-eta-metrics .m.remain .v{font-size:24px;font-weight:800;color:var(--amber);}
+  .planner-eta-metrics .m-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:0;}
+  .planner-eta-metrics .m-side .v{font-size:20px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
   .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
   .planner-eta-bar.paused .planner-eta-metrics .m.remain .v{color:var(--muted);}
   .planner-pause-drive-btn{width:46px;height:46px;border-radius:50%;background:rgba(var(--surface-rgb),.94);
@@ -2156,6 +2169,11 @@ async function logPlannedRouteNow(date, startTimeStr) {
 // legs by proximity to each planned stop, with turn-by-turn advanced by
 // proximity to each Directions step's end point.
 const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it done
+// A fix must move this much further away from the closest approach to a
+// step's end before the step counts as passed (see handleLiveFix). Proximity
+// alone fires while still approaching the turn, jumping the banner ahead to
+// announce the *following* turn before the driver had actually made this one.
+const LIVE_STEP_PASSED_HYSTERESIS_M = 8;
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
@@ -2168,11 +2186,22 @@ const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used f
 const LIVE_MARKER_SCREEN_FRACTION = 5 / 6; // how far down the screen the driver marker sits (see lookAheadCenter)
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
-const LIVE_TILT_MIN_DEG = 20;        // faster — flatter, more top-down, to show more of the road ahead
-const LIVE_TILT_MAX_DEG = 52;        // stopped/slow — steeper 3D angle, like Google's close-up nav view
-const LIVE_ZOOM_MIN = 16;            // faster — zoomed out to show more road ahead
-const LIVE_ZOOM_MAX = 19;            // stopped/slow — zoomed in tight
-const LIVE_DYNAMIC_SPEED_FULL_MS = 25; // ~90 km/h and above reaches the flattest/most-zoomed-out end of the tilt/zoom range
+// Three named camera profiles the driving view can be in, cycled through by
+// the angle FAB (or picked automatically by speed in "auto" — see
+// autoViewModeForSpeed). "rotates" controls whether the map turns to
+// course-up at all: overhead stays north-up, so its labels are guaranteed
+// never upside-down regardless of heading. "roadLabels" is which road
+// labels stay on once upright-gated by updateLiveMapLabelVisibility — "all"
+// shows every road, "main" hides minor arterial/local roads to reduce
+// clutter at the zoomed-out, fast-driving end.
+const LIVE_VIEW_PROFILES = {
+  overhead: { tilt: 0, zoom: 19, rotates: false, roadLabels: "all" },
+  low: { tilt: 30, zoom: 17, rotates: true, roadLabels: "all" },
+  high: { tilt: 55, zoom: 15, rotates: true, roadLabels: "main" },
+};
+const LIVE_AUTO_OVERHEAD_MAX_MS = 6;  // auto mode: at/below ~22 km/h -> overhead
+const LIVE_AUTO_HIGH_MIN_MS = 18;     // auto mode: at/above ~65 km/h -> high
+const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so hovering near one doesn't flicker
 // Road labels on the raster map tiles rotate along with everything else
 // (see rotateLiveMap), so past roughly a quarter turn from north-up they'd
 // read sideways-to-upside-down — genuinely hard to read, not just tilted.
@@ -2182,13 +2211,22 @@ const LIVE_DYNAMIC_SPEED_FULL_MS = 25; // ~90 km/h and above reaches the flattes
 // on once heading swings back closer to upright. POIs/transit/admin labels
 // are always off — clutter the turn banner already covers better.
 const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 70;
-function drivingMapStyles(showRoadLabels) {
+// `roadLabelsScope` ("all" | "main") is the current view profile's own
+// preference; `upright` overrides it to hide every road label regardless of
+// scope once the map's rotated far enough that they'd read sideways/upside
+// down — the one condition that always wins.
+function drivingMapStyles(roadLabelsScope, upright) {
   const hide = [
     { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
     { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
     { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
   ];
-  if (!showRoadLabels) hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
+  if (!upright) {
+    hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
+  } else if (roadLabelsScope === "main") {
+    hide.push({ featureType: "road.arterial", elementType: "labels", stylers: [{ visibility: "off" }] });
+    hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] });
+  }
   return [...(plannerMapIsNight ? NIGHT_MAP_STYLE : []), ...hide];
 }
 const MANEUVER_LABELS = {
@@ -2216,12 +2254,26 @@ function maneuverIcon(m) {
 function maneuverLabel(m) { return MANEUVER_LABELS[m] || "Continue"; }
 // Distance-to-next-turn, in whichever unit the app is set to (matches
 // unitLabel()/kmToDisplay() used everywhere else) rather than always metric.
+// Returns markup (number + a tightly-kerned unit span) rather than a plain
+// string so the caller can set it via innerHTML — a literal space char in a
+// plain string can't be tightened with CSS alone.
 function formatLiveTurnDistance(distM) {
+  let num, unit;
   if (currentUnit() === "mi") {
     const feet = distM * 3.28084;
-    return feet < 500 ? `${Math.round(feet / 10) * 10} ft` : `${(distM / 1000 * 0.621371).toFixed(1)} mi`;
-  }
-  return distM < 950 ? `${Math.round(distM / 10) * 10} m` : `${(distM / 1000).toFixed(1)} km`;
+    if (feet < 500) { num = Math.round(feet / 10) * 10; unit = "ft"; }
+    else { num = (distM / 1000 * 0.621371).toFixed(1); unit = "mi"; }
+  } else if (distM < 950) { num = Math.round(distM / 10) * 10; unit = "m"; }
+  else { num = (distM / 1000).toFixed(1); unit = "km"; }
+  return `${num}<span class="unit">${unit}</span>`;
+}
+// Long-form "1 hr 20 min" duration for the nav remaining-time readout —
+// deliberately separate from the global formatDuration() ("1h 20m") used
+// everywhere else in the app, which stays unchanged.
+function formatLiveDuration(mins) {
+  const total = Math.max(0, Math.round(mins));
+  const h = Math.floor(total / 60), m = total % 60;
+  return h === 0 ? `${m} min` : `${h} hr ${m} min`;
 }
 function stepPlainInstruction(html) {
   const div = document.createElement("div");
@@ -2291,6 +2343,45 @@ function distanceToLiveRouteMeters(lat, lng) {
     if (d < min) min = d;
   }
   return min;
+}
+// Same projection as distanceToSegmentMeters, but returning the point itself
+// rather than just its distance — used to snap the displayed marker onto the
+// segment instead of measuring how far off it is.
+function nearestPointOnSegment(lat, lng, aLat, aLng, bLat, bLng) {
+  const mPerLat = 111320, mPerLng = 111320 * Math.cos(lat * Math.PI / 180);
+  const px = (lng - aLng) * mPerLng, py = (lat - aLat) * mPerLat;
+  const dx = (bLng - aLng) * mPerLng, dy = (bLat - aLat) * mPerLat;
+  const lenSq = dx * dx + dy * dy;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, (px * dx + py * dy) / lenSq)) : 0;
+  return { lat: aLat + (bLat - aLat) * t, lng: aLng + (bLng - aLng) * t };
+}
+function nearestPointOnPath(lat, lng, path) {
+  if (!path || !path.length) return null;
+  if (path.length === 1) return path[0];
+  let best = null, bestD = Infinity;
+  for (let i = 0; i < path.length - 1; i++) {
+    const pt = nearestPointOnSegment(lat, lng, path[i].lat, path[i].lng, path[i + 1].lat, path[i + 1].lng);
+    const d = haversineMeters(lat, lng, pt.lat, pt.lng);
+    if (d < bestD) { bestD = d; best = pt; }
+  }
+  return best;
+}
+// Snaps the marker's *displayed* position onto the drawn route line so the
+// arrow sits centred on the blue polyline instead of visibly drifting to one
+// side with normal GPS noise. Visual only — every distance/logging/off-route
+// calculation above always uses the raw fix, never this. Falls back to the
+// real position once genuinely off-route (about to reroute anyway), so the
+// arrow doesn't look glued to a line the driver has actually left.
+function snapToRouteForDisplay(lat, lng) {
+  if (!liveDrive || !liveDrive.steps.length) return { lat, lng };
+  let best = null, bestD = Infinity;
+  for (let i = liveDrive.stepIdx; i < Math.min(liveDrive.stepIdx + 2, liveDrive.steps.length); i++) {
+    const pt = nearestPointOnPath(lat, lng, liveDrive.steps[i].path);
+    if (!pt) continue;
+    const d = haversineMeters(lat, lng, pt.lat, pt.lng);
+    if (d < bestD) { bestD = d; best = pt; }
+  }
+  return best && bestD < LIVE_OFFROUTE_M ? best : { lat, lng };
 }
 
 // Destination point a given distance/bearing from (lat, lng) — used to push
@@ -2390,6 +2481,7 @@ async function startLiveDrive() {
     startedAt: Date.now(),
     steps: flattenDirectionsSteps(plannerDirectionsResult),
     stepIdx: 0,
+    stepEndMinDist: null,
     legIdx: 0,
     legStartedAt: Date.now(),
     legDistanceM: 0,
@@ -2397,7 +2489,7 @@ async function startLiveDrive() {
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
-    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, angledView: true,
+    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, viewMode: "auto", autoProfile: "low",
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
@@ -2488,7 +2580,8 @@ function handleLiveFix(pos) {
     liveDrive.smoothHeading = liveDrive.smoothHeading == null ? heading : smoothHeadingDeg(liveDrive.smoothHeading, heading, LIVE_HEADING_SMOOTHING);
   }
   liveDrive.smoothSpeedMs = liveDrive.smoothSpeedMs == null ? estSpeedMs : liveDrive.smoothSpeedMs + (estSpeedMs - liveDrive.smoothSpeedMs) * LIVE_SPEED_SMOOTHING;
-  updateLiveMarker(liveDrive.smoothFix.lat, liveDrive.smoothFix.lng, liveDrive.smoothHeading, liveDrive.smoothSpeedMs);
+  const displayPos = snapToRouteForDisplay(liveDrive.smoothFix.lat, liveDrive.smoothFix.lng);
+  updateLiveMarker(displayPos.lat, displayPos.lng, liveDrive.smoothHeading, liveDrive.smoothSpeedMs);
 
   // Paused: keep the marker/position current so resuming isn't stale, but
   // don't count this fix toward distance, steps, or arrival.
@@ -2496,9 +2589,18 @@ function handleLiveFix(pos) {
 
   if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
 
+  // A step only counts as done once the fix has both gotten close to its end
+  // AND started moving away again — tracking just the minimum distance seen
+  // (rather than a one-shot proximity check) means the step doesn't advance
+  // while still approaching the turn, only once it's actually been made.
   let step = liveDrive.steps[liveDrive.stepIdx];
-  while (step && step.legIdx === liveDrive.legIdx && haversineMeters(lat, lng, step.endLat, step.endLng) < LIVE_STEP_ADVANCE_M) {
+  while (step && step.legIdx === liveDrive.legIdx) {
+    const d = haversineMeters(lat, lng, step.endLat, step.endLng);
+    if (liveDrive.stepEndMinDist == null || d < liveDrive.stepEndMinDist) liveDrive.stepEndMinDist = d;
+    const passed = liveDrive.stepEndMinDist < LIVE_STEP_ADVANCE_M && d > liveDrive.stepEndMinDist + LIVE_STEP_PASSED_HYSTERESIS_M;
+    if (!passed) break;
     liveDrive.stepIdx++;
+    liveDrive.stepEndMinDist = null;
     step = liveDrive.steps[liveDrive.stepIdx];
   }
 
@@ -2562,6 +2664,7 @@ async function rerouteLiveDrive(lat, lng) {
     const legOffset = liveDrive.legIdx;
     liveDrive.steps = flattenDirectionsSteps(result).map(s => ({ ...s, legIdx: s.legIdx + legOffset }));
     liveDrive.stepIdx = 0;
+    liveDrive.stepEndMinDist = null;
     plannerDirectionsResult = result;
     if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
   } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
@@ -2585,44 +2688,66 @@ async function rerouteLiveDrive(lat, lng) {
 let liveMapRotationDeg = 0;
 let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
-// The angled view's tilt/zoom track speed continuously — flatter and more
-// zoomed-out at highway speed (more road visible ahead), steeper and closer
-// in when slow or stopped — the same trade Google's nav view makes.
-function dynamicTiltZoomForSpeed(speedMs) {
-  const t = Math.max(0, Math.min(1, (speedMs || 0) / LIVE_DYNAMIC_SPEED_FULL_MS));
-  return {
-    tilt: LIVE_TILT_MAX_DEG - t * (LIVE_TILT_MAX_DEG - LIVE_TILT_MIN_DEG),
-    zoom: LIVE_ZOOM_MAX - t * (LIVE_ZOOM_MAX - LIVE_ZOOM_MIN),
-  };
+// Picks which named profile "auto" resolves to for a given speed, given the
+// profile it's currently showing — the hysteresis margin around each
+// threshold means a speed hovering right at the boundary doesn't flicker
+// back and forth between profiles on every fix.
+function autoViewModeForSpeed(speedMs, current) {
+  const s = speedMs || 0;
+  const m = LIVE_AUTO_SPEED_HYSTERESIS_MS;
+  if (current === "overhead") return s > LIVE_AUTO_OVERHEAD_MAX_MS + m ? (s >= LIVE_AUTO_HIGH_MIN_MS ? "high" : "low") : "overhead";
+  if (current === "high") return s < LIVE_AUTO_HIGH_MIN_MS - m ? (s <= LIVE_AUTO_OVERHEAD_MAX_MS ? "overhead" : "low") : "high";
+  if (s <= LIVE_AUTO_OVERHEAD_MAX_MS - m) return "overhead";
+  if (s >= LIVE_AUTO_HIGH_MIN_MS + m) return "high";
+  return "low";
+}
+// The single source of truth for which camera profile is currently in
+// effect — resolves "auto" against live speed (caching the result on
+// liveDrive.autoProfile, both as the next call's hysteresis anchor and so a
+// render() elsewhere in the same tick sees a consistent answer) or just
+// looks up the user's explicitly chosen mode.
+function resolveLiveViewProfile(speedMs) {
+  if (!liveDrive) return LIVE_VIEW_PROFILES.low;
+  if (liveDrive.viewMode === "auto") {
+    liveDrive.autoProfile = autoViewModeForSpeed(speedMs, liveDrive.autoProfile || "low");
+    return LIVE_VIEW_PROFILES[liveDrive.autoProfile];
+  }
+  return LIVE_VIEW_PROFILES[liveDrive.viewMode] || LIVE_VIEW_PROFILES.low;
 }
 function rotateLiveMap(headingDeg, speedMs) {
   liveMapLastHeadingDeg = headingDeg || 0;
   if (speedMs != null) liveMapLastSpeedMs = speedMs;
-  const target = ((-liveMapLastHeadingDeg % 360) + 360) % 360;
+  const profile = resolveLiveViewProfile(liveMapLastSpeedMs);
+  // Overhead stays north-up: target 0 instead of the heading, via the same
+  // shortest-path delta math, so switching into it eases back to north
+  // rather than jumping.
+  const target = profile.rotates ? ((-liveMapLastHeadingDeg % 360) + 360) % 360 : 0;
   const current = ((liveMapRotationDeg % 360) + 360) % 360;
   let delta = target - current;
   if (delta > 180) delta -= 360;
   if (delta < -180) delta += 360;
   liveMapRotationDeg += delta;
-  updateLiveMapLabelVisibility();
+  updateLiveMapLabelVisibility(profile);
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (!wrap) return;
-  const tilt = liveDrive && liveDrive.angledView ? `rotateX(${dynamicTiltZoomForSpeed(liveMapLastSpeedMs).tilt.toFixed(1)}deg) ` : "";
+  const tilt = profile.tilt > 0 ? `rotateX(${profile.tilt}deg) ` : "";
   wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
 }
 // Toggles road labels off only while the map is rotated far enough from
 // upright that they'd read sideways-to-upside-down (see drivingMapStyles) —
 // re-styling the map is a real (if cheap) operation, so this only actually
-// calls setOptions on the rare crossing of that threshold, not every fix.
-let liveMapLabelsVisible = true;
-function updateLiveMapLabelVisibility() {
-  if (!plannerMapInstance) return;
+// calls setOptions on an actual change, not every fix.
+let liveMapLabelsKey = null;
+function updateLiveMapLabelVisibility(profile) {
+  if (!plannerMapInstance || !liveDrive) return;
+  profile = profile || resolveLiveViewProfile(liveMapLastSpeedMs);
   const norm = ((liveMapRotationDeg % 360) + 360) % 360;
   const angleFromUpright = norm > 180 ? 360 - norm : norm;
-  const shouldShow = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
-  if (shouldShow === liveMapLabelsVisible) return;
-  liveMapLabelsVisible = shouldShow;
-  plannerMapInstance.setOptions({ styles: drivingMapStyles(shouldShow) });
+  const upright = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
+  const key = `${profile.roadLabels}:${upright}`;
+  if (key === liveMapLabelsKey) return;
+  liveMapLabelsKey = key;
+  plannerMapInstance.setOptions({ styles: drivingMapStyles(profile.roadLabels, upright) });
 }
 // Zoom is a real map property (not a CSS transform), so it's applied
 // directly rather than through the wrapper — throttled to avoid firing
@@ -2630,25 +2755,41 @@ function updateLiveMapLabelVisibility() {
 let liveMapLastAppliedZoom = null;
 function updateLiveZoom(speedMs) {
   if (!plannerMapInstance || !liveDrive) return;
-  const targetZoom = liveDrive.angledView ? dynamicTiltZoomForSpeed(speedMs).zoom : LIVE_DRIVING_ZOOM;
+  const targetZoom = resolveLiveViewProfile(speedMs).zoom;
   if (liveMapLastAppliedZoom == null || Math.abs(targetZoom - liveMapLastAppliedZoom) >= 0.3) {
     liveMapLastAppliedZoom = targetZoom;
     plannerMapInstance.setZoom(targetZoom);
   }
 }
-// Toggles the angled/tilted 3D view (default on) — a plain targeted DOM
-// update, not a render(), so it doesn't interrupt live tracking or recreate
-// the map. Turning it off flattens the tilt and pins the zoom back to the
-// fixed driving level instead of tracking speed.
-function toggleLiveAngledView() {
+const LIVE_VIEW_MODE_CYCLE = ["auto", "overhead", "low", "high"];
+const LIVE_VIEW_MODE_LABELS = { auto: "Auto", overhead: "Overhead", low: "Angle: Low", high: "Angle: High" };
+// Cycles the angle FAB through auto -> overhead -> low -> high -> auto — a
+// plain targeted DOM update, not a render(), so it doesn't interrupt live
+// tracking or recreate the map.
+function cycleLiveViewMode() {
   if (!liveDrive) return;
-  liveDrive.angledView = !liveDrive.angledView;
+  const idx = LIVE_VIEW_MODE_CYCLE.indexOf(liveDrive.viewMode);
+  liveDrive.viewMode = LIVE_VIEW_MODE_CYCLE[(idx + 1) % LIVE_VIEW_MODE_CYCLE.length];
+  const profile = resolveLiveViewProfile(liveMapLastSpeedMs);
   const wrap = document.getElementById("plannerMapRotateWrap");
-  if (wrap) wrap.classList.toggle("angled", liveDrive.angledView);
+  if (wrap) wrap.classList.toggle("angled", profile.tilt > 0);
   const btn = document.getElementById("plannerAngleBtn");
-  if (btn) btn.classList.toggle("active", liveDrive.angledView);
+  if (btn) btn.classList.toggle("active", liveDrive.viewMode !== "auto");
+  flashLiveViewModeLabel();
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
   updateLiveZoom(liveMapLastSpeedMs);
+}
+// Briefly shows the newly-selected mode's name next to the FAB — restarting
+// the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
+// rapid taps through the cycle each get their own flash rather than the
+// first one just getting cut off.
+function flashLiveViewModeLabel() {
+  const el = document.getElementById("plannerAngleFlash");
+  if (!el || !liveDrive) return;
+  el.textContent = LIVE_VIEW_MODE_LABELS[liveDrive.viewMode] || "";
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
 }
 
 async function updateLiveMarker(lat, lng, heading, speedMs) {
@@ -2728,14 +2869,14 @@ function updateLiveDriveDOM() {
     if (rerouting || arrived || !junctionStep) { turnDistVal.textContent = "–"; }
     else {
       const distM = distanceToStepEndMeters(junctionIdx - 1);
-      turnDistVal.textContent = distM == null ? "–" : formatLiveTurnDistance(distM);
+      turnDistVal.innerHTML = distM == null ? "–" : formatLiveTurnDistance(distM);
     }
   }
   const remain = computeLiveRemaining();
   const remainTimeVal = document.getElementById("plannerRemainTimeVal");
   const etaVal = document.getElementById("plannerEtaVal");
   const remainDistVal = document.getElementById("plannerRemainVal");
-  if (remainTimeVal) remainTimeVal.textContent = arrived ? "Arrived" : formatDuration(remain.min);
+  if (remainTimeVal) remainTimeVal.textContent = arrived ? "Arrived" : formatLiveDuration(remain.min);
   if (etaVal) etaVal.textContent = arrived ? "–" : remain.etaStr;
   if (remainDistVal) remainDistVal.textContent = arrived ? "0.0 " + unitLabel() : `${kmToDisplay(remain.km).toFixed(1)} ${unitLabel()}`;
 }
@@ -2799,12 +2940,17 @@ async function endLiveDrive() {
   }
   for (const trip of trips) await finalizeTrip(trip);
 
+  // Show the completed route (green, static) with a summary card before
+  // dropping into history — built from what was actually driven
+  // (completedLegs), not the original Directions estimate still sitting in
+  // p.legs.distanceKm/durationMin.
+  p.completeSummary = {
+    legs: liveDrive.completedLegs.map((cl, i) => ({ tag: p.legs[i] ? p.legs[i].tag : null, distanceKm: cl.distanceKm, durationMin: cl.durationMin })),
+  };
+  p.stage = "complete";
   liveDrive = null;
   plannerLiveMarker = null;
-  state.planner = null;
-  plannerDirectionsResult = null;
   await storageDelete(LIVE_DRIVE_KEY);
-  state.tab = "history";
   render();
 }
 
@@ -2827,6 +2973,7 @@ async function resumeLiveDriveIfAny() {
     startedAt: saved.startedAt,
     steps: [],
     stepIdx: 0,
+    stepEndMinDist: null,
     legIdx: saved.legIdx || 0,
     legStartedAt: saved.legStartedAt || saved.startedAt,
     legDistanceM: saved.legDistanceM || 0,
@@ -2834,7 +2981,7 @@ async function resumeLiveDriveIfAny() {
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
-    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, angledView: true,
+    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, viewMode: "auto", autoProfile: "low",
   };
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
@@ -2965,14 +3112,16 @@ async function ensurePlannerMap() {
 
   const p = state.planner;
   const driving = p && p.stage === "driving";
+  const complete = p && p.stage === "complete";
   const firstStop = p && p.stops.find(s => s.lat != null);
   let center = firstStop ? { lat: firstStop.lat, lng: firstStop.lng } : { lat: 20, lng: 0 };
   let zoom = firstStop ? 12 : 2;
   // Grab the device's live position once up front — used both to center the
   // fullscreen map on open (when nothing's picked yet) and to drop the
   // "you are here" blue dot below, regardless of where the start ends up.
+  // Not needed for a post-drive review, so skipped there.
   let myLocation = null;
-  if (!driving && mapsConfigured()) {
+  if (!driving && !complete && mapsConfigured()) {
     try {
       const coords = await getCurrentPosition();
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
@@ -2985,7 +3134,7 @@ async function ensurePlannerMap() {
   // route's start, so the very first render of the driving view already
   // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
-    zoom = LIVE_DRIVING_ZOOM;
+    zoom = resolveLiveViewProfile(liveDrive.smoothSpeedMs || 0).zoom;
     center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom);
   }
   // Best known fix for deciding day/night styling: live position, else the
@@ -2993,13 +3142,16 @@ async function ensurePlannerMap() {
   const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
   const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
   plannerMapIsNight = night;
-  liveMapLabelsVisible = true;
+  liveMapLabelsKey = null;
   plannerMapInstance = new Map(canvas, {
-    center, zoom, styles: driving ? drivingMapStyles(true) : (night ? NIGHT_MAP_STYLE : []),
+    // Upright at this point by construction (rotation always starts back at
+    // 0 in startLiveDrive/resumeLiveDriveIfAny), so all road labels are safe
+    // to show for this very first paint regardless of the chosen profile.
+    center, zoom, styles: driving ? drivingMapStyles("all", true) : (night ? NIGHT_MAP_STYLE : []),
     disableDefaultUI: true, zoomControl: !driving, gestureHandling: "greedy",
   });
 
-  if (!driving) {
+  if (!driving && !complete) {
     plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
       const targetIdx = plannerNextEmptyStopIndex();
       if (targetIdx == null) return;
@@ -3018,7 +3170,7 @@ async function ensurePlannerMap() {
       const { DirectionsRenderer } = await getRoutesLibrary();
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
       plannerDirectionsRenderer = new DirectionsRenderer({
-        map: plannerMapInstance, draggable: !driving,
+        map: plannerMapInstance, draggable: !driving && !complete,
         // While driving, a reroute replaces this result with one whose
         // origin is wherever the car currently is — its own A/B pins would
         // then jump around on every reroute. Suppressed here in favor of
@@ -3027,9 +3179,12 @@ async function ensurePlannerMap() {
         // Otherwise setDirections() below re-fits the viewport to the whole
         // route, undoing the street-level zoom/center just set above.
         preserveViewport: driving,
+        // Thicker than Google's default, and green once the drive is done
+        // (marking it as completed) rather than the in-progress blue.
+        polylineOptions: { strokeColor: complete ? "#4C9F70" : "#4C9FF2", strokeWeight: 7, strokeOpacity: 0.9 },
       });
       plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
-      if (!driving) {
+      if (!driving && !complete) {
         plannerDirectionsChangedListener = plannerDirectionsRenderer.addListener("directions_changed", () => {
           const result = plannerDirectionsRenderer.getDirections();
           plannerDirectionsResult = result;
@@ -3964,14 +4119,15 @@ function plannerFieldKind(idx, total) {
 }
 
 // Saved-place pills for one stop's field: every saved address as a
-// candidate pill, a "more saved addresses" trigger (a native <select>,
+// candidate pill, plus a "more saved addresses" trigger (a native <select>,
 // invisibly overlaid on the icon — hidden until fitPlannerPillRow finds
-// pills that don't fit and moves them here), and an Add Stop pill sized
-// like the rest, pinned to the far right regardless of pill count — hidden
-// by default via CSS (.planner-pill-row.show), revealed on focus by
-// attachPlannerFieldEvents. The Business toggle lives only in the toolbar
-// row between the two addresses, not per-field.
-function renderPlannerFieldPills(idx) {
+// pills that don't fit and moves them here) — hidden by default via CSS
+// (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
+// The Business toggle lives only in the toolbar row between the two
+// addresses, not per-field; Add Stop only appears there and beneath the
+// last (destination) field, per showAddStop, flush with that field's own
+// right edge.
+function renderPlannerFieldPills(idx, showAddStop) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
   const others = list.filter(a => a.id !== "home" && a.id !== "work");
@@ -3980,7 +4136,7 @@ function renderPlannerFieldPills(idx) {
   html += `<span class="planner-chip-icon planner-pill-more" title="More saved addresses" style="display:none;">${icons.moreDots}
     <select class="plannerAddressOverflowSelect" data-stopidx="${idx}"><option value=""></option></select>
   </span>`;
-  html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
+  if (showAddStop) html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
   return html;
 }
 
@@ -4005,7 +4161,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
-    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
+    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx, idx === total - 1)}</div>
   </div>`;
 }
 
@@ -4086,7 +4242,6 @@ function renderPlannerLegRow(leg, idx, stops) {
     ${leg.tag === "work" ? `<span class="planner-leg-tag-icon" title="Business">${icons.briefcaseFilled}</span>`
       : leg.tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>`
       : ""}
-    ${leg.tagSource === "auto" ? `<p class="settings-desc" style="margin:6px 0 0;color:var(--amber);">${icons.check} Suggested from a similar route</p>` : ""}
   </div>`;
 }
 
@@ -4207,14 +4362,17 @@ function renderPlanTab() {
 
   const n = p.stops.length;
   const driving = p.stage === "driving";
+  const complete = p.stage === "complete";
+  const liveViewProfile = driving && liveDrive ? resolveLiveViewProfile(liveDrive.smoothSpeedMs || 0) : null;
 
   return `
   <div class="planner-fullscreen">
-    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${driving && liveDrive && liveDrive.angledView ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
-    ${(!driving && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angledView ? "active" : ""}" id="plannerAngleBtn" title="Toggle angled view">${icons.angleView}</button>` : ""}
+    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveViewProfile && liveViewProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
+    ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.viewMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle map view: auto / overhead / low / high">${icons.angleView}</button>
+    <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
 
-    ${driving ? renderPlannerDrivingBanner() : `
+    ${driving ? renderPlannerDrivingBanner() : complete ? "" : `
     <div class="planner-topbar">
       <div class="planner-header">
         <div class="brand" id="plannerBackBtn" title="Tap to return to Drive">
@@ -4239,7 +4397,11 @@ function renderPlanTab() {
       `}
     </div>`}
 
-    ${driving ? renderPlannerEtaBar() : (p.showSavedList ? "" : `
+    ${driving ? renderPlannerEtaBar() : complete ? `
+    <div class="planner-bottom-sheet">
+      ${renderPlannerCompleteSummary()}
+      <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Done</button>
+    </div>` : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
       ${p.previewing && !plannerDirectionsResult ? `<p class="settings-desc" style="text-align:center;margin:0 0 8px;">${icons.route} Calculating route…</p>` : ""}
@@ -4282,6 +4444,31 @@ function renderPlannerRouteSummary() {
   </div>`;
 }
 
+// Same card as renderPlannerRouteSummary, styled the same way, but built
+// from what was actually driven (endLiveDrive's p.completeSummary.legs —
+// real GPS distance/duration) rather than the pre-drive Directions
+// estimate still sitting in p.legs.
+function renderPlannerCompleteSummary() {
+  const p = state.planner;
+  const legs = p.completeSummary.legs;
+  const totalKm = legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
+  const totalMin = legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  return `
+  <div class="planner-route-summary">
+    <div class="planner-route-badge">
+      <span class="planner-route-badge-label">${icons.flag} Drive Complete</span>
+    </div>
+    <div class="planner-route-metrics">
+      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
+      <div class="div"></div>
+      <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
+    </div>
+    <div class="planner-legtags">
+      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+    </div>
+  </div>`;
+}
+
 function renderPlannerDrivingBanner() {
   return `
   <div class="planner-drive-banner">
@@ -4296,9 +4483,12 @@ function renderPlannerEtaBar() {
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
     <div class="planner-eta-metrics">
+      <span></span>
       <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
-      <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
-      <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
+      <div class="m-side">
+        <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
+        <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
+      </div>
     </div>
     <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
     <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
@@ -6400,6 +6590,13 @@ function attachAppHandlers() {
     if (p && p.stage !== "driving") {
       const backBtn = document.getElementById("plannerBackBtn");
       if (backBtn) backBtn.onclick = cancelPlanner;
+      const completeDoneBtn = document.getElementById("plannerCompleteDoneBtn");
+      if (completeDoneBtn) completeDoneBtn.onclick = () => {
+        state.planner = null;
+        plannerDirectionsResult = null;
+        state.tab = "history";
+        render();
+      };
       const browseSavedBtn = document.getElementById("plannerBrowseSavedBtn");
       if (browseSavedBtn) browseSavedBtn.onclick = () => { p.showSavedList = !p.showSavedList; render(); };
       const plannerSettingsBtn = document.getElementById("plannerSettingsBtn");
@@ -6539,7 +6736,7 @@ function attachAppHandlers() {
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
       if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
       const angleBtn = document.getElementById("plannerAngleBtn");
-      if (angleBtn) angleBtn.onclick = toggleLiveAngledView;
+      if (angleBtn) angleBtn.onclick = cycleLiveViewMode;
       updateLiveDriveDOM();
     }
 
