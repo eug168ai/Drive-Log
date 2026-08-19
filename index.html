@@ -422,6 +422,11 @@
 <div id="app"></div>
 
 <script>
+// Bumped by hand whenever a fix ships, purely so Settings can show a
+// human-readable build stamp — the only way to tell, from inside the app
+// itself, whether a still-open tab is running fresh code or is stuck on
+// whatever JS was in memory before the last update.
+const APP_BUILD = "2026-08-19.1";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5084,6 +5089,7 @@ function renderSettingsTab() {
       </button>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     `}
+    <p class="settings-desc" style="margin:10px 0 0;font-size:10px;color:var(--faint);">Build ${APP_BUILD}</p>
   </div>
 
   <div class="card">
@@ -6450,8 +6456,15 @@ async function syncUnsyncedTrips() {
       anyFailed = true;
     }
   }
-  if (unsynced.length) await storageSet(TRIPS_KEY, state.trips);
-  state.googleError = anyFailed ? "Some drives didn't sync to Sheets — open Settings to try again." : "";
+  if (unsynced.length) {
+    await storageSet(TRIPS_KEY, state.trips);
+    // Only touch googleError when this pass actually had something to sync —
+    // otherwise a no-op call (e.g. right after connecting, before any drive
+    // exists) blindly clears whatever message the caller just set, such as
+    // the debug line connectBtn.onclick shows for a moment before this
+    // unawaited call's own render() stomps on it.
+    state.googleError = anyFailed ? "Some drives didn't sync to Sheets — open Settings to try again." : "";
+  }
   // A sync pass (even one that finds nothing to send) counts as a check-in for the reminder timer.
   state.settings.lastSyncAt = todayStr();
   await storageSet(SETTINGS_KEY, state.settings);
@@ -8354,7 +8367,27 @@ function attachAppHandlers() {
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.register("sw.js").then((reg) => {
+      // Browsers otherwise only check sw.js for changes on navigation, which
+      // a single-page app rarely does — a tab left open (or a home-screen
+      // PWA reopened without a real reload) can silently keep running JS
+      // from days ago. Poll for a new version on load and whenever the tab
+      // regains focus, so a pushed fix is actually picked up.
+      reg.update().catch(() => {});
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") reg.update().catch(() => {});
+      });
+    }).catch(() => {});
+  });
+  // Once a new service worker activates (self.skipWaiting() + clients.claim()
+  // in sw.js make that happen immediately, not on next reload), the page is
+  // still running the old JS in memory — force one reload so the fresh code
+  // actually takes effect instead of silently sitting there uninstalled.
+  let dlReloadingForUpdate = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (dlReloadingForUpdate) return;
+    dlReloadingForUpdate = true;
+    window.location.reload();
   });
 }
 </script>
