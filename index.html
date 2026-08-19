@@ -222,11 +222,12 @@
   .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
 
   .planner-leg-row{padding:8px 0;}
-  .planner-leg-info{display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;flex-wrap:wrap;}
-  .planner-leg-route{font-size:13px;font-weight:600;color:var(--text);}
-  .planner-leg-meta{font-size:12px;color:var(--muted);}
-  .planner-leg-tag-icon{display:inline-flex;color:var(--work);}
-  .planner-leg-tag-icon .icon{width:16px;height:16px;}
+  .planner-leg-route-line{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow-x:auto;}
+  .planner-leg-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
+  .planner-leg-meta-row .planner-leg-business-btn{flex-shrink:0;}
+  .planner-leg-business-btn.static{cursor:default;}
+  .planner-leg-business-btn.static:not(.on){opacity:.5;}
+  .planner-leg-meta{font-size:12px;color:var(--muted);flex-shrink:0;margin-left:auto;}
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
 
@@ -268,7 +269,6 @@
   .planner-save-address-btn:disabled{opacity:.3;cursor:not-allowed;}
   .planner-field-row .input-icon .planner-save-address-btn .icon{color:var(--amber);}
 
-  .planner-leg-toggle-row{display:flex;justify-content:center;margin:6px 0;}
   .planner-leg-business-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;padding:0;
     border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);background:rgba(var(--amber-rgb),.1);
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
@@ -291,9 +291,9 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-toolbar-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px;margin:8px 0;}
+  .planner-toolbar-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin:8px 0;}
   .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;text-align:center;}
+    overflow:hidden;text-overflow:ellipsis;text-align:left;}
 
   .planner-saved-list{max-height:min(52vh, 380px);overflow-y:auto;padding-right:2px;}
   .planner-saved-list .card{background:rgba(var(--surface-rgb),.9);}
@@ -341,7 +341,8 @@
   .planner-hazard-row .icon{width:15px;height:15px;flex-shrink:0;color:var(--work);}
   .planner-hazard-row .route-clip{color:var(--work);font-size:12px;font-weight:600;}
   .planner-legtags{margin-top:6px;padding-top:6px;border-top:1px solid var(--border);}
-  .planner-legtags .planner-leg-row{padding:4px 0;}
+  .planner-legtags .planner-leg-row{padding:3px 0;}
+  .planner-legtags .divider{margin:3px 0;}
 
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
     padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
@@ -1797,7 +1798,7 @@ function suggestTagForCoords(startLat, startLng, endLat, endLng) {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
 }
 
-function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "", fromCurrentLocation: false }; }
+function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "", fromCurrentLocation: false, roadSuburb: null }; }
 // Every leg starts tagged Personal, or Supervised when that's the app's
 // active drive type — Business is opt-in only, via the briefcase toggle or
 // the Personal/Business toggle row, never a default.
@@ -1877,6 +1878,8 @@ async function plannerResolveStop(stop, address, coords, fromCurrentLocation) {
     }
     stop.resolving = false;
   }
+  stop.roadSuburb = null;
+  if (stop.lat != null) resolvePlannerStopRoadSuburb(stop);
   autoSuggestPlannerTags();
   render();
   updatePlannerQuickEstimate();
@@ -1885,6 +1888,21 @@ async function plannerResolveStop(stop, address, coords, fromCurrentLocation) {
   if (state.planner && state.planner.stops.every(s => s.lat != null)) {
     runPlannerPreview();
   }
+}
+
+// Best-effort road/suburb label for a resolved stop (e.g. "Glen Stuart
+// Road, Windsor Gardens") shown in the route summary instead of the raw
+// field text, which is often a venue name or a full formatted address.
+// Fire-and-forget: the summary falls back to the full address until this
+// resolves, and just keeps that fallback if it fails.
+async function resolvePlannerStopRoadSuburb(stop) {
+  try {
+    const short = await reverseGeocode(stop.lat, stop.lng, false);
+    if (state.planner && state.planner.stops.includes(stop) && stop.lat != null) {
+      stop.roadSuburb = short;
+      render();
+    }
+  } catch { /* keep falling back to the full address */ }
 }
 
 // A saved address's coordinates rarely change, so cache them for the
@@ -2110,7 +2128,7 @@ async function deletePlannedRoute(id) {
 // trusting the saved leg distances, which is why it's already starred.
 function openSavedRouteInPlanner(route) {
   state.planner = {
-    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "", fromCurrentLocation: false })),
+    stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "", fromCurrentLocation: false, roadSuburb: null })),
     legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
     stage: "build",
     previewing: false,
@@ -2120,6 +2138,7 @@ function openSavedRouteInPlanner(route) {
     quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
   };
   plannerDirectionsResult = null;
+  state.planner.stops.filter(s => s.lat != null).forEach(resolvePlannerStopRoadSuburb);
   render();
   updatePlannerQuickEstimate();
   if (state.planner.stops.every(s => s.lat != null)) runPlannerPreview();
@@ -4207,7 +4226,6 @@ function renderPlannerToolbarRow() {
     : "";
   return `
   <div class="planner-toolbar-row">
-    ${renderPlannerLegBusinessBtn(0)}
     <span class="planner-quick-estimate mono">${estimateText}</span>
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
@@ -4219,29 +4237,34 @@ function renderPlannerLegBusinessBtn(legIdx) {
   return `<button type="button" class="planner-leg-business-btn plannerLegBusinessBtn ${on ? "on" : ""}" data-legidx="${legIdx}" title="${on ? "Business drive — tap to clear" : "Mark this leg as Business"}">${on ? icons.briefcaseFilled : icons.briefcase}</button>`;
 }
 
-// Extra gap row for legs beyond the first (3+ stop routes) — the first
-// leg's business toggle lives in the toolbar row above, between Start and
-// the rest of the stops.
-function renderPlannerLegToggleRow(legIdx) {
-  return `<div class="planner-leg-toggle-row">${renderPlannerLegBusinessBtn(legIdx)}</div>`;
-}
-
-// Personal/Supervised is the default for every leg (see defaultPlannerLegTag)
-// and Business is opt-in via the briefcase toggle, so this just shows the
-// resulting tag — no separate Personal/Business buttons to click here.
-function renderPlannerLegRow(leg, idx, stops) {
-  const fromLabel = plannerStopLabel(idx, stops.length);
-  const toLabel = plannerStopLabel(idx + 1, stops.length);
+// The road/suburb line is the resolved stop's own short label (see
+// resolvePlannerStopRoadSuburb) — falling back to the raw field text (often
+// a venue name or full formatted address) while that's still loading, and
+// to the generic Start/Stop N/Destination label if the stop somehow has no
+// address at all. Shown as one full, unclipped line — CSS lets it scroll
+// horizontally rather than truncating with an ellipsis.
+//
+// The business toggle only appears here (in the route summary), not
+// between the address fields — `editable` is false for the read-only
+// post-drive summary, where retagging wouldn't update the trip already
+// logged from these same legs, so it renders as a plain (non-clickable)
+// icon there instead of a button.
+function renderPlannerLegRow(leg, idx, stops, editable) {
+  const fromStop = stops[idx], toStop = stops[idx + 1];
+  const fromLabel = (fromStop && (fromStop.roadSuburb || fromStop.address)) || plannerStopLabel(idx, stops.length);
+  const toLabel = (toStop && (toStop.roadSuburb || toStop.address)) || plannerStopLabel(idx + 1, stops.length);
   const hasDistance = leg.distanceKm != null;
+  const businessOn = leg.tag === "work";
+  const briefcase = editable ? renderPlannerLegBusinessBtn(idx)
+    : `<span class="planner-leg-business-btn static ${businessOn ? "on" : ""}" title="${businessOn ? "Business" : "Personal"}">${businessOn ? icons.briefcaseFilled : icons.briefcase}</span>`;
   return `
   <div class="planner-leg-row">
-    <div class="planner-leg-info">
-      <span class="planner-leg-route">${fromLabel} → ${toLabel}</span>
+    <div class="planner-leg-route-line">${escAttr(fromLabel)} → ${escAttr(toLabel)}</div>
+    <div class="planner-leg-meta-row">
+      ${briefcase}
+      ${leg.tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>` : ""}
       <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
     </div>
-    ${leg.tag === "work" ? `<span class="planner-leg-tag-icon" title="Business">${icons.briefcaseFilled}</span>`
-      : leg.tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>`
-      : ""}
   </div>`;
 }
 
@@ -4392,7 +4415,7 @@ function renderPlanTab() {
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
       ${p.stops[0].lat != null ? `
       ${renderPlannerToolbarRow()}
-      ${p.stops.slice(1).map((s, i) => (i > 0 ? renderPlannerLegToggleRow(i) : "") + renderPlannerFieldBlock(s, i + 1, n)).join("")}
+      ${p.stops.slice(1).map((s, i) => renderPlannerFieldBlock(s, i + 1, n)).join("")}
       ` : ""}
       `}
     </div>`}
@@ -4439,7 +4462,7 @@ function renderPlannerRouteSummary() {
     <div class="planner-hazard-row">${icons.warning}<div class="loc-field-wrap"><div class="route-clip" id="plannerHazardClip"><span class="route-track" id="plannerHazardTrack">${escAttr(warnings.join(" · "))}</span></div></div></div>
     ` : ""}
     <div class="planner-legtags">
-      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops, true)).join(`<div class="divider"></div>`)}
     </div>
   </div>`;
 }
@@ -4464,7 +4487,7 @@ function renderPlannerCompleteSummary() {
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
     </div>
     <div class="planner-legtags">
-      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops, false)).join(`<div class="divider"></div>`)}
     </div>
   </div>`;
 }
