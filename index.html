@@ -380,22 +380,29 @@
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
-    display:flex;align-items:center;gap:14px;}
-  .planner-eta-metrics{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;flex:1;min-width:0;}
-  .planner-eta-metrics .m.remain{text-align:center;}
-  .planner-eta-metrics .m.remain .v{font-size:24px;font-weight:800;color:var(--amber);}
-  .planner-eta-metrics .m-side{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;}
-  .planner-eta-metrics .m-side .v{font-size:18px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
-  .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
-  .planner-eta-bar.paused .planner-eta-metrics .m.remain .v{color:var(--muted);}
+    display:flex;align-items:center;gap:14px;min-height:56px;}
+  /* Absolutely positioned and centered to the bar's own full-width box
+     (the bar spans edge to edge), so Remaining sits at the true middle of
+     the screen regardless of how much room the controls column takes. */
+  .planner-eta-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    text-align:center;pointer-events:none;}
+  .planner-eta-center .v{font-size:24px;font-weight:800;color:var(--amber);}
+  .planner-eta-bar.paused .planner-eta-center .v{color:var(--muted);}
+  .planner-eta-center .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
+  .planner-eta-center .eta-line{font-size:15px;font-weight:700;color:var(--text);margin-top:2px;}
+  .planner-eta-dist{margin-left:auto;text-align:right;flex-shrink:0;}
+  .planner-eta-dist .v{font-size:18px;font-weight:700;color:var(--text);}
+  .planner-eta-dist .v .unit{font-size:.6em;font-weight:700;margin-left:1px;}
+  .planner-eta-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
   .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;}
   .planner-pause-drive-btn{width:38px;height:38px;border-radius:50%;background:transparent;
     border:2px solid var(--amber);color:var(--amber);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-pause-drive-btn.paused{background:var(--amber);color:var(--bg);}
   .planner-pause-drive-btn .icon{width:17px;height:17px;}
-  .planner-end-drive-btn{width:56px;height:56px;border-radius:16px;background:var(--amber);border:none;color:var(--bg);
-    flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-end-drive-btn{width:56px;height:56px;border-radius:50%;background:var(--amber);border:none;color:var(--bg);
+    flex-shrink:0;margin-top:2px;margin-bottom:6px;box-shadow:0 6px 16px rgba(0,0,0,.4);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-end-drive-btn .icon{width:24px;height:24px;}
 
   @media (max-width:479px){
@@ -2256,15 +2263,23 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // tilt and closer zoom at city speed, easing toward a steeper look-ahead
 // tilt and further-out zoom at highway speed — since there's no API access
 // to compare directly against the real app.
+// overhead/low/high are also what auto's three speed tiers resolve to (see
+// LIVE_ANGLE_TIER_MODE below) — gentle/steep are extra in-between/beyond
+// steps for manual cycling only, auto never picks them.
 const LIVE_ANGLE_PROFILES = {
   overhead: { tilt: 0, rotates: false, roadLabels: "all" },
+  gentle: { tilt: 22, rotates: true, roadLabels: "all" },
   low: { tilt: 45, rotates: true, roadLabels: "all" },
   high: { tilt: 60, rotates: true, roadLabels: "main" },
+  steep: { tilt: 74, rotates: true, roadLabels: "main" },
 };
-// "far" is kept from going too far out — Google is more likely to draw a
-// highway's full name alongside its shield, not just the shield on its
-// own, the more room a label has, which shrinks fast at wide zoom-outs.
-const LIVE_ZOOM_PROFILES = { close: 18, normal: 17, far: 16.5 };
+// far/normal/close are what auto's three speed tiers resolve to (see
+// LIVE_ZOOM_TIER_MODE below) — wide/tight are extra manual-only steps
+// beyond that range. "far" itself is kept from going too far out — Google
+// is more likely to draw a highway's full name alongside its shield, not
+// just the shield on its own, the more room a label has, which shrinks
+// fast at wide zoom-outs.
+const LIVE_ZOOM_PROFILES = { wide: 15, far: 16.5, normal: 17, close: 18, tight: 19.5 };
 // Speed tiers shared by both axes' "auto" — when both are left on auto
 // they move together the way Google's own nav view does; overriding just
 // one still lets the other keep following speed independently.
@@ -2337,7 +2352,8 @@ function maneuverIcon(m) {
   return icons.straight;
 }
 function maneuverLabel(m) { return MANEUVER_LABELS[m] || "Continue"; }
-// Distance-to-next-turn, in whichever unit the app is set to (matches
+// Any live-drive distance readout (distance-to-next-turn, distance
+// remaining), in whichever unit the app is set to (matches
 // unitLabel()/kmToDisplay() used everywhere else) rather than always metric.
 // Returns markup (number + a tightly-kerned unit span) rather than a plain
 // string so the caller can set it via innerHTML — a literal space char in a
@@ -2856,14 +2872,16 @@ function updateLiveZoom(speedMs) {
     plannerMapInstance.setZoom(targetZoom);
   }
 }
-const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "high", "low"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", high: "Angle: High", low: "Angle: Low" };
-const LIVE_ZOOM_MODE_CYCLE = ["auto", "far", "normal", "close"];
-const LIVE_ZOOM_MODE_LABELS = { auto: "Zoom: Auto", far: "Zoom: Far", normal: "Zoom: Normal", close: "Zoom: Close" };
-// Cycles the angle FAB through auto -> overhead -> high -> low -> auto — a
-// plain targeted DOM update, not a render(), so it doesn't interrupt live
-// tracking or recreate the map. Zoom is a fully independent axis (its own
-// FAB, its own auto) so changing angle alone never touches it.
+// Ascending tilt/zoom order — simplest to reason about with five manual
+// steps rather than the earlier arbitrary ordering that only had three.
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "gentle", "low", "high", "steep"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", gentle: "Angle: Gentle", low: "Angle: Low", high: "Angle: High", steep: "Angle: Steep" };
+const LIVE_ZOOM_MODE_CYCLE = ["auto", "wide", "far", "normal", "close", "tight"];
+const LIVE_ZOOM_MODE_LABELS = { auto: "Zoom: Auto", wide: "Zoom: Wide", far: "Zoom: Far", normal: "Zoom: Normal", close: "Zoom: Close", tight: "Zoom: Tight" };
+// Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
+// DOM update, not a render(), so it doesn't interrupt live tracking or
+// recreate the map. Zoom is a fully independent axis (its own FAB, its own
+// auto) so changing angle alone never touches it.
 function cycleLiveAngleMode() {
   if (!liveDrive) return;
   const idx = LIVE_ANGLE_MODE_CYCLE.indexOf(liveDrive.angleMode);
@@ -2991,7 +3009,9 @@ function computeLiveRemaining() {
     ? Math.max(1, Math.round((remainingM / totalDistM) * totalDurS / 60))
     : Math.max(1, Math.round(remainingM / 1000 / 40 * 60));
   const eta = new Date(Date.now() + remainingMin * 60000);
-  return { km: remainingM / 1000, min: remainingMin, etaStr: eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) };
+  // hour12 forced explicitly rather than left to the runtime locale's
+  // default hour cycle, so ETA always reads as 12-hour time.
+  return { km: remainingM / 1000, min: remainingMin, etaStr: eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true }) };
 }
 
 // Targeted DOM update on every GPS fix — deliberately not a full render(),
@@ -3036,7 +3056,10 @@ function updateLiveDriveDOM() {
   const remainDistVal = document.getElementById("plannerRemainVal");
   if (remainTimeVal) remainTimeVal.textContent = arrived ? "Arrived" : formatLiveDuration(remain.min);
   if (etaVal) etaVal.textContent = arrived ? "–" : remain.etaStr;
-  if (remainDistVal) remainDistVal.textContent = arrived ? "0.0 " + unitLabel() : `${kmToDisplay(remain.km).toFixed(1)} ${unitLabel()}`;
+  // Reuses formatLiveTurnDistance's tight number/unit markup and m/km (or
+  // ft/mi) threshold — it takes meters, so the km figure here is converted
+  // going in rather than duplicating that formatting logic.
+  if (remainDistVal) remainDistVal.innerHTML = formatLiveTurnDistance(arrived ? 0 : remain.km * 1000);
 }
 
 // Stop & Save: finalizes whatever's left of the leg in progress (its end
@@ -4581,8 +4604,8 @@ function renderPlanTab() {
   <div class="planner-fullscreen ${p.mapFocusMode ? "map-focus" : ""}">
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: auto / overhead / high / low">${icons.angleView}</button>
-    <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: auto / far / normal / close">${icons.zoomView}</button>
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
+    <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: ${LIVE_ZOOM_MODE_CYCLE.join(" / ")}">${icons.zoomView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : complete ? "" : `
@@ -4698,13 +4721,14 @@ function renderPlannerEtaBar() {
   const paused = !!(liveDrive && liveDrive.paused);
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
-    <div class="planner-eta-metrics">
-      <div class="m-side">
-        <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
-        <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
-      </div>
-      <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
-      <span></span>
+    <div class="planner-eta-center">
+      <div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div>
+      <div class="l">Remaining</div>
+      <div class="eta-line mono" id="plannerEtaVal">–</div>
+    </div>
+    <div class="planner-eta-dist">
+      <div class="v mono" id="plannerRemainVal">–</div>
+      <div class="l">Distance</div>
     </div>
     <div class="planner-eta-controls">
       <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
