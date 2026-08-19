@@ -2766,7 +2766,13 @@ function handleLiveFix(pos) {
     // slightly different point than the address's own coordinates), which
     // left the app showing "You have arrived" (driven by this same signal
     // in updateLiveDriveDOM) while never actually finishing the leg.
-    const legStepsExhausted = !step || step.legIdx !== liveDrive.legIdx;
+    // Gated on steps actually being loaded: resumeLiveDriveIfAny() restores
+    // a drive after a reload with steps deliberately left empty (turn-by-
+    // turn goes quiet until a reroute repopulates it), and !step there
+    // would otherwise look identical to "ran out of steps" on the very
+    // first fix back — ending the leg immediately regardless of where the
+    // driver actually is.
+    const legStepsExhausted = liveDrive.steps.length > 0 && (!step || step.legIdx !== liveDrive.legIdx);
     if (nearDest || legStepsExhausted) {
       finishCurrentLiveLeg();
       if (liveDrive.legIdx >= p.legs.length) {
