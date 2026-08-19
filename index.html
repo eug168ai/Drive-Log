@@ -377,33 +377,33 @@
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
   .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
+  /* Two rows: Pause/Stop above, the ETA/Remaining/Distance row at the very
+     bottom edge of the screen. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
-    padding:14px 10px calc(14px + env(safe-area-inset-bottom));
+    padding:14px 10px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
-    display:flex;align-items:center;gap:14px;min-height:56px;}
-  /* Absolutely positioned and centered to the bar's own full-width box
-     (the bar spans edge to edge), so Remaining sits at the true middle of
-     the screen regardless of how much room the controls column takes. */
-  .planner-eta-center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-    text-align:center;pointer-events:none;}
-  .planner-eta-center .v{font-size:24px;font-weight:800;color:var(--amber);}
-  .planner-eta-bar.paused .planner-eta-center .v{color:var(--muted);}
-  .planner-eta-center .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
-  .planner-eta-center .eta-line{font-size:15px;font-weight:700;color:var(--text);margin-top:2px;}
-  .planner-eta-dist{margin-left:auto;text-align:right;flex-shrink:0;}
-  .planner-eta-dist .v{font-size:18px;font-weight:700;color:var(--text);}
-  .planner-eta-dist .v .unit{font-size:.6em;font-weight:700;margin-left:1px;}
-  .planner-eta-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
-  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;}
+    display:flex;flex-direction:column;align-items:center;gap:10px;}
+  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:8px;}
   .planner-pause-drive-btn{width:38px;height:38px;border-radius:50%;background:transparent;
     border:2px solid var(--amber);color:var(--amber);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-pause-drive-btn.paused{background:var(--amber);color:var(--bg);}
   .planner-pause-drive-btn .icon{width:17px;height:17px;}
   .planner-end-drive-btn{width:56px;height:56px;border-radius:50%;background:var(--amber);border:none;color:var(--bg);
-    flex-shrink:0;margin-top:2px;margin-bottom:6px;box-shadow:0 6px 16px rgba(0,0,0,.4);
+    flex-shrink:0;box-shadow:0 6px 16px rgba(0,0,0,.4);
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-end-drive-btn .icon{width:24px;height:24px;}
+  /* Spread edge to edge, with Remaining as the sandwiched (so centered)
+     middle column regardless of how wide ETA/Distance's own text runs. */
+  .planner-eta-metrics-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;width:100%;}
+  .planner-eta-metrics-row .m.eta{text-align:left;}
+  .planner-eta-metrics-row .m.remain{text-align:center;}
+  .planner-eta-metrics-row .m.dist{text-align:right;}
+  .planner-eta-metrics-row .m.remain .v{font-size:22px;font-weight:800;color:var(--amber);}
+  .planner-eta-bar.paused .planner-eta-metrics-row .m.remain .v{color:var(--muted);}
+  .planner-eta-metrics-row .m.eta .v, .planner-eta-metrics-row .m.dist .v{font-size:15px;font-weight:700;color:var(--text);}
+  .planner-eta-metrics-row .m.dist .v .unit{font-size:.65em;font-weight:700;margin-left:1px;}
+  .planner-eta-metrics-row .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
@@ -2312,18 +2312,23 @@ function drivingMapStyles(roadLabelsScope, upright) {
     // and show highway names upside down.
     hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
   } else {
-    // road.highway is never hidden while upright, explicit for both its
-    // shield badge (labels.icon — whose white/green/yellow color comes
-    // from Google's own tile rendering, not something the styles array
-    // can set) and its name text (labels.text), so neither is ever
-    // accidentally caught by a broader "road" rule. Whether Google
-    // actually draws both together (rather than just the shield) at a
-    // given zoom is its own label-placement decision — no lever here
-    // forces that either way.
+    // road.highway and road.arterial are never hidden while upright,
+    // explicit for both their shield badge (labels.icon — whose
+    // white/green/yellow color comes from Google's own tile rendering, not
+    // something the styles array can set) and name text (labels.text), so
+    // neither is ever accidentally caught by a broader "road" rule.
+    // road.arterial is included here (not just road.highway) because
+    // Google classifies plenty of real numbered routes — state highways
+    // like "A77" outside the US Interstate system, for one — as arterial
+    // rather than highway; only road.local (residential streets) is what
+    // "main" actually declutters. Whether Google draws the shield and name
+    // together, rather than just the shield, at a given zoom is its own
+    // label-placement decision — no lever here forces that either way.
     hide.push({ featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
     hide.push({ featureType: "road.highway", elementType: "labels.text", stylers: [{ visibility: "on" }] });
+    hide.push({ featureType: "road.arterial", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
+    hide.push({ featureType: "road.arterial", elementType: "labels.text", stylers: [{ visibility: "on" }] });
     if (roadLabelsScope === "main") {
-      hide.push({ featureType: "road.arterial", elementType: "labels", stylers: [{ visibility: "off" }] });
       hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] });
     }
   }
@@ -2927,10 +2932,14 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   plannerLiveMarker.setPosition({ lat, lng });
   const icon = plannerLiveMarker.getIcon();
   if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
-  // Pan to a point offset ahead of the driver (rather than centering on
-  // them exactly) so the marker sits low on screen, leaving most of the
-  // screen showing the road still ahead of them.
-  plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
+  // Centers on a point offset ahead of the driver (rather than on them
+  // exactly) so the marker sits low on screen, leaving most of the screen
+  // showing the road still ahead of them. setCenter, not panTo — this runs
+  // every animation frame (see stepLiveMoveAnimation) and already produces
+  // its own smooth motion between fixes; panTo's own competing animation,
+  // retargeted 60 times a second, was fighting that and making the camera
+  // lag/drift instead of holding the marker at a fixed point on screen.
+  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
 }
 
 // GPS fixes land roughly once a second (watchPosition's maximumAge allows
@@ -4721,18 +4730,14 @@ function renderPlannerEtaBar() {
   const paused = !!(liveDrive && liveDrive.paused);
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
-    <div class="planner-eta-center">
-      <div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div>
-      <div class="l">Remaining</div>
-      <div class="eta-line mono" id="plannerEtaVal">–</div>
-    </div>
-    <div class="planner-eta-dist">
-      <div class="v mono" id="plannerRemainVal">–</div>
-      <div class="l">Distance</div>
-    </div>
     <div class="planner-eta-controls">
       <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
       <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+    </div>
+    <div class="planner-eta-metrics-row">
+      <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
+      <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
+      <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
     </div>
   </div>`;
 }
