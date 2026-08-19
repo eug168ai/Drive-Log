@@ -369,6 +369,15 @@
     display:flex;align-items:center;justify-content:center;}
   .planner-turn-icon.arrive{background:var(--normal);}
   .planner-turn-icon .icon{width:26px;height:26px;}
+  /* A rough approximation of a route shield — the real thing's exact
+     white/green/yellow convention is baked into Google's own map tiles,
+     not something this app renders, so this is just a reasonable stand-in
+     next to the maneuver icon when a route code (e.g. "A77") is found in
+     the upcoming step's instructions. */
+  .planner-turn-shield{display:none;align-items:center;justify-content:center;flex-shrink:0;
+    min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#fff;
+    font-size:13px;font-weight:800;letter-spacing:.02em;border:1.5px solid #fff;}
+  .planner-turn-shield.show{display:inline-flex;}
   .planner-turn-text{min-width:0;flex:1;}
   .planner-turn-text b{display:block;font-size:21px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -377,21 +386,19 @@
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
   .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
-  /* Two rows: Pause/Stop above, the ETA/Remaining/Distance row at the very
-     bottom edge of the screen. */
+  /* Two rows: Pause/Stop above (pushed to the far right, above the bottom
+     edge), the ETA/Remaining/Distance row at the very bottom edge itself. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:14px 10px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
-    display:flex;flex-direction:column;align-items:center;gap:10px;}
-  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:8px;}
-  .planner-pause-drive-btn{width:38px;height:38px;border-radius:50%;background:transparent;
-    border:2px solid var(--amber);color:var(--amber);flex-shrink:0;
+    display:flex;flex-direction:column;align-items:stretch;gap:10px;}
+  .planner-eta-controls{display:flex;flex-direction:row;align-items:center;gap:10px;align-self:flex-end;}
+  .planner-pause-drive-btn, .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-pause-drive-btn{background:transparent;border:2px solid var(--amber);color:var(--amber);}
   .planner-pause-drive-btn.paused{background:var(--amber);color:var(--bg);}
-  .planner-pause-drive-btn .icon{width:17px;height:17px;}
-  .planner-end-drive-btn{width:56px;height:56px;border-radius:50%;background:var(--amber);border:none;color:var(--bg);
-    flex-shrink:0;box-shadow:0 6px 16px rgba(0,0,0,.4);
-    display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-pause-drive-btn .icon{width:18px;height:18px;}
+  .planner-end-drive-btn{background:var(--amber);border:none;color:var(--bg);box-shadow:0 6px 16px rgba(0,0,0,.4);}
   .planner-end-drive-btn .icon{width:24px;height:24px;}
   /* Spread edge to edge, with Remaining as the sandwiched (so centered)
      middle column regardless of how wide ETA/Distance's own text runs. */
@@ -2396,6 +2403,16 @@ function stepStreetName(html) {
   const bolds = Array.from(div.querySelectorAll("b")).map(b => b.textContent.trim()).filter(Boolean);
   return bolds.length ? bolds[bolds.length - 1] : stepPlainInstruction(html);
 }
+// Pulls a route/highway designation code (e.g. "A77", "M1", "B4632") out of
+// a step's raw instruction text, for the small shield badge shown next to
+// the turn banner's maneuver icon — a regex heuristic, since Directions
+// instructions don't tag a route number as its own field, only bold full
+// road names/phrases that may or may not include one.
+function extractRouteShield(html) {
+  const text = stepPlainInstruction(html);
+  const m = text.match(/\b([A-Z]{1,2}\d{1,4})\b/);
+  return m ? m[1] : null;
+}
 // Every step across every leg, in order, each tagged with which leg it
 // belongs to — turn-by-turn advances through this independent of the
 // coarser per-leg distance/duration already shown in the route summary.
@@ -2508,11 +2525,27 @@ function offsetLatLng(lat, lng, bearingDeg, distanceM) {
 function metersPerPixelAtZoom(zoom, lat) {
   return 156543.03392 * Math.cos((lat || 0) * Math.PI / 180) / Math.pow(2, zoom);
 }
+// Must match .planner-fullscreen's own perspective/perspective-origin in
+// the CSS — used below to counteract exactly what that perspective does to
+// vertical position, so keep the two in sync if either one changes.
+const LIVE_MAP_PERSPECTIVE_PX = 1200;
+const LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION = 0.83;
 // The map is always centered (by Maps itself) at 50% of the screen. Panning
 // that center to a point AHEAD of the driver — rather than the driver's own
 // position — leaves the driver below the 50% line, at LIVE_MARKER_SCREEN_FRACTION
-// of the way down, so most of the screen shows the road still ahead of them.
-function lookAheadCenter(lat, lng, headingDeg, zoom) {
+// of the way down in the *flat, untilted* render Maps actually produces.
+//
+// When a tilt is applied (see rotateLiveMap's rotateX), that flat fraction
+// no longer lands at the same fraction on the final, tilted screen —
+// perspective foreshortening pulls it up toward the vanishing point
+// (perspective-origin) the steeper the tilt gets, which is exactly what
+// made the marker drift up away from the bottom the more tilted the view
+// was. tiltDeg lets this solve for the flat-map fraction that, once
+// projected through that same perspective, actually lands the marker at
+// LIVE_MARKER_SCREEN_FRACTION on screen — derived by inverting the CSS
+// perspective-projection formula (scale = d/(d - z)) for a point rotated
+// rotateX(tiltDeg) around the wrapper's own center (screen-50%).
+function lookAheadCenter(lat, lng, headingDeg, zoom, tiltDeg) {
   if (headingDeg == null) return { lat, lng };
   // Not #plannerMapCanvas's own height — when angled, its wrapper (and so
   // the canvas filling it) is scaled up to 420% to cover the tilt, so only
@@ -2520,7 +2553,17 @@ function lookAheadCenter(lat, lng, headingDeg, zoom) {
   // visible screen height.
   const heightPx = window.innerHeight || 700;
   const mpp = metersPerPixelAtZoom(zoom || LIVE_DRIVING_ZOOM, lat);
-  const offsetM = (LIVE_MARKER_SCREEN_FRACTION - 0.5) * heightPx * mpp;
+  const targetFraction = LIVE_MARKER_SCREEN_FRACTION - 0.5; // constant either way — see K below
+  let fraction = targetFraction;
+  const theta = (tiltDeg || 0) * Math.PI / 180;
+  if (theta > 0.0001) {
+    const D = LIVE_MAP_PERSPECTIVE_PX / heightPx;
+    const A = LIVE_MARKER_SCREEN_FRACTION - LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION;
+    const K = targetFraction;
+    const denom = D * Math.cos(theta) + A * Math.sin(theta);
+    if (Math.abs(denom) > 0.0001) fraction = D * K / denom;
+  }
+  const offsetM = fraction * heightPx * mpp;
   return offsetLatLng(lat, lng, headingDeg, offsetM);
 }
 // Circular low-pass filter — averages across the shorter arc between the two
@@ -2718,6 +2761,12 @@ function handleLiveFix(pos) {
     const destStop = p.stops[liveDrive.legIdx + 1];
     if (destStop && destStop.lat != null && haversineMeters(lat, lng, destStop.lat, destStop.lng) < LIVE_LEG_ARRIVE_M) {
       finishCurrentLiveLeg();
+      if (liveDrive.legIdx >= p.legs.length) {
+        // Reached the final destination — go straight to the Drive Complete
+        // screen rather than waiting for a manual Stop tap.
+        endLiveDrive();
+        return;
+      }
     }
   }
 
@@ -2939,7 +2988,8 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   // its own smooth motion between fixes; panTo's own competing animation,
   // retargeted 60 times a second, was fighting that and making the camera
   // lag/drift instead of holding the marker at a fixed point on screen.
-  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
+  const tiltDeg = resolveLiveAngleProfile(speedMs).tilt;
+  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom(), tiltDeg));
 }
 
 // GPS fixes land roughly once a second (watchPosition's maximumAge allows
@@ -3052,6 +3102,13 @@ function updateLiveDriveDOM() {
       : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
   if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
+  const turnShield = document.getElementById("plannerTurnShield");
+  if (turnShield) {
+    const shieldStep = rerouting || arrived ? null : (junctionStep || step);
+    const code = shieldStep ? extractRouteShield(shieldStep.instructions) : null;
+    turnShield.textContent = code || "";
+    turnShield.classList.toggle("show", !!code);
+  }
   if (turnDistVal) {
     if (rerouting || arrived || !junctionStep) { turnDistVal.textContent = "–"; }
     else {
@@ -3348,7 +3405,8 @@ async function ensurePlannerMap() {
   // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
     zoom = resolveLiveZoom(liveDrive.smoothSpeedMs || 0);
-    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom);
+    const tiltDeg = resolveLiveAngleProfile(liveDrive.smoothSpeedMs || 0).tilt;
+    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom, tiltDeg);
   }
   // Best known fix for deciding day/night styling: live position, else the
   // first resolved stop, else the last GPS fix from an in-progress drive.
@@ -4721,6 +4779,7 @@ function renderPlannerDrivingBanner() {
   return `
   <div class="planner-drive-banner">
     <span class="planner-turn-icon" id="plannerTurnIconWrap">${icons.straight}</span>
+    <span class="planner-turn-shield" id="plannerTurnShield"></span>
     <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b><span id="plannerTurnSub">Getting your position</span></div>
     <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l">next turn</div></div>
   </div>`;
