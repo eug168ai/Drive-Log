@@ -234,7 +234,14 @@
   /* Trip Planner: fullscreen map builder + live GPS driving mode */
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 83%;}
   .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
-  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .35s ease-out;}
+  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .35s ease-out;
+    /* Best-effort smoothing for the rotated/tilted route line and tiles —
+       promotes the wrapper to its own composited layer up front rather
+       than only once a transform starts, which noticeably reduces (if
+       never fully eliminates) the jagged edges that come from rasterizing
+       a 2D map at an angle. There's no way to fully match a true vector
+       tilt without switching to Maps' vector renderer. */
+    will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;}
   .planner-map-rotate-wrap.driving.angled{top:-160%;left:-160%;right:-160%;bottom:-160%;width:420%;height:420%;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
@@ -309,12 +316,14 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-recenter-fab .icon{width:18px;height:18px;}
 
-  .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
-    background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
+  .planner-angle-fab, .planner-zoom-fab{position:absolute;right:14px;width:40px;height:40px;border-radius:50%;
+    background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
-  .planner-angle-fab.active{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
-  .planner-angle-fab .icon{width:18px;height:18px;}
-  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 148px);z-index:31;
+  .planner-angle-fab{top:calc(env(safe-area-inset-top) + 104px);}
+  .planner-zoom-fab{top:calc(env(safe-area-inset-top) + 150px);}
+  .planner-angle-fab.active, .planner-zoom-fab.active{background:rgba(var(--amber-rgb),.18);}
+  .planner-angle-fab .icon, .planner-zoom-fab .icon{width:18px;height:18px;}
+  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 194px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
     color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
   .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
@@ -360,7 +369,7 @@
   .planner-turn-icon.arrive{background:var(--normal);}
   .planner-turn-icon .icon{width:26px;height:26px;}
   .planner-turn-text{min-width:0;flex:1;}
-  .planner-turn-text b{display:block;font-size:20px;font-weight:800;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .planner-turn-text b{display:block;font-size:21px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
@@ -374,17 +383,19 @@
   .planner-eta-metrics{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;flex:1;min-width:0;}
   .planner-eta-metrics .m.remain{text-align:center;}
   .planner-eta-metrics .m.remain .v{font-size:24px;font-weight:800;color:var(--amber);}
-  .planner-eta-metrics .m-side{display:flex;flex-direction:column;align-items:flex-end;gap:3px;min-width:0;}
-  .planner-eta-metrics .m-side .v{font-size:20px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
+  .planner-eta-metrics .m-side{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;}
+  .planner-eta-metrics .m-side .v{font-size:18px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
   .planner-eta-metrics .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
   .planner-eta-bar.paused .planner-eta-metrics .m.remain .v{color:var(--muted);}
-  .planner-pause-drive-btn{width:46px;height:46px;border-radius:50%;background:rgba(var(--surface-rgb),.94);
-    border:1px solid var(--border);color:var(--text);flex-shrink:0;
+  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0;}
+  .planner-pause-drive-btn{width:38px;height:38px;border-radius:50%;background:transparent;
+    border:2px solid var(--amber);color:var(--amber);flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
-  .planner-pause-drive-btn.paused{background:var(--amber);border-color:var(--amber);color:var(--bg);}
-  .planner-pause-drive-btn .icon{width:20px;height:20px;}
-  .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;background:var(--work);border:none;color:#fff;flex-shrink:0;
-    display:flex;align-items:center;justify-content:center;flex-shrink:0;cursor:pointer;}
+  .planner-pause-drive-btn.paused{background:var(--amber);color:var(--bg);}
+  .planner-pause-drive-btn .icon{width:17px;height:17px;}
+  .planner-end-drive-btn{width:56px;height:56px;border-radius:16px;background:var(--amber);border:none;color:var(--bg);
+    flex-shrink:0;margin-top:2px;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-end-drive-btn .icon{width:24px;height:24px;}
 
   @media (max-width:479px){
     .history-actions .chip-label{display:none;}
@@ -1167,6 +1178,7 @@ const icons = {
   forkLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M7 9V6h3"/></svg>`,
   forkRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M17 9V6h-3"/></svg>`,
   angleView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 6h6l5 12z"/><path d="M4 18h16"/></svg>`,
+  zoomView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/><path d="M8 10.5h5"/></svg>`,
 };
 
 // Hand-curated, approximate combined fuel-consumption figures (L/100km) for common
@@ -2232,21 +2244,28 @@ const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used f
 const LIVE_MARKER_SCREEN_FRACTION = 5 / 6; // how far down the screen the driver marker sits (see lookAheadCenter)
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
-// Three named camera profiles the driving view can be in, cycled through by
-// the angle FAB (or picked automatically by speed in "auto" — see
-// autoViewModeForSpeed). "rotates" controls whether the map turns to
-// course-up at all: overhead stays north-up, so its labels are guaranteed
-// never upside-down regardless of heading. "roadLabels" is which road
-// labels stay on once upright-gated by updateLiveMapLabelVisibility — "all"
-// shows every road, "main" hides minor arterial/local roads to reduce
-// clutter at the zoomed-out, fast-driving end.
-const LIVE_VIEW_PROFILES = {
-  overhead: { tilt: 0, zoom: 19, rotates: false, roadLabels: "all" },
-  low: { tilt: 30, zoom: 17, rotates: true, roadLabels: "all" },
-  high: { tilt: 55, zoom: 15, rotates: true, roadLabels: "main" },
+// Angle (tilt) and zoom are independent axes — each has its own FAB, cycle,
+// and "auto" that follows speed. "rotates" controls whether the map turns
+// to course-up at all: overhead stays north-up, so its labels are
+// guaranteed never upside-down regardless of heading. "roadLabels" is which
+// road labels stay on once upright-gated by updateLiveMapLabelVisibility —
+// "all" shows every road, "main" hides minor arterial/local roads to
+// reduce clutter at the zoomed-out, fast-driving end. Tilt/zoom values are
+// a best-effort match to Google's own normal driving nav view — a ~45°
+// tilt and closer zoom at city speed, easing toward a steeper look-ahead
+// tilt and further-out zoom at highway speed — since there's no API access
+// to compare directly against the real app.
+const LIVE_ANGLE_PROFILES = {
+  overhead: { tilt: 0, rotates: false, roadLabels: "all" },
+  low: { tilt: 45, rotates: true, roadLabels: "all" },
+  high: { tilt: 60, rotates: true, roadLabels: "main" },
 };
-const LIVE_AUTO_OVERHEAD_MAX_MS = 6;  // auto mode: at/below ~22 km/h -> overhead
-const LIVE_AUTO_HIGH_MIN_MS = 18;     // auto mode: at/above ~65 km/h -> high
+const LIVE_ZOOM_PROFILES = { close: 18, normal: 17, far: 15.5 };
+// Speed tiers shared by both axes' "auto" — when both are left on auto
+// they move together the way Google's own nav view does; overriding just
+// one still lets the other keep following speed independently.
+const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> overhead angle / close zoom
+const LIVE_AUTO_HIGH_TIER_MIN_MS = 18; // at/above ~65 km/h -> high angle / far zoom
 const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so hovering near one doesn't flicker
 // Road labels on the raster map tiles rotate along with everything else
 // (see rotateLiveMap), so past roughly a quarter turn from north-up they'd
@@ -2535,12 +2554,14 @@ async function startLiveDrive() {
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
-    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, viewMode: "auto", autoProfile: "low",
+    smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
+    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low",
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
   liveMapLastSpeedMs = 0;
   liveMapLastAppliedZoom = null;
+  stopLiveMoveAnimation();
   await persistLiveDriveSnapshot();
 
   p.stage = "driving";
@@ -2735,36 +2756,43 @@ async function rerouteLiveDrive(lat, lng) {
 let liveMapRotationDeg = 0;
 let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
-// Picks which named profile "auto" resolves to for a given speed, given the
-// profile it's currently showing — the hysteresis margin around each
+// Picks which speed tier ("low"/"mid"/"high") an axis's "auto" resolves to,
+// given the tier it's currently showing — the hysteresis margin around each
 // threshold means a speed hovering right at the boundary doesn't flicker
-// back and forth between profiles on every fix.
-function autoViewModeForSpeed(speedMs, current) {
+// back and forth on every fix. Shared by both the angle and zoom axes (each
+// tracks its own current tier — see resolveLiveAngleProfile/resolveLiveZoom
+// — so one being manually overridden doesn't affect the other's auto).
+function autoSpeedTier(speedMs, current) {
   const s = speedMs || 0;
   const m = LIVE_AUTO_SPEED_HYSTERESIS_MS;
-  if (current === "overhead") return s > LIVE_AUTO_OVERHEAD_MAX_MS + m ? (s >= LIVE_AUTO_HIGH_MIN_MS ? "high" : "low") : "overhead";
-  if (current === "high") return s < LIVE_AUTO_HIGH_MIN_MS - m ? (s <= LIVE_AUTO_OVERHEAD_MAX_MS ? "overhead" : "low") : "high";
-  if (s <= LIVE_AUTO_OVERHEAD_MAX_MS - m) return "overhead";
-  if (s >= LIVE_AUTO_HIGH_MIN_MS + m) return "high";
-  return "low";
+  if (current === "low") return s > LIVE_AUTO_LOW_TIER_MAX_MS + m ? (s >= LIVE_AUTO_HIGH_TIER_MIN_MS ? "high" : "mid") : "low";
+  if (current === "high") return s < LIVE_AUTO_HIGH_TIER_MIN_MS - m ? (s <= LIVE_AUTO_LOW_TIER_MAX_MS ? "low" : "mid") : "high";
+  if (s <= LIVE_AUTO_LOW_TIER_MAX_MS - m) return "low";
+  if (s >= LIVE_AUTO_HIGH_TIER_MIN_MS + m) return "high";
+  return "mid";
 }
-// The single source of truth for which camera profile is currently in
-// effect — resolves "auto" against live speed (caching the result on
-// liveDrive.autoProfile, both as the next call's hysteresis anchor and so a
-// render() elsewhere in the same tick sees a consistent answer) or just
-// looks up the user's explicitly chosen mode.
-function resolveLiveViewProfile(speedMs) {
-  if (!liveDrive) return LIVE_VIEW_PROFILES.low;
-  if (liveDrive.viewMode === "auto") {
-    liveDrive.autoProfile = autoViewModeForSpeed(speedMs, liveDrive.autoProfile || "low");
-    return LIVE_VIEW_PROFILES[liveDrive.autoProfile];
+const LIVE_ANGLE_TIER_MODE = { low: "overhead", mid: "low", high: "high" };
+const LIVE_ZOOM_TIER_MODE = { low: "close", mid: "normal", high: "far" };
+function resolveLiveAngleProfile(speedMs) {
+  if (!liveDrive) return LIVE_ANGLE_PROFILES.low;
+  if (liveDrive.angleMode === "auto") {
+    liveDrive.autoAngleTier = autoSpeedTier(speedMs, liveDrive.autoAngleTier || "low");
+    return LIVE_ANGLE_PROFILES[LIVE_ANGLE_TIER_MODE[liveDrive.autoAngleTier]];
   }
-  return LIVE_VIEW_PROFILES[liveDrive.viewMode] || LIVE_VIEW_PROFILES.low;
+  return LIVE_ANGLE_PROFILES[liveDrive.angleMode] || LIVE_ANGLE_PROFILES.low;
+}
+function resolveLiveZoom(speedMs) {
+  if (!liveDrive) return LIVE_ZOOM_PROFILES.normal;
+  if (liveDrive.zoomMode === "auto") {
+    liveDrive.autoZoomTier = autoSpeedTier(speedMs, liveDrive.autoZoomTier || "low");
+    return LIVE_ZOOM_PROFILES[LIVE_ZOOM_TIER_MODE[liveDrive.autoZoomTier]];
+  }
+  return LIVE_ZOOM_PROFILES[liveDrive.zoomMode] != null ? LIVE_ZOOM_PROFILES[liveDrive.zoomMode] : LIVE_ZOOM_PROFILES.normal;
 }
 function rotateLiveMap(headingDeg, speedMs) {
   liveMapLastHeadingDeg = headingDeg || 0;
   if (speedMs != null) liveMapLastSpeedMs = speedMs;
-  const profile = resolveLiveViewProfile(liveMapLastSpeedMs);
+  const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
   // Overhead stays north-up: target 0 instead of the heading, via the same
   // shortest-path delta math, so switching into it eases back to north
   // rather than jumping.
@@ -2787,7 +2815,7 @@ function rotateLiveMap(headingDeg, speedMs) {
 let liveMapLabelsKey = null;
 function updateLiveMapLabelVisibility(profile) {
   if (!plannerMapInstance || !liveDrive) return;
-  profile = profile || resolveLiveViewProfile(liveMapLastSpeedMs);
+  profile = profile || resolveLiveAngleProfile(liveMapLastSpeedMs);
   const norm = ((liveMapRotationDeg % 360) + 360) % 360;
   const angleFromUpright = norm > 180 ? 360 - norm : norm;
   const upright = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
@@ -2802,51 +2830,108 @@ function updateLiveMapLabelVisibility(profile) {
 let liveMapLastAppliedZoom = null;
 function updateLiveZoom(speedMs) {
   if (!plannerMapInstance || !liveDrive) return;
-  const targetZoom = resolveLiveViewProfile(speedMs).zoom;
+  const targetZoom = resolveLiveZoom(speedMs);
   if (liveMapLastAppliedZoom == null || Math.abs(targetZoom - liveMapLastAppliedZoom) >= 0.3) {
     liveMapLastAppliedZoom = targetZoom;
     plannerMapInstance.setZoom(targetZoom);
   }
 }
-const LIVE_VIEW_MODE_CYCLE = ["auto", "overhead", "low", "high"];
-const LIVE_VIEW_MODE_LABELS = { auto: "Auto", overhead: "Overhead", low: "Angle: Low", high: "Angle: High" };
-// Cycles the angle FAB through auto -> overhead -> low -> high -> auto — a
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "high", "low"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", high: "Angle: High", low: "Angle: Low" };
+const LIVE_ZOOM_MODE_CYCLE = ["auto", "far", "normal", "close"];
+const LIVE_ZOOM_MODE_LABELS = { auto: "Zoom: Auto", far: "Zoom: Far", normal: "Zoom: Normal", close: "Zoom: Close" };
+// Cycles the angle FAB through auto -> overhead -> high -> low -> auto — a
 // plain targeted DOM update, not a render(), so it doesn't interrupt live
-// tracking or recreate the map.
-function cycleLiveViewMode() {
+// tracking or recreate the map. Zoom is a fully independent axis (its own
+// FAB, its own auto) so changing angle alone never touches it.
+function cycleLiveAngleMode() {
   if (!liveDrive) return;
-  const idx = LIVE_VIEW_MODE_CYCLE.indexOf(liveDrive.viewMode);
-  liveDrive.viewMode = LIVE_VIEW_MODE_CYCLE[(idx + 1) % LIVE_VIEW_MODE_CYCLE.length];
-  const profile = resolveLiveViewProfile(liveMapLastSpeedMs);
+  const idx = LIVE_ANGLE_MODE_CYCLE.indexOf(liveDrive.angleMode);
+  liveDrive.angleMode = LIVE_ANGLE_MODE_CYCLE[(idx + 1) % LIVE_ANGLE_MODE_CYCLE.length];
+  const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (wrap) wrap.classList.toggle("angled", profile.tilt > 0);
   const btn = document.getElementById("plannerAngleBtn");
-  if (btn) btn.classList.toggle("active", liveDrive.viewMode !== "auto");
-  flashLiveViewModeLabel();
+  if (btn) btn.classList.toggle("active", liveDrive.angleMode !== "auto");
+  flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
+}
+// Cycles the zoom FAB through auto -> far -> normal -> close -> auto.
+function cycleLiveZoomMode() {
+  if (!liveDrive) return;
+  const idx = LIVE_ZOOM_MODE_CYCLE.indexOf(liveDrive.zoomMode);
+  liveDrive.zoomMode = LIVE_ZOOM_MODE_CYCLE[(idx + 1) % LIVE_ZOOM_MODE_CYCLE.length];
+  const btn = document.getElementById("plannerZoomBtn");
+  if (btn) btn.classList.toggle("active", liveDrive.zoomMode !== "auto");
+  flashLiveModeLabel(LIVE_ZOOM_MODE_LABELS[liveDrive.zoomMode]);
   updateLiveZoom(liveMapLastSpeedMs);
 }
-// Briefly shows the newly-selected mode's name next to the FAB — restarting
+// Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
-// rapid taps through the cycle each get their own flash rather than the
+// rapid taps through either cycle each get their own flash rather than the
 // first one just getting cut off.
-function flashLiveViewModeLabel() {
+function flashLiveModeLabel(text) {
   const el = document.getElementById("plannerAngleFlash");
-  if (!el || !liveDrive) return;
-  el.textContent = LIVE_VIEW_MODE_LABELS[liveDrive.viewMode] || "";
+  if (!el) return;
+  el.textContent = text || "";
   el.classList.remove("show");
   void el.offsetWidth;
   el.classList.add("show");
 }
 
-async function updateLiveMarker(lat, lng, heading, speedMs) {
+// Applies one frame's worth of marker/camera state — synchronous, so it's
+// cheap enough to call on every animation frame (see stepLiveMoveAnimation)
+// rather than just once per raw GPS fix.
+function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   rotateLiveMap(heading, speedMs);
   updateLiveZoom(speedMs);
+  if (!plannerMapInstance || !plannerLiveMarker) return;
+  plannerLiveMarker.setPosition({ lat, lng });
+  const icon = plannerLiveMarker.getIcon();
+  if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
+  // Pan to a point offset ahead of the driver (rather than centering on
+  // them exactly) so the marker sits low on screen, leaving most of the
+  // screen showing the road still ahead of them.
+  plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
+}
+
+// GPS fixes land roughly once a second (watchPosition's maximumAge allows
+// up to 2s stale) — snapping the marker straight to each new fix reads as
+// a stutter: it sits still, then jumps. This instead eases the marker (and the
+// camera's look-ahead target, which tracks the same point) continuously
+// from wherever it currently sits to each new fix, over roughly the gap
+// between fixes, so motion between GPS updates looks continuous.
+let liveMoveRafId = null;
+let liveMoveFrom = null;
+let liveMoveTo = null;
+let liveMoveStartMs = 0;
+let liveMoveDurationMs = 1000;
+const LIVE_MOVE_MIN_DURATION_MS = 400;
+const LIVE_MOVE_MAX_DURATION_MS = 2000;
+function stepLiveMoveAnimation(nowMs) {
+  if (!liveMoveTo || !liveDrive || !plannerLiveMarker) { liveMoveRafId = null; return; }
+  const t = Math.min(1, (nowMs - liveMoveStartMs) / liveMoveDurationMs);
+  const lat = liveMoveFrom.lat + (liveMoveTo.lat - liveMoveFrom.lat) * t;
+  const lng = liveMoveFrom.lng + (liveMoveTo.lng - liveMoveFrom.lng) * t;
+  const heading = smoothHeadingDeg(liveMoveFrom.heading, liveMoveTo.heading, t);
+  applyLiveMarkerFrame(lat, lng, heading, liveMoveTo.speedMs);
+  if (t < 1) liveMoveRafId = requestAnimationFrame(stepLiveMoveAnimation);
+  else liveMoveRafId = null;
+}
+function stopLiveMoveAnimation() {
+  if (liveMoveRafId != null) { cancelAnimationFrame(liveMoveRafId); liveMoveRafId = null; }
+  liveMoveFrom = null; liveMoveTo = null; liveMoveStartMs = 0;
+}
+
+async function updateLiveMarker(lat, lng, heading, speedMs) {
   if (!plannerMapInstance || !window.google || !google.maps.importLibrary) return;
-  try {
-    const { Marker } = await google.maps.importLibrary("marker");
-    if (!plannerMapInstance) return;
-    if (!plannerLiveMarker) {
+  if (!plannerLiveMarker) {
+    // One-time async marker creation — every later call is the fully
+    // synchronous animation path below, so the library-loading await here
+    // never has to sit in the middle of a smooth-motion frame.
+    try {
+      const { Marker } = await google.maps.importLibrary("marker");
+      if (!plannerMapInstance || plannerLiveMarker) return; // superseded while awaiting
       plannerLiveMarker = new Marker({
         map: plannerMapInstance,
         position: { lat, lng },
@@ -2856,16 +2941,22 @@ async function updateLiveMarker(lat, lng, heading, speedMs) {
         },
         zIndex: 999,
       });
-    } else {
-      plannerLiveMarker.setPosition({ lat, lng });
-      const icon = plannerLiveMarker.getIcon();
-      if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
-    }
-    // Pan to a point offset ahead of the driver (rather than centering on
-    // them exactly) so the marker sits low on screen, leaving most of the
-    // screen showing the road still ahead of them.
-    plannerMapInstance.panTo(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom()));
-  } catch { /* marker library unavailable — position tracking still works without the on-map arrow */ }
+    } catch { return; /* marker library unavailable — position tracking still works without the on-map arrow */ }
+    liveMoveTo = { lat, lng, heading: heading || 0, speedMs };
+    applyLiveMarkerFrame(lat, lng, heading, speedMs);
+    return;
+  }
+  const from = liveMoveTo || { lat, lng, heading: heading || 0, speedMs };
+  liveMoveFrom = from;
+  liveMoveTo = { lat, lng, heading: heading || 0, speedMs };
+  const now = performance.now();
+  // Match the animation length to how long it's actually been since the
+  // last fix (GPS interval varies) rather than a fixed guess, clamped to a
+  // sane range so a long gap (e.g. a missed fix) doesn't crawl forever and
+  // a very quick one doesn't snap.
+  liveMoveDurationMs = Math.min(LIVE_MOVE_MAX_DURATION_MS, Math.max(LIVE_MOVE_MIN_DURATION_MS, liveMoveStartMs ? now - liveMoveStartMs : LIVE_MOVE_MIN_DURATION_MS));
+  liveMoveStartMs = now;
+  if (liveMoveRafId == null) liveMoveRafId = requestAnimationFrame(stepLiveMoveAnimation);
 }
 
 function computeLiveRemaining() {
@@ -3001,6 +3092,7 @@ async function endLiveDrive() {
   p.mapFocusMode = false;
   liveDrive = null;
   plannerLiveMarker = null;
+  stopLiveMoveAnimation();
   await storageDelete(LIVE_DRIVE_KEY);
   render();
 }
@@ -3032,8 +3124,10 @@ async function resumeLiveDriveIfAny() {
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
-    smoothFix: null, smoothHeading: null, smoothSpeedMs: null, viewMode: "auto", autoProfile: "low",
+    smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
+    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low",
   };
+  stopLiveMoveAnimation();
   if (navigator.geolocation) {
     liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => {}, {
       enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
@@ -3134,6 +3228,7 @@ function toggleMapFocusMode() {
 
 let plannerMapInstance = null;
 let plannerMapClickListener = null;
+let plannerMapDblClickListener = null;
 let plannerDirectionsRenderer = null;
 let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
@@ -3164,6 +3259,7 @@ function updatePlannerRouteSummaryDOM() {
 async function ensurePlannerMap() {
   const canvas = document.getElementById("plannerMapCanvas");
   if (plannerMapClickListener) { google.maps.event.removeListener(plannerMapClickListener); plannerMapClickListener = null; }
+  if (plannerMapDblClickListener) { google.maps.event.removeListener(plannerMapDblClickListener); plannerMapDblClickListener = null; }
   plannerDirectionsRenderer = null;
   plannerDirectionsChangedListener = null;
   plannerMapInstance = null;
@@ -3199,7 +3295,7 @@ async function ensurePlannerMap() {
   // route's start, so the very first render of the driving view already
   // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
-    zoom = resolveLiveViewProfile(liveDrive.smoothSpeedMs || 0).zoom;
+    zoom = resolveLiveZoom(liveDrive.smoothSpeedMs || 0);
     center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom);
   }
   // Best known fix for deciding day/night styling: live position, else the
@@ -3214,15 +3310,15 @@ async function ensurePlannerMap() {
     // to show for this very first paint regardless of the chosen profile.
     center, zoom, styles: driving ? drivingMapStyles("all", true) : (night ? NIGHT_MAP_STYLE : []),
     disableDefaultUI: true, zoomControl: !driving, gestureHandling: "greedy",
+    // Frees up double-click for toggling map-focus mode below instead of
+    // the default double-click-to-zoom-in.
+    disableDoubleClickZoom: !driving && !complete,
   });
 
   if (!driving && !complete) {
     plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
       const targetIdx = plannerNextEmptyStopIndex();
-      // Nothing left to fill in — tapping the map instead hides the address
-      // form and bottom sheet so the whole route is visible edge-to-edge;
-      // tapping again brings them back.
-      if (targetIdx == null) { toggleMapFocusMode(); return; }
+      if (targetIdx == null) return;
       const stop = state.planner.stops[targetIdx];
       const lat = e.latLng.lat(), lng = e.latLng.lng();
       let address;
@@ -3231,6 +3327,10 @@ async function ensurePlannerMap() {
       if (!state.planner || state.planner.stops[targetIdx] !== stop) return;
       await plannerResolveStop(stop, address, { lat, lng });
     });
+    // Double-click toggles hiding the address form and bottom sheet so the
+    // whole route is visible edge-to-edge — double-clicking again brings
+    // them back. A single click still just fills the next empty stop.
+    plannerMapDblClickListener = plannerMapInstance.addListener("dblclick", () => toggleMapFocusMode());
   }
 
   if (plannerDirectionsResult) {
@@ -4191,10 +4291,10 @@ function plannerFieldKind(idx, total) {
 // invisibly overlaid on the icon — hidden until fitPlannerPillRow finds
 // pills that don't fit and moves them here) — hidden by default via CSS
 // (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
-// The Business toggle lives only in the route summary card, not per-field;
-// Add Stop only appears beneath the last (destination) field, per
-// showAddStop, flush with that field's own right edge.
-function renderPlannerFieldPills(idx, showAddStop) {
+// The Business toggle lives only in the route summary card, not per-field.
+// Add Stop appears in every field's pill row (between each pair of address
+// boxes, and beneath the last one), flush with that field's own right edge.
+function renderPlannerFieldPills(idx) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
   const others = list.filter(a => a.id !== "home" && a.id !== "work");
@@ -4203,7 +4303,7 @@ function renderPlannerFieldPills(idx, showAddStop) {
   html += `<span class="planner-chip-icon planner-pill-more" title="More saved addresses" style="display:none;">${icons.moreDots}
     <select class="plannerAddressOverflowSelect" data-stopidx="${idx}"><option value=""></option></select>
   </span>`;
-  if (showAddStop) html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
+  html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
   return html;
 }
 
@@ -4228,7 +4328,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
-    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx, idx === total - 1)}</div>
+    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
   </div>`;
 }
 
@@ -4438,13 +4538,14 @@ function renderPlanTab() {
   const n = p.stops.length;
   const driving = p.stage === "driving";
   const complete = p.stage === "complete";
-  const liveViewProfile = driving && liveDrive ? resolveLiveViewProfile(liveDrive.smoothSpeedMs || 0) : null;
+  const liveAngleProfile = driving && liveDrive ? resolveLiveAngleProfile(liveDrive.smoothSpeedMs || 0) : null;
 
   return `
   <div class="planner-fullscreen ${p.mapFocusMode ? "map-focus" : ""}">
-    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveViewProfile && liveViewProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
+    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.viewMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle map view: auto / overhead / low / high">${icons.angleView}</button>
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: auto / overhead / high / low">${icons.angleView}</button>
+    <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: auto / far / normal / close">${icons.zoomView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : complete ? "" : `
@@ -4560,15 +4661,17 @@ function renderPlannerEtaBar() {
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
     <div class="planner-eta-metrics">
-      <span></span>
-      <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
       <div class="m-side">
         <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
         <div class="m dist"><div class="v mono" id="plannerRemainVal">–</div><div class="l">Distance</div></div>
       </div>
+      <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
+      <span></span>
     </div>
-    <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
-    <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+    <div class="planner-eta-controls">
+      <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
+      <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+    </div>
   </div>`;
 }
 
@@ -6849,7 +6952,9 @@ function attachAppHandlers() {
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
       if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
       const angleBtn = document.getElementById("plannerAngleBtn");
-      if (angleBtn) angleBtn.onclick = cycleLiveViewMode;
+      if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
+      const zoomBtn = document.getElementById("plannerZoomBtn");
+      if (zoomBtn) zoomBtn.onclick = cycleLiveZoomMode;
       updateLiveDriveDOM();
     }
 
