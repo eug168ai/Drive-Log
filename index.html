@@ -7429,17 +7429,18 @@ function attachAppHandlers() {
       try {
         const token = await getGoogleToken("consent");
         let existing = [];
-        try { existing = await findExistingDriveLogSheets(token); }
-        catch (e) {
-          // Best-effort — still falls straight through to creating a fresh
-          // sheet rather than blocking the connect entirely, but surfaced
-          // (not silently swallowed) since this is the one most likely to
-          // hide a real, fixable cause: most often the Google Cloud
-          // project behind GOOGLE_CLIENT_ID has the Sheets API enabled
-          // (sheet creation works) but not the separate Drive API, which
-          // 403s every files.list call regardless of OAuth scopes granted.
+        // TEMPORARY debug visibility: a relaxed query (name contains,
+        // any owner) still turned up nothing despite matching sheets
+        // visibly sitting in the same account, which means either the
+        // search is quietly erroring or it's genuinely running and
+        // returning zero — this makes that distinction visible in
+        // Settings without needing dev tools, whichever branch runs below.
+        try {
+          existing = await findExistingDriveLogSheets(token);
+          state.googleError = `Debug: Drive search found ${existing.length} match(es)${existing.length ? ": " + existing.map(f => f.name).join(", ") : ""}.`;
+        } catch (e) {
           console.warn("Drive Log sheet search failed — creating a new sheet instead of offering to reuse one.", e);
-          state.googleError = "Couldn't check for an existing Drive Log sheet (Drive API may not be enabled for this project) — created a new one instead.";
+          state.googleError = `Debug: Drive search failed — ${(e && e.message) || e}.`;
         }
         if (existing.length) {
           state.sheetChoiceCandidates = existing;
