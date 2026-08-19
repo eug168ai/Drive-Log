@@ -304,7 +304,8 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-leg-gap-row{display:flex;justify-content:center;margin:6px 0;}
+  .planner-leg-gap-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:8px;margin:6px 0;}
+  .planner-leg-gap-row .planner-addstop-chip{justify-self:end;}
   .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;text-align:center;}
 
@@ -4308,11 +4309,14 @@ function plannerFieldKind(idx, total) {
 // Saved-place pills for one stop's field: every saved address as a
 // candidate pill, plus a "more saved addresses" trigger (a native <select>,
 // invisibly overlaid on the icon — hidden until fitPlannerPillRow finds
-// pills that don't fit and moves them here) — hidden by default via CSS
-// (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
+// pills that don't fit and moves them here, keeping the row to one line) —
+// hidden by default via CSS (.planner-pill-row.show), revealed on focus by
+// the .plannerStopInput onfocus handler, for every address field alike.
 // The Business toggle lives only in the route summary card, not per-field.
-// Add Stop appears in every field's pill row (between each pair of address
-// boxes, and beneath the last one), flush with that field's own right edge.
+// Add Stop lives in its own always-visible row (renderPlannerLegGapRow /
+// the row beneath the last field) rather than here — this row is hidden
+// whenever the field isn't focused and already has an address, which would
+// make Add Stop disappear along with it.
 function renderPlannerFieldPills(idx) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
@@ -4322,7 +4326,6 @@ function renderPlannerFieldPills(idx) {
   html += `<span class="planner-chip-icon planner-pill-more" title="More saved addresses" style="display:none;">${icons.moreDots}
     <select class="plannerAddressOverflowSelect" data-stopidx="${idx}"><option value=""></option></select>
   </span>`;
-  html += `<button type="button" class="planner-addstop-chip plannerAddStopChip" style="margin-left:auto;">${icons.plus} Add Stop</button>`;
   return html;
 }
 
@@ -4387,7 +4390,9 @@ function fitPlannerPillRows() {
 // runPlannerPreview) taking priority over the fast pairwise estimate
 // (leg.quickDistanceKm, from updatePlannerLegQuickEstimate) that shows the
 // moment both ends are resolved but before the full multi-stop route has
-// run. Add Stop lives only in the last field's pill row, not here.
+// run — plus Add Stop, far right. Always visible (unlike the saved-address
+// pill row above/below each field, which only shows on focus) since it
+// isn't something to hide once a field already has an address in it.
 function renderPlannerLegGapRow(legIdx) {
   const leg = state.planner.legs[legIdx];
   const distanceKm = leg.distanceKm != null ? leg.distanceKm : leg.quickDistanceKm;
@@ -4396,7 +4401,20 @@ function renderPlannerLegGapRow(legIdx) {
     : leg.quickEstimating ? "Calculating…" : "";
   return `
   <div class="planner-leg-gap-row">
+    <span></span>
     <span class="planner-quick-estimate mono">${text}</span>
+    <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
+  </div>`;
+}
+// Same always-visible Add Stop as renderPlannerLegGapRow, on its own
+// beneath the last (destination) field — there's no leg/distance to show
+// there since it's the end of the route, not a gap between two stops.
+function renderPlannerAddStopRow() {
+  return `
+  <div class="planner-leg-gap-row">
+    <span></span>
+    <span></span>
+    <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
 }
 
@@ -4587,6 +4605,7 @@ function renderPlanTab() {
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
       ${p.stops[0].lat != null ? `
       ${p.stops.slice(1).map((s, i) => renderPlannerLegGapRow(i) + renderPlannerFieldBlock(s, i + 1, n)).join("")}
+      ${renderPlannerAddStopRow()}
       ` : ""}
       `}
     </div>`}
@@ -6876,7 +6895,10 @@ function attachAppHandlers() {
         };
         input.onfocus = () => {
           setTimeout(() => input.select());
-          if (pillRow && !input.value.trim()) { pillRow.classList.add("show"); fitPlannerPillRow(pillRow); }
+          // Shown on focus regardless of whether the field already has an
+          // address — picking a different saved place should work the same
+          // way whether the field started empty or filled.
+          if (pillRow) { pillRow.classList.add("show"); fitPlannerPillRow(pillRow); }
         };
         input.onblur = () => {
           setTimeout(() => { if (pillRow) pillRow.classList.toggle("show", !stop.address.trim()); }, 150);
