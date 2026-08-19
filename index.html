@@ -993,13 +993,18 @@ async function getFreshGoogleToken() {
   return getGoogleToken("");
 }
 
-// Looks for a spreadsheet named exactly "Drive Log" — the name
-// createDriveLogSheet always uses — already sitting in the user's own
-// Drive (not merely shared with them), most-recently-modified first, so a
-// second device or a reconnect can offer to reuse it instead of quietly
-// creating a duplicate.
+// Looks for a spreadsheet named "Drive Log" — the name createDriveLogSheet
+// always uses — visible to this account, most-recently-modified first, so
+// a second device or a reconnect can offer to reuse it instead of quietly
+// creating a duplicate. Deliberately loose: `contains` (a case-insensitive
+// substring match) rather than an exact `=`, and no ownership restriction
+// — a strict exact-name-and-owned-by-me query turned out to silently miss
+// real matches sitting right there in Drive (a small naming difference, or
+// the account that first created the sheet not being a hard requirement
+// for reusing it), which is worse than occasionally over-offering a sheet
+// the user can just decline in the picker.
 async function findExistingDriveLogSheets(token) {
-  const q = encodeURIComponent("name = 'Drive Log' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and 'me' in owners");
+  const q = encodeURIComponent("name contains 'Drive Log' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false");
   const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,webViewLink,modifiedTime)&orderBy=modifiedTime desc`, {
     headers: { "Authorization": "Bearer " + token },
   });
