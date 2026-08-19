@@ -2759,7 +2759,15 @@ function handleLiveFix(pos) {
   const p = state.planner;
   if (p && liveDrive.legIdx < p.legs.length) {
     const destStop = p.stops[liveDrive.legIdx + 1];
-    if (destStop && destStop.lat != null && haversineMeters(lat, lng, destStop.lat, destStop.lng) < LIVE_LEG_ARRIVE_M) {
+    const nearDest = destStop && destStop.lat != null && haversineMeters(lat, lng, destStop.lat, destStop.lng) < LIVE_LEG_ARRIVE_M;
+    // Also treat running out of this leg's own turn-by-turn steps as
+    // arrival, not just being within LIVE_LEG_ARRIVE_M of the geocoded
+    // stop pin — the two can diverge (a route's last step can end at a
+    // slightly different point than the address's own coordinates), which
+    // left the app showing "You have arrived" (driven by this same signal
+    // in updateLiveDriveDOM) while never actually finishing the leg.
+    const legStepsExhausted = !step || step.legIdx !== liveDrive.legIdx;
+    if (nearDest || legStepsExhausted) {
       finishCurrentLiveLeg();
       if (liveDrive.legIdx >= p.legs.length) {
         // Reached the final destination — go straight to the Drive Complete
