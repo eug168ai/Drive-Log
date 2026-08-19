@@ -963,7 +963,22 @@ function ensureTokenClient(callback) {
 
 function getGoogleToken(promptMode) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    // A blocked or silently-failed OAuth popup (third-party-cookie
+    // restrictions, aggressive popup blockers — both far more common in
+    // incognito/private browsing) can mean the token client's callback
+    // simply never fires, leaving the caller stuck on "Connecting…"
+    // forever with no way to know why. This turns that into a real error
+    // after a minute rather than an infinite spinner.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error("Google sign-in timed out — the popup may have been blocked. Check your browser's popup blocker (and try outside incognito/private mode, where third-party cookies are often restricted) and try again."));
+    }, 60000);
     const client = ensureTokenClient((resp) => {
+      if (settled) return; // timed out already — ignore a late response
+      settled = true;
+      clearTimeout(timer);
       if (resp && resp.access_token) {
         googleAccessToken = resp.access_token;
         googleTokenExpiresAt = Date.now() + (Number(resp.expires_in || 3300) * 1000);
@@ -973,7 +988,7 @@ function getGoogleToken(promptMode) {
         reject(resp);
       }
     });
-    if (!client) { reject(new Error("Google sign-in library not loaded")); return; }
+    if (!client) { clearTimeout(timer); settled = true; reject(new Error("Google sign-in library not loaded")); return; }
     client.requestAccessToken({ prompt: promptMode || "" });
   });
 }
@@ -7436,7 +7451,11 @@ function attachAppHandlers() {
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
         syncUnsyncedTrips();
       } catch (e) {
-        state.googleError = "Couldn't connect. Make sure you allow the sign-in popup and try again.";
+        // getGoogleToken's own timeout/library-missing errors already say
+        // exactly what went wrong (e.g. a popup that never completed) —
+        // worth showing verbatim rather than flattening to one generic
+        // message that would hide that detail.
+        state.googleError = (e && e.message) || "Couldn't connect. Make sure you allow the sign-in popup and try again.";
       }
       state.googleBusy = false; render();
     };
@@ -7454,7 +7473,7 @@ function attachAppHandlers() {
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
         syncUnsyncedTrips();
       } catch (e) {
-        state.googleError = "Couldn't connect. Make sure you allow the sign-in popup and try again.";
+        state.googleError = (e && e.message) || "Couldn't connect. Make sure you allow the sign-in popup and try again.";
       }
       state.googleBusy = false; render();
     };
