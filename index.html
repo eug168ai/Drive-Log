@@ -222,10 +222,12 @@
   .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
 
   .planner-leg-row{padding:8px 0;}
-  .planner-leg-route-line{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow-x:auto;}
-  .planner-leg-meta-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;}
-  .planner-leg-meta-row .planner-leg-business-btn{flex-shrink:0;}
-  .planner-leg-meta{font-size:12px;color:var(--muted);flex-shrink:0;margin-left:auto;}
+  .planner-leg-route-line{font-size:13px;font-weight:600;color:var(--text);}
+  .planner-leg-route-line .route-clip{width:100%;}
+  .planner-leg-meta-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:8px;margin-top:6px;}
+  .planner-leg-meta-side{display:flex;align-items:center;min-width:0;}
+  .planner-leg-meta-side.right{justify-content:flex-end;}
+  .planner-leg-meta{font-size:12px;color:var(--muted);text-align:center;white-space:nowrap;}
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
 
@@ -237,7 +239,13 @@
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);}
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
+    transition:opacity .25s ease;}
+  /* Tapping the map with every stop already filled has nothing left to
+     pick, so it toggles this instead — hiding the address form and bottom
+     sheet to show the whole route edge-to-edge. */
+  .planner-fullscreen.map-focus .planner-topbar,
+  .planner-fullscreen.map-focus .planner-bottom-sheet{opacity:0;pointer-events:none;}
   .planner-header{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .planner-header .brand{cursor:pointer;}
   .planner-header .brand:active{opacity:.7;}
@@ -289,9 +297,9 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-toolbar-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:8px;margin:8px 0;}
+  .planner-leg-gap-row{display:flex;justify-content:center;margin:6px 0;}
   .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;
-    overflow:hidden;text-overflow:ellipsis;text-align:left;}
+    overflow:hidden;text-overflow:ellipsis;text-align:center;}
 
   .planner-saved-list{max-height:min(52vh, 380px);overflow-y:auto;padding-right:2px;}
   .planner-saved-list .card{background:rgba(var(--surface-rgb),.9);}
@@ -319,7 +327,8 @@
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);}
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
+    transition:opacity .25s ease;}
   .planner-route-summary{background:rgba(var(--surface-rgb),.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:12px;
     padding:5px 7px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
@@ -1801,7 +1810,12 @@ function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: nul
 // active drive type — Business is opt-in only, via the briefcase toggle or
 // the Personal/Business toggle row, never a default.
 function defaultPlannerLegTag() { return state.settings.driveType === "supervised" ? "supervised" : "normal"; }
-function newPlannerLeg() { return { tag: defaultPlannerLegTag(), tagSource: "default", distanceKm: null, durationMin: null }; }
+function newPlannerLeg() {
+  return {
+    tag: defaultPlannerLegTag(), tagSource: "default", distanceKm: null, durationMin: null,
+    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickKey: null,
+  };
+}
 
 function startPlanner() {
   state.planner = {
@@ -1812,7 +1826,7 @@ function startPlanner() {
     previewError: "",
     savedRouteId: null,
     showSavedList: false,
-    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
+    mapFocusMode: false,
   };
   plannerDirectionsResult = null;
   render();
@@ -1832,10 +1846,11 @@ function plannerAddStop() {
   const insertAt = p.stops.length - 1;
   p.stops.splice(insertAt, 0, newPlannerStop());
   p.legs.splice(insertAt, 0, newPlannerLeg());
-  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; l.quickDistanceKm = null; l.quickDurationMin = null; l._quickKey = null; });
   p.stage = "build";
   plannerDirectionsResult = null;
   render();
+  updatePlannerQuickEstimate();
   const newInput = document.getElementById(`plannerStopInput-${insertAt}`);
   if (newInput) newInput.focus();
 }
@@ -1845,10 +1860,11 @@ function plannerRemoveStop(idx) {
   if (idx === 0 || idx === p.stops.length - 1 || p.stops.length <= 2) return;
   p.stops.splice(idx, 1);
   p.legs.splice(idx - 1, 1);
-  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; });
+  p.legs.forEach(l => { l.distanceKm = null; l.durationMin = null; l.quickDistanceKm = null; l.quickDurationMin = null; l._quickKey = null; });
   p.stage = "build";
   plannerDirectionsResult = null;
   render();
+  updatePlannerQuickEstimate();
   if (p.stops.every(s => s.lat != null)) runPlannerPreview();
 }
 
@@ -1956,39 +1972,49 @@ async function autoFillPlannerStart() {
   }
 }
 
-// Lightweight start->end estimate shown inline while building a route, so
-// distance/time appear as soon as an end location is picked instead of
-// waiting for the full multi-stop Preview. Ignores any waypoints in
-// between — it's just a quick heads-up, not the final numbers.
-async function updatePlannerQuickEstimate() {
+// Lightweight per-leg estimate shown between each pair of address boxes
+// while building a route, so a leg's distance/time appears as soon as both
+// its ends are picked instead of waiting for the full multi-stop Preview
+// (which needs every stop resolved at once). Each leg estimates
+// independently — adding a 3rd stop doesn't wait on the first leg's own
+// estimate to arrive.
+async function updatePlannerLegQuickEstimate(legIdx) {
   const p = state.planner;
-  if (!p) return;
-  const start = p.stops[0], end = p.stops[p.stops.length - 1];
-  const startAddr = start && start.address.trim();
-  const endAddr = end && end.address.trim();
-  if (!startAddr || !endAddr || start.lat == null || end.lat == null || !mapsConfigured()) {
-    if (p.quickDistanceKm != null || p.quickDurationMin != null) {
-      p.quickDistanceKm = null; p.quickDurationMin = null; p._quickEstimateKey = null; render();
+  const leg = p && p.legs[legIdx];
+  const from = p && p.stops[legIdx], to = p && p.stops[legIdx + 1];
+  if (!leg || !from || !to) return;
+  const fromAddr = from.address.trim(), toAddr = to.address.trim();
+  if (!fromAddr || !toAddr || from.lat == null || to.lat == null || !mapsConfigured()) {
+    if (leg.quickDistanceKm != null || leg.quickDurationMin != null || leg._quickKey != null) {
+      leg.quickDistanceKm = null; leg.quickDurationMin = null; leg._quickKey = null; render();
     }
     return;
   }
-  const key = `${startAddr}|${endAddr}`;
-  if (p._quickEstimateKey === key) return;
-  p._quickEstimateKey = key;
-  p.quickEstimating = true;
+  const key = `${fromAddr}|${toAddr}`;
+  if (leg._quickKey === key) return;
+  leg._quickKey = key;
+  leg.quickEstimating = true;
   render();
   try {
-    const { distanceKm, durationMin } = await estimateRoute(startAddr, endAddr);
-    if (!state.planner || state.planner._quickEstimateKey !== key) return;
-    state.planner.quickDistanceKm = distanceKm;
-    state.planner.quickDurationMin = durationMin;
+    const { distanceKm, durationMin } = await estimateRoute(fromAddr, toAddr);
+    if (!state.planner || state.planner.legs[legIdx] !== leg || leg._quickKey !== key) return;
+    leg.quickDistanceKm = distanceKm;
+    leg.quickDurationMin = durationMin;
   } catch (e) {
-    if (!state.planner || state.planner._quickEstimateKey !== key) return;
-    state.planner.quickDistanceKm = null;
-    state.planner.quickDurationMin = null;
+    if (!state.planner || state.planner.legs[legIdx] !== leg || leg._quickKey !== key) return;
+    leg.quickDistanceKm = null;
+    leg.quickDurationMin = null;
   }
-  state.planner.quickEstimating = false;
+  leg.quickEstimating = false;
   render();
+}
+// Fires every leg's quick estimate in parallel (each is independently
+// cheap/no-op once cached by key) — kept as the name every call site
+// already uses rather than renaming them all to the per-leg version.
+function updatePlannerQuickEstimate() {
+  const p = state.planner;
+  if (!p) return;
+  p.legs.forEach((_, i) => updatePlannerLegQuickEstimate(i));
 }
 
 // Upgrades any leg still on its plain Personal/Supervised default — never
@@ -2127,13 +2153,16 @@ async function deletePlannedRoute(id) {
 function openSavedRouteInPlanner(route) {
   state.planner = {
     stops: route.stops.map(s => ({ id: uid(), address: s.address, lat: s.lat, lng: s.lng, resolving: false, resolveError: "", fromCurrentLocation: false, roadSuburb: null })),
-    legs: route.legs.map(l => ({ tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin })),
+    legs: route.legs.map(l => ({
+      tag: l.tag, tagSource: l.tag ? "manual" : null, distanceKm: l.distanceKm, durationMin: l.durationMin,
+      quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickKey: null,
+    })),
     stage: "build",
     previewing: false,
     previewError: "",
     savedRouteId: route.id,
     showSavedList: false,
-    quickDistanceKm: null, quickDurationMin: null, quickEstimating: false, _quickEstimateKey: null,
+    mapFocusMode: false,
   };
   plannerDirectionsResult = null;
   state.planner.stops.filter(s => s.lat != null).forEach(resolvePlannerStopRoadSuburb);
@@ -2516,6 +2545,7 @@ async function startLiveDrive() {
 
   p.stage = "driving";
   p.previewError = "";
+  p.mapFocusMode = false;
   render();
 
   liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => { /* a missed fix just means no update this tick */ }, {
@@ -2968,6 +2998,7 @@ async function endLiveDrive() {
     trips,
   };
   p.stage = "complete";
+  p.mapFocusMode = false;
   liveDrive = null;
   plannerLiveMarker = null;
   await storageDelete(LIVE_DRIVE_KEY);
@@ -3088,6 +3119,19 @@ function plannerNextEmptyStopIndex() {
   return idx === -1 ? null : idx;
 }
 
+// A plain class toggle (not a render()) so the live map underneath is
+// untouched — mapFocusMode is still tracked on state.planner so the class
+// survives the next *unrelated* render() (e.g. a stop resolving elsewhere),
+// which would otherwise rebuild the template without it and silently
+// re-reveal the form.
+function toggleMapFocusMode() {
+  const p = state.planner;
+  if (!p) return;
+  p.mapFocusMode = !p.mapFocusMode;
+  const el = document.querySelector(".planner-fullscreen");
+  if (el) el.classList.toggle("map-focus", p.mapFocusMode);
+}
+
 let plannerMapInstance = null;
 let plannerMapClickListener = null;
 let plannerDirectionsRenderer = null;
@@ -3108,6 +3152,7 @@ function updatePlannerRouteSummaryDOM() {
   const fresh = wrap.querySelector(".planner-route-summary");
   if (fresh) el.replaceWith(fresh);
   armStaticHazardMarquee();
+  armPlannerLegRouteMarquee();
 }
 
 // The whole #app subtree is replaced via innerHTML on every render(), which
@@ -3174,7 +3219,10 @@ async function ensurePlannerMap() {
   if (!driving && !complete) {
     plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
       const targetIdx = plannerNextEmptyStopIndex();
-      if (targetIdx == null) return;
+      // Nothing left to fill in — tapping the map instead hides the address
+      // form and bottom sheet so the whole route is visible edge-to-edge;
+      // tapping again brings them back.
+      if (targetIdx == null) { toggleMapFocusMode(); return; }
       const stop = state.planner.stops[targetIdx];
       const lat = e.latLng.lat(), lng = e.latLng.lng();
       let address;
@@ -4143,10 +4191,9 @@ function plannerFieldKind(idx, total) {
 // invisibly overlaid on the icon — hidden until fitPlannerPillRow finds
 // pills that don't fit and moves them here) — hidden by default via CSS
 // (.planner-pill-row.show), revealed on focus by attachPlannerFieldEvents.
-// The Business toggle lives only in the toolbar row between the two
-// addresses, not per-field; Add Stop only appears there and beneath the
-// last (destination) field, per showAddStop, flush with that field's own
-// right edge.
+// The Business toggle lives only in the route summary card, not per-field;
+// Add Stop only appears beneath the last (destination) field, per
+// showAddStop, flush with that field's own right edge.
 function renderPlannerFieldPills(idx, showAddStop) {
   const list = savedAddressList();
   const homeWork = list.filter(a => a.id === "home" || a.id === "work");
@@ -4169,7 +4216,6 @@ function renderPlannerFieldBlock(stop, idx, total) {
   return `
   <div class="planner-field-block" data-stopblock="${idx}">
     <div class="planner-field-row">
-      ${removable ? `<button type="button" class="planner-remove-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop">${icons.close}</button>` : ""}
       <div class="input-icon ${kind}">
         ${icons.pin}
         <div class="loc-field-wrap">
@@ -4178,6 +4224,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
         </div>
         <button type="button" class="planner-save-address-btn plannerSaveAddressBtn" data-stopidx="${idx}" title="${isSavedAddress ? "Saved address" : "Save this address"}" ${(stop.lat == null || isSavedAddress) ? "disabled" : ""}>${isSavedAddress ? icons.starFilled : icons.starOutline}</button>
       </div>
+      ${removable ? `<button type="button" class="planner-remove-btn plannerRemoveStopBtn" data-stopidx="${idx}" title="Remove stop">${icons.close}</button>` : ""}
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
@@ -4216,19 +4263,21 @@ function fitPlannerPillRows() {
   document.querySelectorAll(".planner-pill-row").forEach(fitPlannerPillRow);
 }
 
-// Row between the Start field and the rest of the stops, shown once both
-// ends are picked: the Business toggle far left, the quick start->end
-// estimate centered, Add Stop pushed to the far right.
-function renderPlannerToolbarRow() {
-  const p = state.planner;
-  const end = p.stops[p.stops.length - 1];
-  const estimateText = p.quickEstimating ? "Calculating…"
-    : (end.address.trim() && p.quickDistanceKm != null) ? `${kmToDisplay(p.quickDistanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(p.quickDurationMin)}`
-    : "";
+// Between each pair of address boxes: that leg's own distance/time,
+// centered — the real Directions figure once it's in (leg.distanceKm, from
+// runPlannerPreview) taking priority over the fast pairwise estimate
+// (leg.quickDistanceKm, from updatePlannerLegQuickEstimate) that shows the
+// moment both ends are resolved but before the full multi-stop route has
+// run. Add Stop lives only in the last field's pill row, not here.
+function renderPlannerLegGapRow(legIdx) {
+  const leg = state.planner.legs[legIdx];
+  const distanceKm = leg.distanceKm != null ? leg.distanceKm : leg.quickDistanceKm;
+  const durationMin = leg.distanceKm != null ? leg.durationMin : leg.quickDurationMin;
+  const text = distanceKm != null ? `${kmToDisplay(distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(durationMin)}`
+    : leg.quickEstimating ? "Calculating…" : "";
   return `
-  <div class="planner-toolbar-row">
-    <span class="planner-quick-estimate mono">${estimateText}</span>
-    <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
+  <div class="planner-leg-gap-row">
+    <span class="planner-quick-estimate mono">${text}</span>
   </div>`;
 }
 
@@ -4262,11 +4311,11 @@ function renderPlannerLegRow(leg, idx, stops) {
   const tag = liveLeg ? liveLeg.tag : leg.tag;
   return `
   <div class="planner-leg-row">
-    <div class="planner-leg-route-line">${escAttr(fromLabel)} → ${escAttr(toLabel)}</div>
+    <div class="planner-leg-route-line"><div class="route-clip"><span class="route-track">${escAttr(fromLabel)} → ${escAttr(toLabel)}</span></div></div>
     <div class="planner-leg-meta-row">
-      ${renderPlannerLegBusinessBtn(idx)}
-      ${tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>` : ""}
+      <span class="planner-leg-meta-side">${tag === "supervised" ? `<span class="tag supervised">${labelFor(DRIVE_TYPES, "supervised")}</span>` : ""}</span>
       <span class="planner-leg-meta mono">${hasDistance ? `${kmToDisplay(leg.distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(leg.durationMin)}` : "Preview to calculate"}</span>
+      <span class="planner-leg-meta-side right">${renderPlannerLegBusinessBtn(idx)}</span>
     </div>
   </div>`;
 }
@@ -4392,7 +4441,7 @@ function renderPlanTab() {
   const liveViewProfile = driving && liveDrive ? resolveLiveViewProfile(liveDrive.smoothSpeedMs || 0) : null;
 
   return `
-  <div class="planner-fullscreen">
+  <div class="planner-fullscreen ${p.mapFocusMode ? "map-focus" : ""}">
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveViewProfile && liveViewProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.viewMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle map view: auto / overhead / low / high">${icons.angleView}</button>
@@ -4417,8 +4466,7 @@ function renderPlanTab() {
       ${mapsError}
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
       ${p.stops[0].lat != null ? `
-      ${renderPlannerToolbarRow()}
-      ${p.stops.slice(1).map((s, i) => renderPlannerFieldBlock(s, i + 1, n)).join("")}
+      ${p.stops.slice(1).map((s, i) => renderPlannerLegGapRow(i) + renderPlannerFieldBlock(s, i + 1, n)).join("")}
       ` : ""}
       `}
     </div>`}
@@ -6180,6 +6228,33 @@ function armStaticHazardMarquee() {
   );
 }
 
+// Same lockstep-looping marquee as attachRouteAutoScroll, scoped to the
+// road/suburb line of each leg row in a route summary card (pre- or
+// post-drive) instead of History's route cells.
+function armPlannerLegRouteMarquee() {
+  const entries = [];
+  document.querySelectorAll(".planner-leg-route-line .route-clip").forEach(clip => {
+    const track = clip.querySelector(".route-track");
+    if (!track) return;
+    const singleWidth = track.scrollWidth;
+    if (singleWidth <= clip.clientWidth + 2) return; // fits already — no marquee needed
+    entries.push({ track, singleWidth, text: track.textContent });
+  });
+  if (!entries.length) return;
+  const minGapPx = 40;
+  const targetDistance = Math.max(...entries.map(e => e.singleWidth)) + minGapPx;
+  const speedPxPerSec = 26;
+  const duration = Math.max(4, targetDistance / speedPxPerSec);
+  entries.forEach(({ track, singleWidth, text }) => {
+    const gapPx = targetDistance - singleWidth;
+    track.innerHTML = `<span>${text}</span><span style="display:inline-block;padding-left:${gapPx}px;">${text}</span>`;
+    track.animate(
+      [{ transform: "translateX(0px)" }, { transform: `translateX(-${targetDistance}px)` }],
+      { duration: duration * 1000, iterations: Infinity, easing: "linear", delay: 3000 }
+    );
+  });
+}
+
 // Long-press (touch or mouse hold) on an element, without hijacking a normal
 // tap/click or the page's vertical scroll gesture. Cancels if the pointer
 // moves more than a few px (a scroll/drag in progress, not a hold-in-place).
@@ -6767,6 +6842,7 @@ function attachAppHandlers() {
       }
 
       armStaticHazardMarquee();
+      armPlannerLegRouteMarquee();
     } else if (p && p.stage === "driving") {
       const endDriveBtn = document.getElementById("plannerEndDriveBtn");
       if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
