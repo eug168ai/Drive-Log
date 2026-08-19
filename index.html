@@ -127,6 +127,10 @@
             background:var(--grey-tag-bg);color:var(--grey-tag-text);border:1px solid var(--grey-border);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
   .card-construction{background:var(--grey-card);border-color:var(--grey-border);}
+  /* .btn has no margin of its own, unlike .card's built-in margin-bottom —
+     without this, the button sat flush against whatever card followed it
+     (the Drive Planner card, right underneath, with zero gap). */
+  #logFillupBtnLog{margin-bottom:11px;}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
@@ -242,7 +246,14 @@
        a 2D map at an angle. There's no way to fully match a true vector
        tilt without switching to Maps' vector renderer. */
     will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;}
-  .planner-map-rotate-wrap.driving.angled{top:-160%;left:-160%;right:-160%;bottom:-160%;width:420%;height:420%;}
+  /* rotateX(tilt) foreshortens the wrapper's vertical reach by roughly
+     cos(tilt) before perspective even gets involved — at the steepest tilt
+     (74deg) that alone is ~3.6x, and perspective's own extra compression on
+     the receding/far side pushes the real requirement well past that, which
+     420% wasn't (black wedges showed at the corners at some heading/tilt
+     combinations). Sized with real headroom above the worst case instead of
+     the smallest number that happened to look fine in one test. */
+  .planner-map-rotate-wrap.driving.angled{top:-330%;left:-330%;right:-330%;bottom:-330%;width:760%;height:760%;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
@@ -288,8 +299,14 @@
   .planner-leg-business-btn .icon{width:14px;height:14px;}
   .planner-leg-business-btn.on{background:var(--work);border-color:var(--work);color:#fff;}
 
-  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:hidden;margin:6px 0 0;
-    padding:1px 0 3px;}
+  /* nowrap + scrollable-but-hidden-scrollbar rather than overflow-x:hidden
+     alone — fitPlannerPillRow already collapses anything that doesn't fit
+     into the "more" dropdown, but this is the fallback in case that JS pass
+     hasn't run yet (e.g. the very first paint), so pills can never wrap to
+     a second line even for a moment. */
+  .planner-pill-row{display:none;align-items:center;gap:6px;flex-wrap:nowrap;overflow-x:auto;
+    scrollbar-width:none;-ms-overflow-style:none;margin:6px 0 0;padding:1px 0 3px;}
+  .planner-pill-row::-webkit-scrollbar{display:none;}
   .planner-pill-row.show{display:flex;}
   .planner-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;border-radius:999px;
     font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);color:var(--amber);
@@ -304,8 +321,13 @@
   .planner-addstop-chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 11px;
     border-radius:999px;font-size:11.5px;font-weight:600;border:1px solid rgba(var(--amber-rgb),.4);
     color:var(--amber);background:rgba(var(--amber-rgb),.1);cursor:pointer;flex-shrink:0;}
-  .planner-leg-gap-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;column-gap:8px;margin:6px 0;}
-  .planner-leg-gap-row .planner-addstop-chip{justify-self:end;}
+  /* auto/1fr/auto rather than 1fr/auto/1fr — the two end columns size to
+     their actual content (an empty spacer, a toggle button, or Add Stop),
+     leaving the middle a true flexible remainder instead of three columns
+     fighting over equal fractions, which could squeeze Add Stop into
+     wrapping its own label onto a second line on a narrow screen. */
+  .planner-leg-gap-row{display:grid;grid-template-columns:auto 1fr auto;align-items:center;column-gap:8px;margin:6px 0;}
+  .planner-leg-gap-left{display:flex;align-items:center;}
   .planner-quick-estimate{min-width:0;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;
     overflow:hidden;text-overflow:ellipsis;text-align:center;}
 
@@ -427,7 +449,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.3";
+const APP_BUILD = "2026-08-19.4";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -547,8 +569,17 @@ const AU_STATE_LICENCE_HOURS = {
   SA: { total: 75, night: 15 },
   WA: { total: 50, night: 5 },
   TAS: { total: 80, night: 15 },
+  ACT: { total: 100, night: 10 },
   NT: null, // no mandated minimum
 };
+// ACT shares NSW's IANA timezone, so there's no way to tell them apart from
+// the device alone — used to show a manual "Use ACT figures instead" option
+// rather than silently guessing.
+function isAmbiguousActTimezone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone === "Australia/Sydney";
+  } catch (e) { return false; }
+}
 function getSupervisedHourDefaults() {
   try {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
@@ -1979,10 +2010,11 @@ function suggestTagForCoords(startLat, startLng, endLat, endLng) {
 }
 
 function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: null, resolving: false, resolveError: "", fromCurrentLocation: false, roadSuburb: null }; }
-// Every leg starts tagged Personal, or Supervised when that's the app's
-// active drive type — Business is opt-in only, via the briefcase toggle or
-// the Personal/Business toggle row, never a default.
-function defaultPlannerLegTag() { return state.settings.driveType === "supervised" ? "supervised" : "normal"; }
+// Every leg starts tagged with whatever the app's currently-set drive type
+// is (Personal/Business/Supervised) — a route match (autoSuggestPlannerTags)
+// can still upgrade it later, and the business toggle can still flip a
+// Personal/Business leg by hand.
+function defaultPlannerLegTag() { return state.settings.driveType || "normal"; }
 function newPlannerLeg() {
   return {
     tag: defaultPlannerLegTag(), tagSource: "default", distanceKm: null, durationMin: null,
@@ -2206,14 +2238,16 @@ function autoSuggestPlannerTags() {
   });
 }
 
-// Quick business-drive toggle shown inline between addresses while
-// building the route, and again in the route summary — both read/write the same
-// leg.tag so they always stay in sync with each other.
+// Quick Personal/Business toggle shown inline between addresses while
+// building the route, and again in the Drive Complete summary — both
+// read/write the same leg.tag so they always stay in sync. Supervised legs
+// don't get this toggle at all (renderPlannerLegBusinessBtn hides it), so
+// this only ever needs to flip between the other two.
 function plannerToggleLegBusiness(idx) {
   const leg = state.planner.legs[idx];
-  if (!leg) return;
-  if (leg.tag === "work") { leg.tag = defaultPlannerLegTag(); leg.tagSource = "default"; }
-  else { leg.tag = "work"; leg.tagSource = "manual"; }
+  if (!leg || leg.tag === "supervised") return;
+  leg.tag = leg.tag === "work" ? "normal" : "work";
+  leg.tagSource = "manual";
   render();
 }
 
@@ -4645,13 +4679,18 @@ function fitPlannerPillRows() {
 // isn't something to hide once a field already has an address in it.
 function renderPlannerLegGapRow(legIdx) {
   const leg = state.planner.legs[legIdx];
+  const fromStop = state.planner.stops[legIdx], toStop = state.planner.stops[legIdx + 1];
   const distanceKm = leg.distanceKm != null ? leg.distanceKm : leg.quickDistanceKm;
   const durationMin = leg.distanceKm != null ? leg.durationMin : leg.quickDurationMin;
   const text = distanceKm != null ? `${kmToDisplay(distanceKm).toFixed(1)} ${unitLabel()} · ${formatDuration(durationMin)}`
     : leg.quickEstimating ? "Calculating…" : "";
+  // Both ends of this leg need an address in before there's anything
+  // meaningful to tag — an empty gap (still typing the next stop) shows no
+  // toggle at all rather than one that would silently apply to nothing.
+  const showTagToggle = fromStop && toStop && fromStop.address.trim() && toStop.address.trim();
   return `
   <div class="planner-leg-gap-row">
-    <span></span>
+    <span class="planner-leg-gap-left">${showTagToggle ? renderPlannerLegBusinessBtn(legIdx) : ""}</span>
     <span class="planner-quick-estimate mono">${text}</span>
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
@@ -4662,16 +4701,22 @@ function renderPlannerLegGapRow(legIdx) {
 function renderPlannerAddStopRow() {
   return `
   <div class="planner-leg-gap-row">
-    <span></span>
+    <span class="planner-leg-gap-left"></span>
     <span></span>
     <button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>
   </div>`;
 }
 
+// Personal/Business toggle for one leg — shown inline between that leg's
+// two addresses once both are filled in, and again per-leg in the Drive
+// Complete summary. Supervised legs get no toggle at all (there's no quick
+// tap between Supervised and anything else, and briefcase icons are a
+// Personal/Business-only concept).
 function renderPlannerLegBusinessBtn(legIdx) {
   const leg = state.planner.legs[legIdx];
-  const on = leg && leg.tag === "work";
-  return `<button type="button" class="planner-leg-business-btn plannerLegBusinessBtn ${on ? "on" : ""}" data-legidx="${legIdx}" title="${on ? "Business drive — tap to clear" : "Mark this leg as Business"}">${on ? icons.briefcaseFilled : icons.briefcase}</button>`;
+  if (!leg || leg.tag === "supervised") return "";
+  const on = leg.tag === "work";
+  return `<button type="button" class="planner-leg-business-btn plannerLegBusinessBtn ${on ? "on" : ""}" data-legidx="${legIdx}" title="${on ? "Business drive — tap to switch to Personal" : "Personal drive — tap to switch to Business"}">${on ? icons.briefcaseFilled : icons.briefcase}</button>`;
 }
 
 // The road/suburb line is the resolved stop's own short label (see
@@ -4863,7 +4908,9 @@ function renderPlanTab() {
     ${driving ? renderPlannerEtaBar() : complete ? `
     <div class="planner-bottom-sheet">
       ${renderPlannerCompleteSummary()}
-      <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>
+      ${p.saved
+        ? `<button type="button" id="plannerCompleteCloseBtn" class="btn btn-amber">${icons.check} Done</button>`
+        : `<button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>`}
     </div>` : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
@@ -4887,10 +4934,14 @@ function renderPlannerRouteSummary() {
   const totalKm = p.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
   const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
   const warnings = (plannerDirectionsResult && plannerDirectionsResult.routes[0].warnings) || [];
+  // Extra stops beyond the plain start->end pair make this a multi-leg trip
+  // worth calling out as such — each leg is now tagged inline between its
+  // own two address fields (renderPlannerLegGapRow) rather than listed here.
+  const cardLabel = p.stops.length > 2 ? "Total Drive" : "Drive";
   return `
   <div class="planner-route-summary">
     <div class="planner-route-badge">
-      <span class="planner-route-badge-label">${icons.route} Fastest route</span>
+      <span class="planner-route-badge-label">${icons.route} ${cardLabel}</span>
       <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this route"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
     </div>
     <div class="planner-route-metrics">
@@ -4901,9 +4952,6 @@ function renderPlannerRouteSummary() {
     ${warnings.length ? `
     <div class="planner-hazard-row">${icons.warning}<div class="loc-field-wrap"><div class="route-clip" id="plannerHazardClip"><span class="route-track" id="plannerHazardTrack">${escAttr(warnings.join(" · "))}</span></div></div></div>
     ` : ""}
-    <div class="planner-legtags">
-      ${p.legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
-    </div>
   </div>`;
 }
 
@@ -4919,12 +4967,18 @@ function renderPlannerCompleteSummary() {
   const legs = p.completeSummary.legs;
   const totalKm = legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
   const totalMin = legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  // Multi-leg trips can carry a different tag per leg (still visible below,
+  // leg by leg) -- this one badge is just a quick read of the overall
+  // drive, so it reads off the first leg's live tag.
+  const overallTag = (state.planner.legs[0] && state.planner.legs[0].tag) || legs[0].tag;
   return `
   <div class="planner-route-summary">
     <div class="planner-route-badge">
       <span class="planner-route-badge-label">${icons.flag} Drive Complete</span>
     </div>
     <div class="planner-route-metrics">
+      <div class="metric" style="text-align:left;"><span class="tag ${overallTag}">${labelFor(DRIVE_TYPES, overallTag)}</span></div>
+      <div class="div"></div>
       <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
       <div class="div"></div>
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
@@ -5276,6 +5330,10 @@ function renderSettingsTab() {
       <p class="settings-title" style="margin:0 0 10px;">${getDeviceRegionCode() === "au" ? "License Requirements (Learner's Permit)" : "Licence Requirements"}</p>
 
       ${!getSupervisedHourDefaults() ? `<p class="settings-desc" style="margin:0 0 10px;">Not required in the NT — there's no government-mandated minimum. Set a personal goal below if you'd like to track one anyway.</p>` : ""}
+      ${isAmbiguousActTimezone() ? `
+      <p class="settings-desc" style="margin:0 0 10px;">Figures below default to NSW's — the app can't tell NSW and ACT apart from your device alone.
+        ${state.settings.actHoursApplied ? `<button id="useActHoursBtn" class="chip" type="button">Switch back to NSW (120h / 20h night)</button>` : `<button id="useActHoursBtn" class="chip" type="button">In the ACT? Use 100h / 10h night instead</button>`}
+      </p>` : ""}
       <div class="row-2">
         <div>
           <label class="field-label">Total Hours</label>
@@ -7118,11 +7176,13 @@ function attachAppHandlers() {
         const trips = p.completeSummary.trips;
         trips.forEach((trip, i) => { if (p.legs[i]) trip.tag = p.legs[i].tag; });
         for (const trip of trips) await finalizeTrip(trip);
-        state.planner = null;
-        plannerDirectionsResult = null;
-        state.tab = "history";
+        // Stay right here on the summary instead of jumping to the Log tab —
+        // the button below turns into Done, which is the actual exit.
+        p.saved = true;
         render();
       };
+      const completeCloseBtn = document.getElementById("plannerCompleteCloseBtn");
+      if (completeCloseBtn) completeCloseBtn.onclick = cancelPlanner;
       const browseSavedBtn = document.getElementById("plannerBrowseSavedBtn");
       if (browseSavedBtn) browseSavedBtn.onclick = () => { p.showSavedList = !p.showSavedList; render(); };
       const plannerSettingsBtn = document.getElementById("plannerSettingsBtn");
@@ -7316,6 +7376,19 @@ function attachAppHandlers() {
         render();
       };
     }
+
+    const useActHoursBtn = document.getElementById("useActHoursBtn");
+    if (useActHoursBtn) useActHoursBtn.onclick = async () => {
+      const applying = !state.settings.actHoursApplied;
+      const figures = applying ? AU_STATE_LICENCE_HOURS.ACT : AU_STATE_LICENCE_HOURS.NSW;
+      state.settings.actHoursApplied = applying;
+      state.settings.supervisedTotalHoursTarget = figures.total;
+      state.settings.supervisedNightHoursTarget = figures.night;
+      state.settings.supervisedCompletionNotified = false;
+      await storageSet(SETTINGS_KEY, state.settings);
+      checkSupervisedLicenceComplete();
+      render();
+    };
 
     const learnRoutesSwitch = document.getElementById("learnRoutesSwitch");
     if (learnRoutesSwitch) learnRoutesSwitch.onclick = async () => {
