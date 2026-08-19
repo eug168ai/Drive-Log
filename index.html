@@ -1087,6 +1087,48 @@ async function appendTripToSheet(spreadsheetId, trip) {
   if (!res.ok) throw new Error("Append failed: " + res.status);
 }
 
+// Reads back rows previously written by appendTripToSheet (same A:M column
+// layout) so choosing an existing sheet pulls its already-logged drives into
+// this device's local Log -- sync had only ever gone one-way, local -> sheet,
+// which left a fresh install (or one that had its storage cleared) connected
+// but still showing an empty history despite the sheet having real data.
+async function importTripsFromSheet(spreadsheetId, token) {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A2:M?majorDimension=ROWS`,
+    { headers: { "Authorization": "Bearer " + token } }
+  );
+  if (!res.ok) throw new Error("Sheet read failed: " + res.status);
+  const data = await res.json();
+  const reverseLabel = (list, label) => { const m = list.find(x => x.l === label); return m ? m.v : undefined; };
+  return (data.values || []).filter(r => r[0]).map(r => {
+    const trip = {
+      id: uid(), date: r[0] || "", startTime: r[1] || "", endTime: r[2] || "",
+      distance: Number(r[3]) || 0, startPoint: r[4] || "", endPoint: r[5] || "",
+      tag: reverseLabel(DRIVE_TYPES, r[6]) || "normal",
+      synced: true, // already sitting in the sheet -- don't re-append it on the next sync
+    };
+    if (r[7] === "Day" || r[7] === "Night") trip.timeOfDay = r[7] === "Day" ? "day" : "night";
+    const roadType = reverseLabel(ROAD_TYPES, r[8]); if (roadType) trip.roadType = roadType;
+    const weather = reverseLabel(WEATHER_TYPES, r[9]); if (weather) trip.weather = weather;
+    const traffic = reverseLabel(TRAFFIC_LEVELS, r[10]); if (traffic) trip.traffic = traffic;
+    if (r[11]) trip.supervisorName = r[11];
+    if (r[12]) trip.supervisorLicence = r[12];
+    return trip;
+  });
+}
+
+// Skips rows that already match a local trip (same date/start/end/points) so
+// reconnecting to the same sheet twice doesn't duplicate every drive.
+function mergeImportedTrips(imported) {
+  const key = (t) => `${t.date}|${t.startTime}|${t.endTime}|${t.startPoint}|${t.endPoint}`;
+  const existingKeys = new Set(state.trips.map(key));
+  const toAdd = imported.filter(t => !existingKeys.has(key(t)));
+  if (toAdd.length) {
+    state.trips = [...toAdd, ...state.trips].sort((x, y) => (x.date + x.startTime < y.date + y.startTime ? 1 : -1));
+  }
+  return toAdd.length;
+}
+
 const state = {
   profile: null,
   loadingProfile: true,
@@ -7510,6 +7552,16 @@ function attachAppHandlers() {
         state.sheetChoiceCandidates = null;
         state.sheetLink = { spreadsheetId: c.spreadsheetId, url: c.url };
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
+        state.googleBusy = true; render();
+        try {
+          const imported = await importTripsFromSheet(c.spreadsheetId, await getFreshGoogleToken());
+          const added = mergeImportedTrips(imported);
+          await storageSet(TRIPS_KEY, state.trips);
+          state.googleError = added ? `Imported ${added} drive${added === 1 ? "" : "s"} from this sheet.` : "";
+        } catch (e) {
+          state.googleError = "Connected, but couldn't import past drives from this sheet: " + ((e && e.message) || e);
+        }
+        state.googleBusy = false;
         syncUnsyncedTrips();
         render();
       };
