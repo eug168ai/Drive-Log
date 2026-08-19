@@ -427,7 +427,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.2";
+const APP_BUILD = "2026-08-19.3";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1128,6 +1128,71 @@ function mergeImportedTrips(imported) {
     state.trips = [...toAdd, ...state.trips].sort((x, y) => (x.date + x.startTime < y.date + y.startTime ? 1 : -1));
   }
   return toAdd.length;
+}
+
+// Everything that isn't a drive -- profile, settings, supervisors, saved
+// addresses, fuel fill-ups, planned routes, recent locations -- lives only
+// in this device's local storage and, unlike trips, never round-trips
+// through the sheet at all. Backed up as one JSON blob in a hidden second
+// tab of the same spreadsheet so it survives a cleared/lost device the same
+// way drives already do.
+const APP_DATA_SHEET_TITLE = "AppData";
+
+async function ensureAppDataSheet(spreadsheetId, token) {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`,
+    { headers: { "Authorization": "Bearer " + token } }
+  );
+  if (!res.ok) throw new Error("Sheet lookup failed: " + res.status);
+  const data = await res.json();
+  const exists = (data.sheets || []).some(s => s.properties && s.properties.title === APP_DATA_SHEET_TITLE);
+  if (exists) return;
+  const addRes = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST",
+    headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ requests: [{ addSheet: { properties: { title: APP_DATA_SHEET_TITLE, hidden: true } } }] }),
+  });
+  if (!addRes.ok) throw new Error("Couldn't create AppData tab: " + addRes.status);
+}
+
+async function backupSettingsToSheet(spreadsheetId, token) {
+  await ensureAppDataSheet(spreadsheetId, token);
+  const blob = {
+    profile: state.profile, settings: state.settings, supervisors: state.supervisors,
+    savedAddresses: state.savedAddresses, fuelFillups: state.fuelFillups,
+    plannedRoutes: state.plannedRoutes, recentLocations: state.recentLocations,
+  };
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(APP_DATA_SHEET_TITLE)}!A1?valueInputOption=RAW`,
+    { method: "PUT", headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ values: [[JSON.stringify(blob)]] }) }
+  );
+  if (!res.ok) throw new Error("Settings backup failed: " + res.status);
+}
+
+// Returns true if a backup was actually found and applied, false for an
+// older sheet that predates this feature (no AppData tab yet -- not an
+// error, just nothing to restore).
+async function restoreSettingsFromSheet(spreadsheetId, token) {
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(APP_DATA_SHEET_TITLE)}!A1`,
+    { headers: { "Authorization": "Bearer " + token } }
+  );
+  if (res.status === 400) return false; // "Unable to parse range" -- tab doesn't exist
+  if (!res.ok) throw new Error("Settings restore failed: " + res.status);
+  const data = await res.json();
+  const cell = data.values && data.values[0] && data.values[0][0];
+  if (!cell) return false;
+  let blob;
+  try { blob = JSON.parse(cell); } catch { return false; }
+  if (blob.profile) { state.profile = blob.profile; await storageSet(PROFILE_KEY, blob.profile); }
+  if (blob.settings) { state.settings = blob.settings; await storageSet(SETTINGS_KEY, blob.settings); }
+  if (blob.supervisors) { state.supervisors = blob.supervisors; await storageSet(SUPERVISORS_KEY, blob.supervisors); }
+  if (blob.savedAddresses) { state.savedAddresses = blob.savedAddresses; await storageSet(SAVED_ADDRESSES_KEY, blob.savedAddresses); }
+  if (blob.fuelFillups) { state.fuelFillups = blob.fuelFillups; await storageSet(FUEL_FILLUPS_KEY, blob.fuelFillups); }
+  if (blob.plannedRoutes) { state.plannedRoutes = blob.plannedRoutes; await storageSet(PLANNED_ROUTES_KEY, blob.plannedRoutes); }
+  if (blob.recentLocations) { state.recentLocations = blob.recentLocations; await storageSet(RECENT_LOCATIONS_KEY, blob.recentLocations); }
+  return true;
 }
 
 const state = {
@@ -6524,6 +6589,23 @@ async function syncUnsyncedTrips() {
   // A sync pass (even one that finds nothing to send) counts as a check-in for the reminder timer.
   state.settings.lastSyncAt = todayStr();
   await storageSet(SETTINGS_KEY, state.settings);
+  let backupFailed = false;
+  try {
+    await backupSettingsToSheet(state.sheetLink.spreadsheetId, await getFreshGoogleToken());
+  } catch (e) {
+    backupFailed = true;
+    console.warn("Settings backup failed", e);
+  }
+  // Same rule as above: only touch googleError when this pass actually had
+  // something new to report, so a clean no-op backup doesn't stomp on a
+  // message the caller just set (e.g. right after importing/restoring).
+  if (unsynced.length || backupFailed) {
+    state.googleError = anyFailed
+      ? "Some drives didn't sync to Sheets — open Settings to try again."
+      : backupFailed
+      ? "Drives synced, but the settings backup failed — open Settings to try again."
+      : "";
+  }
   render();
 }
 
@@ -7559,12 +7641,17 @@ function attachAppHandlers() {
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
         state.googleBusy = true; render();
         try {
-          const imported = await importTripsFromSheet(c.spreadsheetId, await getFreshGoogleToken());
+          const token = await getFreshGoogleToken();
+          const imported = await importTripsFromSheet(c.spreadsheetId, token);
           const added = mergeImportedTrips(imported);
           await storageSet(TRIPS_KEY, state.trips);
-          state.googleError = added ? `Imported ${added} drive${added === 1 ? "" : "s"} from this sheet.` : "";
+          const restored = await restoreSettingsFromSheet(c.spreadsheetId, token);
+          const parts = [];
+          if (added) parts.push(`imported ${added} drive${added === 1 ? "" : "s"}`);
+          if (restored) parts.push("restored your saved settings");
+          state.googleError = parts.length ? `Connected — ${parts.join(" and ")} from this sheet.` : "";
         } catch (e) {
-          state.googleError = "Connected, but couldn't import past drives from this sheet: " + ((e && e.message) || e);
+          state.googleError = "Connected, but couldn't import past data from this sheet: " + ((e && e.message) || e);
         }
         state.googleBusy = false;
         syncUnsyncedTrips();
