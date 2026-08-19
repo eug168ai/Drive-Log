@@ -2260,7 +2260,10 @@ const LIVE_ANGLE_PROFILES = {
   low: { tilt: 45, rotates: true, roadLabels: "all" },
   high: { tilt: 60, rotates: true, roadLabels: "main" },
 };
-const LIVE_ZOOM_PROFILES = { close: 18, normal: 17, far: 15.5 };
+// "far" is kept from going too far out — Google is more likely to draw a
+// highway's full name alongside its shield, not just the shield on its
+// own, the more room a label has, which shrinks fast at wide zoom-outs.
+const LIVE_ZOOM_PROFILES = { close: 18, normal: 17, far: 16.5 };
 // Speed tiers shared by both axes' "auto" — when both are left on auto
 // they move together the way Google's own nav view does; overriding just
 // one still lets the other keep following speed independently.
@@ -2287,10 +2290,26 @@ function drivingMapStyles(roadLabelsScope, upright) {
     { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
   ];
   if (!upright) {
+    // Still rotated too far from upright to read — everything stays off,
+    // road.highway included, since Google's more-specific-selector-wins
+    // cascade means an "always on" rule for it here would override this
+    // and show highway names upside down.
     hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
-  } else if (roadLabelsScope === "main") {
-    hide.push({ featureType: "road.arterial", elementType: "labels", stylers: [{ visibility: "off" }] });
-    hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] });
+  } else {
+    // road.highway is never hidden while upright, explicit for both its
+    // shield badge (labels.icon — whose white/green/yellow color comes
+    // from Google's own tile rendering, not something the styles array
+    // can set) and its name text (labels.text), so neither is ever
+    // accidentally caught by a broader "road" rule. Whether Google
+    // actually draws both together (rather than just the shield) at a
+    // given zoom is its own label-placement decision — no lever here
+    // forces that either way.
+    hide.push({ featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
+    hide.push({ featureType: "road.highway", elementType: "labels.text", stylers: [{ visibility: "on" }] });
+    if (roadLabelsScope === "main") {
+      hide.push({ featureType: "road.arterial", elementType: "labels", stylers: [{ visibility: "off" }] });
+      hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] });
+    }
   }
   return [...(plannerMapIsNight ? NIGHT_MAP_STYLE : []), ...hide];
 }
