@@ -888,7 +888,10 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
   inputEl.addEventListener("blur", () => setTimeout(hide, 150));
 }
 
-const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets";
+// drive.metadata.readonly is read-only, metadata-only (file names/ids, never
+// content) — just enough to search for a Drive Log sheet already sitting in
+// the user's Drive before offering to create a duplicate.
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly";
 let googleTokenClient = null;
 let googleAccessToken = null;
 let googleTokenExpiresAt = 0;
@@ -943,8 +946,23 @@ async function getFreshGoogleToken() {
   return getGoogleToken("");
 }
 
-async function createDriveLogSheet() {
-  const token = await getGoogleToken("consent");
+// Looks for a spreadsheet named exactly "Drive Log" — the name
+// createDriveLogSheet always uses — already sitting in the user's own
+// Drive (not merely shared with them), most-recently-modified first, so a
+// second device or a reconnect can offer to reuse it instead of quietly
+// creating a duplicate.
+async function findExistingDriveLogSheets(token) {
+  const q = encodeURIComponent("name = 'Drive Log' and mimeType = 'application/vnd.google-apps.spreadsheet' and trashed = false and 'me' in owners");
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,webViewLink,modifiedTime)&orderBy=modifiedTime desc`, {
+    headers: { "Authorization": "Bearer " + token },
+  });
+  if (!res.ok) throw new Error("Drive search failed: " + res.status);
+  const data = await res.json();
+  return (data.files || []).map(f => ({ spreadsheetId: f.id, url: f.webViewLink, name: f.name, modifiedTime: f.modifiedTime }));
+}
+
+async function createDriveLogSheet(token) {
+  token = token || await getGoogleToken("consent");
   const res = await fetch("https://sheets.googleapis.com/v4/spreadsheets", {
     method: "POST",
     headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
@@ -1033,6 +1051,7 @@ const state = {
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
   dashNormPeriod: "week", dashNormOffset: 0, dashNormTipIndex: null,
   sheetLink: null,
+  sheetChoiceCandidates: null, // set to an array of {spreadsheetId,url,name,modifiedTime} when an existing Drive Log sheet is found during connect, to prompt "use existing or new"
   googleBusy: false,
   syncingNow: false,
   googleError: "",
@@ -4382,6 +4401,7 @@ function renderApp() {
     ${state.reportForm ? renderReportModal() : ""}
     ${state.logBookForm ? renderLogBookModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
+    ${state.sheetChoiceCandidates ? renderSheetChoiceModal() : ""}
     <datalist id="recentLocations">
       ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
       ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
@@ -4992,6 +5012,33 @@ function renderEditTripModal() {
         <button id="saveEditTripBtn" class="btn btn-amber">Save changes</button>
       </div>
       <button id="openSplitTripBtn" class="btn btn-ghost">${icons.route} Split into two drives</button>
+    </div>
+  </div>`;
+}
+
+// Shown after Connect Google Sheets finds one or more existing "Drive Log"
+// spreadsheets already in the user's Drive — most likely from a previous
+// connect on another device — so they can reuse one instead of getting a
+// silent duplicate.
+function renderSheetChoiceModal() {
+  const candidates = state.sheetChoiceCandidates || [];
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Existing Drive Log sheet found</h2>
+      <p class="settings-desc" style="margin:0 0 16px;">
+        ${candidates.length === 1 ? "There's already a Drive Log spreadsheet in your Google Drive." : `There are already ${candidates.length} Drive Log spreadsheets in your Google Drive.`}
+        Use one of them, or start a fresh sheet?
+      </p>
+      ${candidates.map((c, i) => `
+      <button type="button" class="btn btn-ghost sheetChoiceUseBtn" data-idx="${i}" style="justify-content:space-between;margin-bottom:8px;">
+        <span>${icons.drive} Use this one</span>
+        ${c.modifiedTime ? `<span class="mono" style="color:var(--faint);font-weight:400;font-size:12px;">${formatDateForDisplay(c.modifiedTime.slice(0, 10))}</span>` : ""}
+      </button>`).join("")}
+      <div class="row-2" style="margin-top:8px;">
+        <button id="sheetChoiceCancelBtn" class="btn btn-ghost">Cancel</button>
+        <button id="sheetChoiceNewBtn" class="btn btn-amber">Create New</button>
+      </div>
     </div>
   </div>`;
 }
@@ -6802,7 +6849,16 @@ function attachAppHandlers() {
     if (connectBtn) connectBtn.onclick = async () => {
       state.googleBusy = true; state.googleError = ""; render();
       try {
-        const { spreadsheetId, url } = await createDriveLogSheet();
+        const token = await getGoogleToken("consent");
+        let existing = [];
+        try { existing = await findExistingDriveLogSheets(token); }
+        catch { /* search is best-effort — fall straight through to creating a fresh sheet */ }
+        if (existing.length) {
+          state.sheetChoiceCandidates = existing;
+          state.googleBusy = false; render();
+          return;
+        }
+        const { spreadsheetId, url } = await createDriveLogSheet(token);
         state.sheetLink = { spreadsheetId, url };
         await storageSet(SHEET_LINK_KEY, state.sheetLink);
         syncUnsyncedTrips();
@@ -6811,6 +6867,35 @@ function attachAppHandlers() {
       }
       state.googleBusy = false; render();
     };
+
+    const sheetChoiceCancelBtn = document.getElementById("sheetChoiceCancelBtn");
+    if (sheetChoiceCancelBtn) sheetChoiceCancelBtn.onclick = () => { state.sheetChoiceCandidates = null; render(); };
+
+    const sheetChoiceNewBtn = document.getElementById("sheetChoiceNewBtn");
+    if (sheetChoiceNewBtn) sheetChoiceNewBtn.onclick = async () => {
+      state.sheetChoiceCandidates = null;
+      state.googleBusy = true; render();
+      try {
+        const { spreadsheetId, url } = await createDriveLogSheet(await getFreshGoogleToken());
+        state.sheetLink = { spreadsheetId, url };
+        await storageSet(SHEET_LINK_KEY, state.sheetLink);
+        syncUnsyncedTrips();
+      } catch (e) {
+        state.googleError = "Couldn't connect. Make sure you allow the sign-in popup and try again.";
+      }
+      state.googleBusy = false; render();
+    };
+
+    document.querySelectorAll(".sheetChoiceUseBtn").forEach(btn => {
+      btn.onclick = async () => {
+        const c = state.sheetChoiceCandidates[parseInt(btn.dataset.idx, 10)];
+        state.sheetChoiceCandidates = null;
+        state.sheetLink = { spreadsheetId: c.spreadsheetId, url: c.url };
+        await storageSet(SHEET_LINK_KEY, state.sheetLink);
+        syncUnsyncedTrips();
+        render();
+      };
+    });
 
     const syncNowBtn = document.getElementById("syncNowBtn");
     if (syncNowBtn) syncNowBtn.onclick = async () => {
