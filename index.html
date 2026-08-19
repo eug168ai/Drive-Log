@@ -422,11 +422,12 @@
 <div id="app"></div>
 
 <script>
-// Bumped by hand whenever a fix ships, purely so Settings can show a
-// human-readable build stamp — the only way to tell, from inside the app
-// itself, whether a still-open tab is running fresh code or is stuck on
-// whatever JS was in memory before the last update.
-const APP_BUILD = "2026-08-19.1";
+// MUST be bumped on every commit that changes this file — it's the only way
+// to tell, from inside the app itself (tap the Google Sync header in
+// Settings to reveal it), whether a still-open tab is running fresh code or
+// is stuck on whatever JS was in memory before the last update. Same date:
+// increment the trailing number; new date: reset it to .1.
+const APP_BUILD = "2026-08-19.2";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1181,6 +1182,7 @@ const state = {
   googleBusy: false,
   syncingNow: false,
   googleError: "",
+  showBuildInfo: false,
   mapsAuthError: "",
   supervisors: [],
   recentLocations: [],
@@ -5106,7 +5108,7 @@ function renderSettingsTab() {
   <div class="settings-tab">
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <p class="settings-title" style="margin:0;">${icons.drive} Google Sync</p>
+      <p id="googleSyncHeader" class="settings-title" style="margin:0;cursor:pointer;">${icons.drive} Google Sync</p>
       ${state.sheetLink ? `<span class="connected-pill">Connected</span>` : ""}
     </div>
     ${!googleConfigured() ? `
@@ -5143,7 +5145,7 @@ function renderSettingsTab() {
       </button>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     `}
-    <p class="settings-desc" style="margin:10px 0 0;font-size:10px;color:var(--faint);">Build ${APP_BUILD}</p>
+    ${state.showBuildInfo ? `<p class="settings-desc" style="margin:10px 0 0;font-size:10px;color:var(--faint);">Build ${APP_BUILD}</p>` : ""}
   </div>
 
   <div class="card">
@@ -7489,6 +7491,9 @@ function attachAppHandlers() {
 
     const clearHistoryBtn = document.getElementById("clearHistoryBtn");
     if (clearHistoryBtn) clearHistoryBtn.onclick = () => { state.confirmingClearHistory = true; render(); };
+
+    const googleSyncHeader = document.getElementById("googleSyncHeader");
+    if (googleSyncHeader) googleSyncHeader.onclick = () => { state.showBuildInfo = !state.showBuildInfo; render(); };
 
     const connectBtn = document.getElementById("connectSheetBtn");
     if (connectBtn) connectBtn.onclick = async () => {
