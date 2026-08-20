@@ -238,8 +238,16 @@
   /* Trip Planner: fullscreen map builder + live GPS driving mode */
   .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 83%;}
   .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
-  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;transition:transform .35s ease-out;
-    /* Best-effort smoothing for the rotated/tilted route line and tiles —
+  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;
+    /* No CSS transition here on purpose — heading and tilt are already
+       smoothly interpolated frame-by-frame in JS (stepLiveMoveAnimation /
+       rotateLiveMap's own tilt easing), and a CSS transition retargeting on
+       top of that every animation frame fought it, lagging behind the
+       already-smooth JS value enough that the marker's own (instant, un-
+       eased) counter-rotation stopped lining up with the map's rotation —
+       the actual cause of the position arrow not reliably pointing straight
+       up on screen.
+       Best-effort smoothing for the rotated/tilted route line and tiles —
        promotes the wrapper to its own composited layer up front rather
        than only once a transform starts, which noticeably reduces (if
        never fully eliminates) the jagged edges that come from rasterizing
@@ -255,6 +263,16 @@
      the smallest number that happened to look fine in one test. */
   .planner-map-rotate-wrap.driving.angled{top:-330%;left:-330%;right:-330%;bottom:-330%;width:760%;height:760%;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
+  /* At steep tilt, the far/receding edge of the tilted map plane can cross
+     behind the camera's perspective point — a known CSS 3D artifact (warped
+     or flipped-looking tiles) rather than anything meaningful about the
+     route. Rather than trying to clip the exact 3D geometry precisely, a
+     plain top vignette hides whatever that edge does, the same way real
+     driving-nav apps fade their view into a "sky" near the top rather than
+     showing the raw tile edge. */
+  .planner-sky-mask{display:none;position:absolute;top:0;left:0;right:0;height:24vh;z-index:15;pointer-events:none;
+    background:linear-gradient(to bottom, var(--bg) 0%, var(--bg) 45%, transparent 100%);}
+  .planner-sky-mask.show{display:block;}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
@@ -383,8 +401,20 @@
   .planner-legtags .planner-leg-row{padding:3px 0;}
   .planner-legtags .divider{margin:3px 0;}
 
+  /* Sits above the turn banner, right at the physical top of the screen —
+     the shield badge with the actual road it refers to underneath, so it
+     reads as "this is what road you're approaching" independent of the
+     banner's own turn-by-turn instruction below it. Reserves its space
+     unconditionally (rather than collapsing when no shield applies) so the
+     banner underneath doesn't jump up and down as shields come and go. */
+  .planner-shield-bar{position:absolute;top:0;left:0;right:0;z-index:31;
+    padding-top:calc(env(safe-area-inset-top) + 6px);
+    display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;}
+  .planner-shield-road{display:none;font-size:11px;font-weight:700;color:var(--text);
+    background:rgba(var(--bg-rgb),.85);padding:2px 9px;border-radius:6px;}
+  .planner-shield-road.show{display:inline-block;}
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
-    padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
+    padding:calc(env(safe-area-inset-top) + 54px) 10px 16px;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
     display:flex;align-items:center;gap:14px;}
   .planner-turn-icon{width:52px;height:52px;border-radius:14px;background:var(--amber);color:var(--bg);flex-shrink:0;
@@ -394,19 +424,20 @@
   /* A rough approximation of a route shield — the real thing's exact
      white/green/yellow convention is baked into Google's own map tiles,
      not something this app renders, so this is just a reasonable stand-in
-     next to the maneuver icon when a route code (e.g. "A77") is found in
-     the upcoming step's instructions. */
+     when a route code (e.g. "A77") is found in the upcoming step's
+     instructions. Yellow text specifically requested (regardless of the
+     background) rather than matching any particular real shield style. */
   .planner-turn-shield{display:none;align-items:center;justify-content:center;flex-shrink:0;
-    min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#fff;
+    min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#FFD400;
     font-size:13px;font-weight:800;letter-spacing:.02em;border:1.5px solid #fff;}
   .planner-turn-shield.show{display:inline-flex;}
   .planner-turn-text{min-width:0;flex:1;}
   .planner-turn-text b{display:block;font-size:21px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;}
+  .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;max-width:38%;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
-  .planner-turn-dist .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
+  .planner-turn-dist .l{font-size:11px;color:var(--faint);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* Two rows: Pause/Stop above (pushed to the far right, above the bottom
      edge), the ETA/Remaining/Distance row at the very bottom edge itself. */
@@ -414,7 +445,16 @@
     padding:14px 10px calc(10px + env(safe-area-inset-bottom));
     background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;}
-  .planner-eta-controls{display:flex;flex-direction:row;align-items:center;gap:10px;align-self:flex-end;}
+  /* Column, not row -- Next (multi-leg drives only) above Pause above Stop,
+     still pinned to the right edge above the bottom bar. */
+  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:flex-end;}
+  .planner-next-leg-btn{width:40px;height:40px;border-radius:50%;flex-shrink:0;background:transparent;
+    border:2px solid var(--blue);color:var(--blue);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .planner-next-leg-btn .icon{width:17px;height:17px;}
+  .planner-current-road-row{display:flex;justify-content:center;}
+  .planner-current-road-pill{display:none;font-size:12px;font-weight:700;color:var(--text);
+    background:rgba(var(--surface-rgb),.9);border:1px solid var(--border);border-radius:999px;padding:4px 12px;}
+  .planner-current-road-pill.show{display:inline-block;}
   .planner-pause-drive-btn, .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-pause-drive-btn{background:transparent;border:2px solid var(--amber);color:var(--amber);}
@@ -449,7 +489,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.5";
+const APP_BUILD = "2026-08-19.6";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1361,6 +1401,7 @@ const icons = {
   starOutline: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   starFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2.5z"/></svg>`,
   pause: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>`,
+  skipForward: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor"><path d="M5 5v14l10-7z"/><rect x="17" y="5" width="3" height="14" rx="1"/></svg>`,
   briefcase: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/><path d="M2 13h20"/></svg>`,
   briefcaseFilled: `<svg class="icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2h4a2 2 0 0 1 2 2v3H2V9a2 2 0 0 1 2-2h4zm2 0v2h4V5z"/><path d="M2 14h20v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z"/><rect x="10" y="12" width="4" height="3" rx="0.5"/></svg>`,
   roundaboutLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="6"/><path d="M13 7 7 2"/><path d="M7 6V2h4"/></svg>`,
@@ -2436,7 +2477,19 @@ const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
 const LIVE_MIN_ROTATE_SPEED_MS = 1.4; // ~5 km/h — below this GPS course is noisy or absent, so the map holds its last heading instead of spinning on the noise
 const LIVE_HEADING_SMOOTHING = 0.35; // low-pass factor for the heading used to rotate the map
 const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used for the marker/camera (raw fixes still drive distance/arrival math)
-const LIVE_MARKER_SCREEN_FRACTION = 5 / 6; // how far down the screen the driver marker sits (see lookAheadCenter)
+// The driver marker sits a fixed physical distance up from the bottom edge
+// (2cm) rather than a fixed fraction of the screen -- there's no on-screen
+// DOM element to just place at a literal CSS length (the marker's position
+// comes from panning the map center, see lookAheadCenter), so this converts
+// 2cm into a screen-height fraction using CSS's own standard 96px-per-inch
+// reference (2.54cm = 1in), recomputed against whatever the current
+// viewport's actual height is. Clamped so a very short (e.g. landscape)
+// viewport can't push the marker above the vertical center.
+const LIVE_MARKER_BOTTOM_CM = 2;
+function liveMarkerScreenFraction(heightPx) {
+  const bottomPx = (LIVE_MARKER_BOTTOM_CM * 96) / 2.54;
+  return Math.min(0.95, Math.max(0.55, 1 - bottomPx / (heightPx || 700)));
+}
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
 // Angle (tilt) and zoom are independent axes — each has its own FAB, cycle,
@@ -2470,7 +2523,7 @@ const LIVE_ZOOM_PROFILES = { wide: 15, far: 16.5, normal: 17, close: 18, tight: 
 // Speed tiers shared by both axes' "auto" — when both are left on auto
 // they move together the way Google's own nav view does; overriding just
 // one still lets the other keep following speed independently.
-const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> overhead angle / close zoom
+const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> gentle angle / close zoom
 const LIVE_AUTO_HIGH_TIER_MIN_MS = 18; // at/above ~65 km/h -> high angle / far zoom
 const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so hovering near one doesn't flicker
 // Road labels on the raster map tiles rotate along with everything else
@@ -2732,13 +2785,14 @@ function lookAheadCenter(lat, lng, headingDeg, zoom, tiltDeg) {
   // the fixed, always-viewport-sized .planner-fullscreen reports the actual
   // visible screen height.
   const heightPx = window.innerHeight || 700;
+  const markerFraction = liveMarkerScreenFraction(heightPx);
   const mpp = metersPerPixelAtZoom(zoom || LIVE_DRIVING_ZOOM, lat);
-  const targetFraction = LIVE_MARKER_SCREEN_FRACTION - 0.5; // constant either way — see K below
+  const targetFraction = markerFraction - 0.5; // constant either way — see K below
   let fraction = targetFraction;
   const theta = (tiltDeg || 0) * Math.PI / 180;
   if (theta > 0.0001) {
     const D = LIVE_MAP_PERSPECTIVE_PX / heightPx;
-    const A = LIVE_MARKER_SCREEN_FRACTION - LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION;
+    const A = markerFraction - LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION;
     const K = targetFraction;
     const denom = D * Math.cos(theta) + A * Math.sin(theta);
     if (Math.abs(denom) > 0.0001) fraction = D * K / denom;
@@ -2822,6 +2876,7 @@ async function startLiveDrive() {
     legIdx: 0,
     legStartedAt: Date.now(),
     legDistanceM: 0,
+    legArriveMinDist: null,
     completedLegs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
@@ -2832,6 +2887,7 @@ async function startLiveDrive() {
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
   liveMapLastSpeedMs = 0;
+  liveMapCurrentTilt = 0;
   liveMapLastAppliedZoom = null;
   stopLiveMoveAnimation();
   await persistLiveDriveSnapshot();
@@ -2892,7 +2948,29 @@ function finishCurrentLiveLeg() {
   liveDrive.legIdx++;
   liveDrive.legStartedAt = Date.now();
   liveDrive.legDistanceM = 0;
+  liveDrive.legArriveMinDist = null; // fresh start for the next leg's own destination
   persistLiveDriveSnapshot();
+}
+
+// The Next button — a manual override for arrival detection that's proximity-
+// and steps-based (handleLiveFix's nearDest/legStepsExhausted) and so can't
+// always tell "stopped to drop someone off" from "just passing near this
+// stop on the way to the next one". Reuses the exact same finish-a-leg path
+// automatic arrival uses, so a manually- or automatically-completed leg ends
+// up identical either way.
+function advanceToNextLegManually() {
+  if (!liveDrive || !state.planner) return;
+  finishCurrentLiveLeg();
+  // stepIdx otherwise still points into the leg just skipped -- left alone,
+  // handleLiveFix's "ran out of this leg's steps" check would immediately
+  // see stepIdx.legIdx !== the new (incremented) legIdx and treat the leg
+  // that was JUST started as already finished too, cascading forward.
+  while (liveDrive.steps[liveDrive.stepIdx] && liveDrive.steps[liveDrive.stepIdx].legIdx < liveDrive.legIdx) {
+    liveDrive.stepIdx++;
+  }
+  liveDrive.stepEndMinDist = null;
+  if (liveDrive.legIdx >= state.planner.legs.length) { endLiveDrive(); return; }
+  render();
 }
 
 function handleLiveFix(pos) {
@@ -2947,7 +3025,20 @@ function handleLiveFix(pos) {
   const p = state.planner;
   if (p && liveDrive.legIdx < p.legs.length) {
     const destStop = p.stops[liveDrive.legIdx + 1];
-    const nearDest = destStop && destStop.lat != null && haversineMeters(lat, lng, destStop.lat, destStop.lng) < LIVE_LEG_ARRIVE_M;
+    // Same "closest approach, then moving away again" hysteresis already
+    // used for step completion just above (stepEndMinDist) — a single fix
+    // landing inside LIVE_LEG_ARRIVE_M isn't enough on its own, since GPS
+    // noise or a road that just happens to pass close to the stop (without
+    // actually stopping there) can land one fix that close in passing. This
+    // is also most of what makes automatic multi-stop advance reliable at
+    // all, alongside the manual Next button for whatever it still misses
+    // (e.g. dropping someone off just off the geocoded pin's exact spot).
+    let nearDest = false;
+    if (destStop && destStop.lat != null) {
+      const d = haversineMeters(lat, lng, destStop.lat, destStop.lng);
+      if (liveDrive.legArriveMinDist == null || d < liveDrive.legArriveMinDist) liveDrive.legArriveMinDist = d;
+      nearDest = liveDrive.legArriveMinDist < LIVE_LEG_ARRIVE_M && d > liveDrive.legArriveMinDist + LIVE_STEP_PASSED_HYSTERESIS_M;
+    }
     // Also treat running out of this leg's own turn-by-turn steps as
     // arrival, not just being within LIVE_LEG_ARRIVE_M of the geocoded
     // stop pin — the two can diverge (a route's last step can end at a
@@ -3048,6 +3139,14 @@ async function rerouteLiveDrive(lat, lng) {
 let liveMapRotationDeg = 0;
 let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
+// The rendered tilt, eased toward whatever the current angle profile
+// targets — profile.tilt itself jumps between fixed tiers (e.g. auto
+// switching gentle -> low -> high as speed changes, or a manual FAB tap),
+// and with no CSS transition to soften that anymore (see
+// .planner-map-rotate-wrap.driving's own comment), this is what keeps a
+// tier change easing smoothly instead of snapping.
+let liveMapCurrentTilt = 0;
+const LIVE_TILT_SMOOTHING = 0.08;
 // Picks which speed tier ("low"/"mid"/"high") an axis's "auto" resolves to,
 // given the tier it's currently showing — the hysteresis margin around each
 // threshold means a speed hovering right at the boundary doesn't flicker
@@ -3063,7 +3162,13 @@ function autoSpeedTier(speedMs, current) {
   if (s >= LIVE_AUTO_HIGH_TIER_MIN_MS + m) return "high";
   return "mid";
 }
-const LIVE_ANGLE_TIER_MODE = { low: "overhead", mid: "low", high: "high" };
+// Google's own nav view stays tilted at every normal driving speed,
+// including stopped at lights or crawling in traffic — it only ever goes
+// flat/overhead on a deliberate zoom-out for a route overview, never
+// automatically just because you've slowed down. Auto's low tier used to
+// map to "overhead" (flat), which flattened the view every time you slowed
+// down or stopped — "gentle" keeps a real 3D perspective at every tier.
+const LIVE_ANGLE_TIER_MODE = { low: "gentle", mid: "low", high: "high" };
 const LIVE_ZOOM_TIER_MODE = { low: "close", mid: "normal", high: "far" };
 function resolveLiveAngleProfile(speedMs) {
   if (!liveDrive) return LIVE_ANGLE_PROFILES.low;
@@ -3094,10 +3199,11 @@ function rotateLiveMap(headingDeg, speedMs) {
   if (delta > 180) delta -= 360;
   if (delta < -180) delta += 360;
   liveMapRotationDeg += delta;
+  liveMapCurrentTilt += (profile.tilt - liveMapCurrentTilt) * LIVE_TILT_SMOOTHING;
   updateLiveMapLabelVisibility(profile);
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (!wrap) return;
-  const tilt = profile.tilt > 0 ? `rotateX(${profile.tilt}deg) ` : "";
+  const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
   wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
 }
 // Toggles road labels off only while the map is rotated far enough from
@@ -3145,6 +3251,8 @@ function cycleLiveAngleMode() {
   const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (wrap) wrap.classList.toggle("angled", profile.tilt > 0);
+  const skyMask = document.getElementById("plannerSkyMask");
+  if (skyMask) skyMask.classList.toggle("show", profile.tilt > 0);
   const btn = document.getElementById("plannerAngleBtn");
   if (btn) btn.classList.toggle("active", liveDrive.angleMode !== "auto");
   flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
@@ -3190,8 +3298,12 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   // its own smooth motion between fixes; panTo's own competing animation,
   // retargeted 60 times a second, was fighting that and making the camera
   // lag/drift instead of holding the marker at a fixed point on screen.
-  const tiltDeg = resolveLiveAngleProfile(speedMs).tilt;
-  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom(), tiltDeg));
+  // The just-eased value (rotateLiveMap above already updated it this
+  // frame), not the raw profile's target -- during a tier transition the
+  // rendered tilt is still easing toward that target, and using the target
+  // early would offset the camera for a tilt that isn't actually on screen
+  // yet, drifting the marker off its intended spot until the ease catches up.
+  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
 }
 
 // GPS fixes land roughly once a second (watchPosition's maximumAge allows
@@ -3303,13 +3415,37 @@ function updateLiveDriveDOM() {
       : junctionStep ? stepStreetName(junctionStep.instructions)
       : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
-  if (turnSub) turnSub.textContent = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
+  // Same instruction text in both places: the sub-line under the main road
+  // name, and the label under the next-turn distance counter (which used to
+  // be the static word "next turn" regardless of what the turn actually is).
+  const instructionText = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
+  if (turnSub) turnSub.textContent = instructionText;
+  const turnDistLabel = document.getElementById("plannerTurnDistLabel");
+  if (turnDistLabel) turnDistLabel.textContent = instructionText;
   const turnShield = document.getElementById("plannerTurnShield");
-  if (turnShield) {
+  const shieldRoad = document.getElementById("plannerShieldRoad");
+  {
     const shieldStep = rerouting || arrived ? null : (junctionStep || step);
     const code = shieldStep ? extractRouteShield(shieldStep.instructions) : null;
-    turnShield.textContent = code || "";
-    turnShield.classList.toggle("show", !!code);
+    if (turnShield) {
+      turnShield.textContent = code || "";
+      turnShield.classList.toggle("show", !!code);
+    }
+    if (shieldRoad) {
+      const roadName = code && shieldStep ? stepStreetName(shieldStep.instructions) : "";
+      shieldRoad.textContent = roadName;
+      shieldRoad.classList.toggle("show", !!roadName);
+    }
+  }
+  // The road you're actually on right now (the current step, not the
+  // upcoming junction the shield bar above points at) -- a small pill
+  // sitting low on screen answering "what road is this" independent of
+  // whatever's coming up next.
+  const currentRoadPill = document.getElementById("plannerCurrentRoadPill");
+  if (currentRoadPill) {
+    const roadName = !arrived && !rerouting && step ? stepStreetName(step.instructions) : "";
+    currentRoadPill.textContent = roadName;
+    currentRoadPill.classList.toggle("show", !!roadName);
   }
   if (turnDistVal) {
     if (rerouting || arrived || !junctionStep) { turnDistVal.textContent = "–"; }
@@ -3431,6 +3567,7 @@ async function resumeLiveDriveIfAny() {
     legIdx: saved.legIdx || 0,
     legStartedAt: saved.legStartedAt || saved.startedAt,
     legDistanceM: saved.legDistanceM || 0,
+    legArriveMinDist: null,
     completedLegs: saved.completedLegs || [],
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
@@ -4883,6 +5020,7 @@ function renderPlanTab() {
   return `
   <div class="planner-fullscreen ${p.mapFocusMode ? "map-focus" : ""}">
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
+    ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
     <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: ${LIVE_ZOOM_MODE_CYCLE.join(" / ")}">${icons.zoomView}</button>
@@ -4999,22 +5137,29 @@ function renderPlannerCompleteSummary() {
 
 function renderPlannerDrivingBanner() {
   return `
+  <div class="planner-shield-bar" id="plannerShieldBar">
+    <span class="planner-turn-shield" id="plannerTurnShield"></span>
+    <span class="planner-shield-road" id="plannerShieldRoad"></span>
+  </div>
   <div class="planner-drive-banner">
     <span class="planner-turn-icon" id="plannerTurnIconWrap">${icons.straight}</span>
-    <span class="planner-turn-shield" id="plannerTurnShield"></span>
     <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b><span id="plannerTurnSub">Getting your position</span></div>
-    <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l">next turn</div></div>
+    <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l" id="plannerTurnDistLabel">next turn</div></div>
   </div>`;
 }
 
 function renderPlannerEtaBar() {
   const paused = !!(liveDrive && liveDrive.paused);
+  const p = state.planner;
+  const hasNextLeg = !!(liveDrive && p && liveDrive.legIdx < p.legs.length - 1);
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
     <div class="planner-eta-controls">
+      ${hasNextLeg ? `<button type="button" class="planner-next-leg-btn" id="plannerNextLegBtn" title="Mark this leg complete and start the next">${icons.skipForward}</button>` : ""}
       <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
       <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
     </div>
+    <div class="planner-current-road-row"><span class="planner-current-road-pill" id="plannerCurrentRoadPill"></span></div>
     <div class="planner-eta-metrics-row">
       <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
       <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
@@ -7350,6 +7495,8 @@ function attachAppHandlers() {
       if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
       if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
+      const nextLegBtn = document.getElementById("plannerNextLegBtn");
+      if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
       const zoomBtn = document.getElementById("plannerZoomBtn");
