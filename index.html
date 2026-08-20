@@ -501,7 +501,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.7";
+const APP_BUILD = "2026-08-19.8";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5929,6 +5929,8 @@ function renderEditTripModal() {
         <button id="closeEditTripBtn" class="icon-btn" title="Close">${icons.close}</button>
       </div>
 
+      ${t.summaryImage ? `<img src="${t.summaryImage}" alt="Route summary" style="width:100%;border-radius:10px;margin-bottom:14px;display:block;" />` : ""}
+
       <label class="field-label">Date</label>
       <input id="editDate" type="date" class="input date-compact" value="${t.date}" style="margin-bottom:14px;" />
 
@@ -6939,8 +6941,57 @@ async function syncUnsyncedTrips() {
   render();
 }
 
+// A small route-thumbnail image via Google's Static Maps API -- a real
+// interactive map isn't available once a drive is over (no live Map
+// instance to screenshot), and this is a separate, simpler REST API that
+// just needs start/end coordinates, not a running JS map. Kept modest in
+// size (a plain, non-retina 320x180) since it's stored as a base64 data URL
+// inline on the trip itself alongside everything else in local storage --
+// full-resolution/retina images across hundreds of trips would add up fast
+// against a browser's local storage quota.
+function staticMapUrlForTrip(trip) {
+  const hasStart = trip.startLat != null, hasEnd = trip.endLat != null;
+  if (!hasStart && !hasEnd) return null;
+  const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
+  if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
+  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
+  if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${trip.startLat},${trip.startLng}|${trip.endLat},${trip.endLng}`);
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+}
+// Fetches that thumbnail and inlines it as a data URL directly on the trip
+// object, so it persists in the same local trips array/storage entry as
+// everything else -- no separate asset store, no broken image if a URL
+// (tied to this app's own API key) ever stopped resolving later. Best-
+// effort: a failed fetch (offline, no coordinates, the Static Maps API not
+// enabled for this key, etc.) just leaves the trip without an image rather
+// than blocking the save over it.
+async function attachTripSummaryImage(trip) {
+  if (!mapsConfigured()) return;
+  const url = staticMapUrlForTrip(trip);
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    trip.summaryImage = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    // Best-effort — a missing thumbnail never blocks saving the trip
+    // itself. Logged rather than swallowed outright since a wrong Cloud
+    // Console setup (Static Maps API not enabled for this key) would
+    // otherwise silently mean every single trip saves with no image at
+    // all, with nothing in the UI ever pointing at why.
+    console.warn("Static map thumbnail failed", e);
+  }
+}
+
 async function finalizeTrip(trip) {
   trip.synced = false;
+  await attachTripSummaryImage(trip);
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
