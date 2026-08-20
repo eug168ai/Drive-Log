@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.1";
+const APP_BUILD = "2026-08-20.2";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3159,12 +3159,16 @@ function handleLiveFix(pos) {
     // A road that curves back close to its own upcoming endpoint can
     // satisfy the straight-line check above well before actually being
     // driven that far -- requiring the fix's nearest point on the step's
-    // own path to be near that path's last vertex confirms real progress
-    // along the road, not just geographic proximity (see
-    // closestPathVertexFraction). This is what made the current-road pill
-    // -- and, on a route's very last step, "You have arrived" -- flip
-    // early on anything but a straight road.
-    const passed = nearEnd && closestPathVertexFraction(step.path, lat, lng) > 0.8;
+    // own path to be past its midpoint confirms real progress along the
+    // road, not just geographic proximity (see closestPathVertexFraction).
+    // Only trusted when the path actually has enough points to say that
+    // meaningfully -- a short final step (a common shape for the last leg
+    // into a destination) can decode to just 2-3 points, where one GPS
+    // jitter flips which end reads "closest" regardless of real progress
+    // and would otherwise block genuine arrival outright, leaving the trip
+    // stuck. Sparse paths fall back to the plain endpoint check instead.
+    const richPath = step.path && step.path.length >= 6;
+    const passed = nearEnd && (!richPath || closestPathVertexFraction(step.path, lat, lng) > 0.5);
     if (!passed) break;
     liveDrive.stepIdx++;
     liveDrive.stepEndMinDist = null;
