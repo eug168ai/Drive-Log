@@ -364,13 +364,19 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-recenter-fab .icon{width:18px;height:18px;}
 
-  .planner-angle-fab, .planner-zoom-fab{position:absolute;right:14px;width:40px;height:40px;border-radius:50%;
+  .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
-  .planner-angle-fab{top:calc(env(safe-area-inset-top) + 104px);}
-  .planner-zoom-fab{top:calc(env(safe-area-inset-top) + 150px);}
-  .planner-angle-fab.active, .planner-zoom-fab.active{background:rgba(var(--amber-rgb),.18);}
-  .planner-angle-fab .icon, .planner-zoom-fab .icon{width:18px;height:18px;}
+  .planner-angle-fab.active{background:rgba(var(--amber-rgb),.18);}
+  .planner-angle-fab .icon{width:18px;height:18px;}
+  /* Pinch replaces the old zoom FAB (see handleLiveZoomChanged) -- this only
+     ever appears once a pinch has actually overridden auto-zoom, as the way
+     back to it, rather than sitting there permanently. */
+  .planner-resume-zoom-fab{display:none;position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 150px);
+    width:40px;height:40px;border-radius:50%;background:rgba(var(--amber-rgb),.18);border:1.5px solid var(--amber);
+    color:var(--amber);align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+  .planner-resume-zoom-fab.show{display:flex;}
+  .planner-resume-zoom-fab .icon{width:18px;height:18px;}
   .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 194px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
     color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
@@ -398,6 +404,7 @@
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
   .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
+  .planner-route-metrics .metric .v .unit{font-size:.65em;font-weight:700;margin-left:2px;}
   .planner-route-metrics .metric .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
   .planner-route-metrics .div{width:1px;height:24px;background:var(--border);}
   .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:6px;padding-top:6px;
@@ -501,7 +508,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.9";
+const APP_BUILD = "2026-08-19.10";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2077,8 +2084,16 @@ function newPlannerStop() { return { id: uid(), address: "", lat: null, lng: nul
 // Every leg starts tagged with whatever the app's currently-set drive type
 // is (Personal/Business/Supervised) — a route match (autoSuggestPlannerTags)
 // can still upgrade it later, and the business toggle can still flip a
-// Personal/Business leg by hand.
-function defaultPlannerLegTag() { return state.settings.driveType || "normal"; }
+// Personal/Business leg by hand. Business specifically only defaults on
+// weekdays — Saturday/Sunday drives are far more likely personal even with
+// Business left selected as the app's overall current setting.
+function defaultPlannerLegTag() {
+  if (state.settings.driveType === "work") {
+    const day = new Date().getDay(); // 0 = Sunday, 6 = Saturday
+    return (day === 0 || day === 6) ? "normal" : "work";
+  }
+  return state.settings.driveType || "normal";
+}
 function newPlannerLeg() {
   return {
     tag: defaultPlannerLegTag(), tagSource: "default", distanceKm: null, durationMin: null,
@@ -2361,15 +2376,17 @@ function plannerDefaultRouteName(p) {
 
 // Small star next to the route summary badge: prompts for a name, then
 // saves the current route to the saved list — doesn't exit the builder.
+// Also reachable from Drive Complete (favouriting a route you've now
+// actually driven, not just planned, is just as useful for reuse later).
 function openPlannerSaveRoutePrompt() {
   const p = state.planner;
-  if (!p || p.stage !== "preview") return;
+  if (!p || (p.stage !== "preview" && p.stage !== "complete")) return;
   state.plannerSaveRouteForm = { name: plannerDefaultRouteName(p) };
   render();
 }
 async function savePlannerRoute(name) {
   const p = state.planner;
-  if (!p || p.stage !== "preview") return;
+  if (!p || (p.stage !== "preview" && p.stage !== "complete")) return;
   const route = {
     id: uid(), createdAt: Date.now(), name: (name || "").trim() || null,
     stops: p.stops.map(s => ({ address: s.address, lat: s.lat, lng: s.lng })),
@@ -2527,15 +2544,15 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // tilt and closer zoom at city speed, easing toward a steeper look-ahead
 // tilt and further-out zoom at highway speed — since there's no API access
 // to compare directly against the real app.
-// overhead/low/high are also what auto's three speed tiers resolve to (see
-// LIVE_ANGLE_TIER_MODE below) — gentle/steep are extra in-between/beyond
-// steps for manual cycling only, auto never picks them.
+// gentle/low/high are what auto's three speed tiers resolve to (see
+// LIVE_ANGLE_TIER_MODE below) — overhead is a manual-only extra step, auto
+// never picks it (Google's own nav view never goes flat just from slowing
+// down, see LIVE_ANGLE_TIER_MODE's own comment).
 const LIVE_ANGLE_PROFILES = {
   overhead: { tilt: 0, rotates: false, roadLabels: "all" },
   gentle: { tilt: 22, rotates: true, roadLabels: "all" },
   low: { tilt: 45, rotates: true, roadLabels: "all" },
   high: { tilt: 60, rotates: true, roadLabels: "main" },
-  steep: { tilt: 74, rotates: true, roadLabels: "main" },
 };
 // far/normal/close are what auto's three speed tiers resolve to (see
 // LIVE_ZOOM_TIER_MODE below) — wide/tight are extra manual-only steps
@@ -2907,7 +2924,7 @@ async function startLiveDrive() {
     paused: false, pausedAt: null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
-    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low",
+    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
@@ -3220,11 +3237,13 @@ function resolveLiveAngleProfile(speedMs) {
 }
 function resolveLiveZoom(speedMs) {
   if (!liveDrive) return LIVE_ZOOM_PROFILES.normal;
-  if (liveDrive.zoomMode === "auto") {
-    liveDrive.autoZoomTier = autoSpeedTier(speedMs, liveDrive.autoZoomTier || "low");
-    return LIVE_ZOOM_PROFILES[LIVE_ZOOM_TIER_MODE[liveDrive.autoZoomTier]];
-  }
-  return LIVE_ZOOM_PROFILES[liveDrive.zoomMode] != null ? LIVE_ZOOM_PROFILES[liveDrive.zoomMode] : LIVE_ZOOM_PROFILES.normal;
+  // "manual" only matters for the very first paint after a pinch (see
+  // handleLiveZoomChanged) — e.g. re-creating the map on Drive Complete's
+  // Back button — updateLiveZoom itself bails out before ever calling this
+  // while manual, so it doesn't fight the pinch on every subsequent fix.
+  if (liveDrive.zoomMode === "manual") return liveDrive.manualZoom != null ? liveDrive.manualZoom : LIVE_ZOOM_PROFILES.normal;
+  liveDrive.autoZoomTier = autoSpeedTier(speedMs, liveDrive.autoZoomTier || "low");
+  return LIVE_ZOOM_PROFILES[LIVE_ZOOM_TIER_MODE[liveDrive.autoZoomTier]];
 }
 function rotateLiveMap(headingDeg, speedMs) {
   liveMapLastHeadingDeg = headingDeg || 0;
@@ -3267,7 +3286,7 @@ function updateLiveMapLabelVisibility(profile) {
 // setZoom on every single fix, which reads as jittery rather than smooth.
 let liveMapLastAppliedZoom = null;
 function updateLiveZoom(speedMs) {
-  if (!plannerMapInstance || !liveDrive) return;
+  if (!plannerMapInstance || !liveDrive || liveDrive.zoomMode === "manual") return;
   const targetZoom = resolveLiveZoom(speedMs);
   if (liveMapLastAppliedZoom == null || Math.abs(targetZoom - liveMapLastAppliedZoom) >= 0.3) {
     liveMapLastAppliedZoom = targetZoom;
@@ -3276,10 +3295,8 @@ function updateLiveZoom(speedMs) {
 }
 // Ascending tilt/zoom order — simplest to reason about with five manual
 // steps rather than the earlier arbitrary ordering that only had three.
-const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "gentle", "low", "high", "steep"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", gentle: "Angle: Gentle", low: "Angle: Low", high: "Angle: High", steep: "Angle: Steep" };
-const LIVE_ZOOM_MODE_CYCLE = ["auto", "wide", "far", "normal", "close", "tight"];
-const LIVE_ZOOM_MODE_LABELS = { auto: "Zoom: Auto", wide: "Zoom: Wide", far: "Zoom: Far", normal: "Zoom: Normal", close: "Zoom: Close", tight: "Zoom: Tight" };
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "gentle", "low", "high"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", gentle: "Angle: Gentle", low: "Angle: Low", high: "Angle: High" };
 // Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
 // DOM update, not a render(), so it doesn't interrupt live tracking or
 // recreate the map. Zoom is a fully independent axis (its own FAB, its own
@@ -3298,14 +3315,32 @@ function cycleLiveAngleMode() {
   flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
 }
-// Cycles the zoom FAB through auto -> far -> normal -> close -> auto.
-function cycleLiveZoomMode() {
+// Pinch replaces the old zoom FAB/cycle entirely -- gestureHandling:"greedy"
+// on the map (see ensurePlannerMap) already lets a pinch reach the map, but
+// auto-zoom-by-speed used to immediately undo it on the very next GPS fix.
+// This listener (wired up once per map instance, see ensurePlannerMap)
+// tells a real pinch apart from our own setZoom calls by comparing the new
+// zoom against liveMapLastAppliedZoom -- updateLiveZoom always updates that
+// value in the same call it sets zoom, so if they don't match, something
+// else (a pinch) changed it. Once that happens, auto-zoom stops touching
+// zoom at all until plannerResumeAutoZoomBtn (shown only while overridden)
+// is tapped.
+function handleLiveZoomChanged() {
+  if (!liveDrive || !plannerMapInstance) return;
+  const z = plannerMapInstance.getZoom();
+  if (liveMapLastAppliedZoom != null && Math.abs(z - liveMapLastAppliedZoom) < 0.05) return;
+  liveDrive.zoomMode = "manual";
+  liveDrive.manualZoom = z;
+  liveMapLastAppliedZoom = z;
+  const btn = document.getElementById("plannerResumeAutoZoomBtn");
+  if (btn) btn.classList.add("show");
+}
+function resumeAutoZoom() {
   if (!liveDrive) return;
-  const idx = LIVE_ZOOM_MODE_CYCLE.indexOf(liveDrive.zoomMode);
-  liveDrive.zoomMode = LIVE_ZOOM_MODE_CYCLE[(idx + 1) % LIVE_ZOOM_MODE_CYCLE.length];
-  const btn = document.getElementById("plannerZoomBtn");
-  if (btn) btn.classList.toggle("active", liveDrive.zoomMode !== "auto");
-  flashLiveModeLabel(LIVE_ZOOM_MODE_LABELS[liveDrive.zoomMode]);
+  liveDrive.zoomMode = "auto";
+  liveDrive.manualZoom = null;
+  const btn = document.getElementById("plannerResumeAutoZoomBtn");
+  if (btn) btn.classList.remove("show");
   updateLiveZoom(liveMapLastSpeedMs);
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
@@ -3699,7 +3734,7 @@ async function resumeLiveDriveIfAny() {
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
-    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low",
+    angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
   };
   stopLiveMoveAnimation();
   if (navigator.geolocation) {
@@ -3889,6 +3924,10 @@ async function ensurePlannerMap() {
     // the default double-click-to-zoom-in.
     disableDoubleClickZoom: !driving && !complete,
   });
+
+  if (driving) {
+    plannerMapInstance.addListener("zoom_changed", handleLiveZoomChanged);
+  }
 
   if (!driving && !complete) {
     plannerMapClickListener = plannerMapInstance.addListener("click", async (e) => {
@@ -5149,7 +5188,7 @@ function renderPlanTab() {
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
-    <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: ${LIVE_ZOOM_MODE_CYCLE.join(" / ")}">${icons.zoomView}</button>
+    <button type="button" class="planner-resume-zoom-fab ${liveDrive && liveDrive.zoomMode === "manual" ? "show" : ""}" id="plannerResumeAutoZoomBtn" title="Resume auto zoom">${icons.zoomView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
 
@@ -5184,11 +5223,10 @@ function renderPlanTab() {
       ${p.saved
         ? `<button type="button" id="plannerCompleteCloseBtn" class="btn btn-amber">${icons.check} Done</button>`
         : `
-        <div class="row-2" style="margin-bottom:10px;">
+        <div class="row-2">
           <button type="button" id="plannerBackToDriveBtn" class="btn btn-ghost">${icons.chevronLeft} Back</button>
-          <button type="button" id="plannerDiscardDriveBtn" class="btn btn-ghost" style="color:var(--work);">${icons.trash} Discard</button>
-        </div>
-        <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>`}
+          <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>
+        </div>`}
     </div>
     ${p.confirmingDiscard ? `
     <div class="modal-backdrop">
@@ -5231,10 +5269,10 @@ function renderPlannerRouteSummary() {
   <div class="planner-route-summary">
     <div class="planner-route-badge">
       <span class="planner-route-badge-label">${icons.route} ${cardLabel}</span>
-      <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this route"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
+      <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this Drive"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
     </div>
     <div class="planner-route-metrics">
-      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
+      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
       <div class="div"></div>
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Est. time</div></div>
     </div>
@@ -5264,11 +5302,15 @@ function renderPlannerCompleteSummary() {
   <div class="planner-route-summary">
     <div class="planner-route-badge">
       <span class="planner-route-badge-label">${icons.flag} Drive Complete</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this Drive"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
+        <button type="button" class="icon-btn" id="plannerDiscardDriveBtn" title="Discard drive" style="color:var(--work);">${icons.trash}</button>
+      </div>
     </div>
     <div class="planner-route-metrics">
       <div class="metric" style="text-align:left;"><span class="tag ${overallTag}">${labelFor(DRIVE_TYPES, overallTag)}</span></div>
       <div class="div"></div>
-      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}</div><div class="l">Distance</div></div>
+      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
       <div class="div"></div>
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
     </div>
@@ -5319,8 +5361,8 @@ function renderPlannerSaveRouteModal() {
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>Save this route</h2>
-      <label class="field-label">Route name</label>
+      <h2>Save this Drive</h2>
+      <label class="field-label">Drive Name</label>
       <input id="plannerSaveRouteNameInput" class="input" type="text" placeholder="e.g. Morning commute" value="${escAttr(f.name)}" style="margin-bottom:20px;" />
       <div class="row-2">
         <button id="plannerSaveRouteCancelBtn" class="btn btn-ghost">Cancel</button>
@@ -7879,8 +7921,8 @@ function attachAppHandlers() {
       if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
-      const zoomBtn = document.getElementById("plannerZoomBtn");
-      if (zoomBtn) zoomBtn.onclick = cycleLiveZoomMode;
+      const resumeZoomBtn = document.getElementById("plannerResumeAutoZoomBtn");
+      if (resumeZoomBtn) resumeZoomBtn.onclick = resumeAutoZoom;
       updateLiveDriveDOM();
     }
 
