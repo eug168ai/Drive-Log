@@ -501,7 +501,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.8";
+const APP_BUILD = "2026-08-19.9";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1026,8 +1026,13 @@ function attachPlacesAutocomplete(inputEl, onSelect) {
 
 // drive.metadata.readonly is read-only, metadata-only (file names/ids, never
 // content) — just enough to search for a Drive Log sheet already sitting in
-// the user's Drive before offering to create a duplicate.
-const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly";
+// the user's Drive before offering to create a duplicate. drive.file is
+// separate and additive: create/access files this app itself creates (the
+// detailed route-image uploads, see uploadTripImageToDrive) — it can't see
+// or touch anything else in the user's Drive. Anyone who connected before
+// this scope was added needs to reconnect (Disconnect -> Connect) before
+// uploads will work; their cached token just won't have it until then.
+const GOOGLE_SCOPES = "https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/drive.file";
 let googleTokenClient = null;
 let googleAccessToken = null;
 let googleTokenExpiresAt = 0;
@@ -1138,7 +1143,7 @@ async function createDriveLogSheet(token) {
       properties: { title: "Drive Log" },
       sheets: [{ data: [{ startRow: 0, startColumn: 0, rowData: [{ values: [
         "Date","Start Time","End Time","Distance (km)","Start Point","End Point","Type",
-        "Time of Day","Road Type","Weather","Traffic Density","Supervisor Name","Supervisor Licence No."
+        "Time of Day","Road Type","Weather","Traffic Density","Supervisor Name","Supervisor Licence No.","Route Image"
       ].map(v => ({ userEnteredValue: { stringValue: v } })) }] }] }],
     }),
   });
@@ -1161,10 +1166,10 @@ async function appendTripToSheet(spreadsheetId, trip) {
     trip.roadType ? labelFor(ROAD_TYPES, trip.roadType) : "",
     trip.weather ? labelFor(WEATHER_TYPES, trip.weather) : "",
     trip.traffic ? labelFor(TRAFFIC_LEVELS, trip.traffic) : "",
-    trip.supervisorName || "", trip.supervisorLicence || "",
+    trip.supervisorName || "", trip.supervisorLicence || "", trip.routeImageLink || "",
   ]];
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:M:append?valueInputOption=USER_ENTERED`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:N:append?valueInputOption=USER_ENTERED`,
     { method: "POST", headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
       body: JSON.stringify({ values: row }) }
   );
@@ -1178,7 +1183,7 @@ async function appendTripToSheet(spreadsheetId, trip) {
 // but still showing an empty history despite the sheet having real data.
 async function importTripsFromSheet(spreadsheetId, token) {
   const res = await fetch(
-    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A2:M?majorDimension=ROWS`,
+    `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A2:N?majorDimension=ROWS`,
     { headers: { "Authorization": "Bearer " + token } }
   );
   if (!res.ok) throw new Error("Sheet read failed: " + res.status);
@@ -1197,6 +1202,12 @@ async function importTripsFromSheet(spreadsheetId, token) {
     const traffic = reverseLabel(TRAFFIC_LEVELS, r[10]); if (traffic) trip.traffic = traffic;
     if (r[11]) trip.supervisorName = r[11];
     if (r[12]) trip.supervisorLicence = r[12];
+    // Just the link, not the actual image -- re-downloading and re-uploading
+    // every past drive's detailed image on a fresh reconnect would be slow
+    // and mostly redundant with what's already sitting in Drive. Opening it
+    // from the trip editor goes straight to that Drive link instead of a
+    // locally-cached copy for an imported trip.
+    if (r[13]) trip.routeImageLink = r[13];
     return trip;
   });
 }
@@ -2483,6 +2494,7 @@ const LIVE_STEP_PASSED_HYSTERESIS_M = 8;
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
+const LIVE_BREADCRUMB_MIN_GAP_M = 15; // minimum spacing between recorded path points -- keeps the eventual polyline compact without visibly changing its shape
 const LIVE_OFFROUTE_M = 50;          // further than this from the route's own path counts as "off route"
 const LIVE_OFFROUTE_CONFIRM_FIXES = 3; // consecutive off-route fixes required before rerouting, so one noisy fix doesn't trigger it
 const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
@@ -2890,6 +2902,7 @@ async function startLiveDrive() {
     legDistanceM: 0,
     legArriveMinDist: null,
     completedLegs: [],
+    breadcrumbs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
     paused: false, pausedAt: null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
@@ -2945,6 +2958,7 @@ async function persistLiveDriveSnapshot() {
     legStartedAt: liveDrive.legStartedAt,
     legDistanceM: liveDrive.legDistanceM,
     completedLegs: liveDrive.completedLegs,
+    breadcrumbs: liveDrive.breadcrumbs,
     paused: liveDrive.paused, pausedAt: liveDrive.pausedAt,
     plannerSnapshot: { stops: state.planner.stops, legs: state.planner.legs },
   });
@@ -3018,6 +3032,20 @@ function handleLiveFix(pos) {
   if (liveDrive.paused) { updateLiveDriveDOM(); return; }
 
   if (!(prev && deltaM > LIVE_MAX_JUMP_M) && prev) liveDrive.legDistanceM += deltaM;
+
+  // Recorded path for this leg — the actual driven route (see
+  // endLiveDrive/attachTripDetailedImage), not just its start/end, once a
+  // detailed route image is generated. Same jump guard as distance above (a
+  // GPS glitch shouldn't warp the drawn line), throttled to a minimum
+  // spacing so a long drive doesn't accumulate thousands of near-duplicate
+  // points for a shape that barely changed.
+  if (!(prev && deltaM > LIVE_MAX_JUMP_M)) {
+    const crumbs = liveDrive.breadcrumbs;
+    const last = crumbs.length ? crumbs[crumbs.length - 1] : null;
+    if (!last || last.legIdx !== liveDrive.legIdx || haversineMeters(last.lat, last.lng, lat, lng) >= LIVE_BREADCRUMB_MIN_GAP_M) {
+      crumbs.push({ lat, lng, legIdx: liveDrive.legIdx });
+    }
+  }
 
   // A step only counts as done once the fix has both gotten close to its end
   // AND started moving away again — tracking just the minimum distance seen
@@ -3547,6 +3575,11 @@ async function endLiveDrive() {
     if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
     if (to && to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
     else if (!to && liveDrive.lastFix) { trip.endLat = liveDrive.lastFix.lat; trip.endLng = liveDrive.lastFix.lng; }
+    // Consumed by finalizeTrip (see attachTripDetailedImage) once Save Drive
+    // actually commits this trip -- stripped there rather than kept on the
+    // trip long-term, since only the rendered image (not the raw points)
+    // needs to persist.
+    trip._pathPoints = liveDrive.breadcrumbs.filter(b => b.legIdx === i).map(b => ({ lat: b.lat, lng: b.lng }));
     trips.push(trip);
   }
 
@@ -3661,6 +3694,7 @@ async function resumeLiveDriveIfAny() {
     legDistanceM: saved.legDistanceM || 0,
     legArriveMinDist: null,
     completedLegs: saved.completedLegs || [],
+    breadcrumbs: saved.breadcrumbs || [],
     lastFix: null,
     paused: !!saved.paused, pausedAt: saved.pausedAt || null,
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
@@ -5929,7 +5963,15 @@ function renderEditTripModal() {
         <button id="closeEditTripBtn" class="icon-btn" title="Close">${icons.close}</button>
       </div>
 
-      ${t.summaryImage ? `<img src="${t.summaryImage}" alt="Route summary" style="width:100%;border-radius:10px;margin-bottom:14px;display:block;" />` : ""}
+      ${(t.hasDetailedImage || t.summaryImage || t.routeImageLink) ? `
+      <div style="margin-bottom:14px;">
+        ${t.hasDetailedImage
+          ? `<img id="editTripDetailedImg" alt="Route" style="width:100%;border-radius:10px;display:block;background:var(--surface);min-height:160px;" />`
+          : t.summaryImage
+          ? `<img src="${t.summaryImage}" alt="Route summary" style="width:100%;border-radius:10px;display:block;" />`
+          : ""}
+        ${t.routeImageLink ? `<a href="${escAttr(t.routeImageLink)}" target="_blank" rel="noopener" class="chip" style="margin-top:8px;display:inline-flex;">${icons.drive} Open detailed image in Drive</a>` : ""}
+      </div>` : ""}
 
       <label class="field-label">Date</label>
       <input id="editDate" type="date" class="input date-compact" value="${t.date}" style="margin-bottom:14px;" />
@@ -6989,9 +7031,176 @@ async function attachTripSummaryImage(trip) {
   }
 }
 
+// Standard Google encoded-polyline algorithm (the same format Directions
+// results and Static Maps' path=enc:... both use) -- turns a GPS breadcrumb
+// trail into a compact ASCII string instead of a raw comma-separated list
+// of coordinates, which for a real drive (hundreds of points) would blow
+// past the Static Maps API's URL length limit.
+function encodePolyline(points) {
+  let lastLat = 0, lastLng = 0, result = "";
+  const encodeValue = (v) => {
+    v = v < 0 ? ~(v << 1) : v << 1;
+    let out = "";
+    while (v >= 0x20) { out += String.fromCharCode((0x20 | (v & 0x1f)) + 63); v >>= 5; }
+    return out + String.fromCharCode(v + 63);
+  };
+  for (const p of points) {
+    const lat = Math.round(p.lat * 1e5), lng = Math.round(p.lng * 1e5);
+    result += encodeValue(lat - lastLat) + encodeValue(lng - lastLng);
+    lastLat = lat; lastLng = lng;
+  }
+  return result;
+}
+
+// The detailed route image lives in IndexedDB, not the main trips array --
+// unlike the small thumbnail above, it's fetched only when actually opened
+// (see the trip editor), and a browser's IndexedDB quota is typically far
+// larger than localStorage's, which is what the rest of this app's storage
+// (including every trip's own small thumbnail) shares.
+const ROUTE_IMAGE_DB_NAME = "driving-log-route-images";
+const ROUTE_IMAGE_STORE = "images";
+function openRouteImageDB() {
+  return new Promise((resolve, reject) => {
+    if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+    const req = indexedDB.open(ROUTE_IMAGE_DB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(ROUTE_IMAGE_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function putTripRouteImage(tripId, dataUrl) {
+  const db = await openRouteImageDB();
+  await new Promise((resolve, reject) => {
+    const tx = db.transaction(ROUTE_IMAGE_STORE, "readwrite");
+    tx.objectStore(ROUTE_IMAGE_STORE).put(dataUrl, tripId);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+async function getTripRouteImage(tripId) {
+  try {
+    const db = await openRouteImageDB();
+    return await new Promise((resolve, reject) => {
+      const req = db.transaction(ROUTE_IMAGE_STORE, "readonly").objectStore(ROUTE_IMAGE_STORE).get(tripId);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch (e) { return null; }
+}
+async function deleteTripRouteImage(tripId) {
+  try {
+    const db = await openRouteImageDB();
+    await new Promise((resolve, reject) => {
+      const tx = db.transaction(ROUTE_IMAGE_STORE, "readwrite");
+      tx.objectStore(ROUTE_IMAGE_STORE).delete(tripId);
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch (e) { /* best-effort cleanup */ }
+}
+// Clear All Drive History wipes every trip at once -- dropping the whole
+// database is simpler and just as correct as deleting each trip's image
+// individually.
+function clearAllRouteImages() {
+  try { indexedDB.deleteDatabase(ROUTE_IMAGE_DB_NAME); } catch (e) { /* best-effort cleanup */ }
+}
+
+// Bigger than the thumbnail (a real image worth zooming into) and, when
+// pathPoints (the actual driven breadcrumb trail — see handleLiveFix) is
+// available, draws the real route instead of a straight line. Quick Drive
+// and other manually-logged trips never have pathPoints, so they still
+// just get the two markers, same as the small thumbnail.
+function detailedStaticMapUrlForTrip(trip, pathPoints) {
+  const hasStart = trip.startLat != null, hasEnd = trip.endLat != null;
+  if (!hasStart && !hasEnd) return null;
+  const params = new URLSearchParams({ size: "640x400", scale: "2", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
+  if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
+  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
+  if (pathPoints && pathPoints.length > 1) {
+    params.append("path", `color:0x4C9FF2|weight:4|enc:${encodePolyline(pathPoints)}`);
+  } else if (hasStart && hasEnd) {
+    params.append("path", `color:0x4C9FF2|weight:4|${trip.startLat},${trip.startLng}|${trip.endLat},${trip.endLng}`);
+  }
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+}
+
+// One shared "Drive Log Route Images" folder for every upload, found once
+// per session and reused rather than searched-for on every single trip.
+let driveImagesFolderId = null;
+async function ensureDriveImagesFolder(token) {
+  if (driveImagesFolderId) return driveImagesFolderId;
+  const q = encodeURIComponent("name = 'Drive Log Route Images' and mimeType = 'application/vnd.google-apps.folder' and trashed = false and 'me' in owners");
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)`, { headers: { Authorization: "Bearer " + token } });
+  if (res.ok) {
+    const data = await res.json();
+    if (data.files && data.files[0]) { driveImagesFolderId = data.files[0].id; return driveImagesFolderId; }
+  }
+  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Drive Log Route Images", mimeType: "application/vnd.google-apps.folder" }),
+  });
+  if (!createRes.ok) throw new Error("Couldn't create Drive folder: " + createRes.status);
+  const created = await createRes.json();
+  driveImagesFolderId = created.id;
+  return driveImagesFolderId;
+}
+// Needs the drive.file scope added to GOOGLE_SCOPES -- a token cached from
+// before that scope existed won't carry it, which surfaces here as a 403;
+// the caller just leaves the trip without a Drive link rather than failing
+// the whole save over it (see attachTripDetailedImage).
+async function uploadTripImageToDrive(trip, blob) {
+  const token = await getFreshGoogleToken();
+  const folderId = await ensureDriveImagesFolder(token);
+  const metadata = { name: `${trip.date}-${trip.id}.png`, parents: [folderId] };
+  const form = new FormData();
+  form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
+  form.append("file", blob);
+  const res = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", {
+    method: "POST", headers: { Authorization: "Bearer " + token }, body: form,
+  });
+  if (!res.ok) throw new Error("Drive upload failed: " + res.status);
+  const data = await res.json();
+  return data.webViewLink || null;
+}
+// Generates the detailed image, stores it locally in IndexedDB (fetched
+// only when the trip is actually opened — see openTripEditor), and, when
+// connected to Sheets, also uploads it to Drive and keeps the link on the
+// trip so it round-trips through the sheet (see appendTripToSheet). Each
+// step is independently best-effort: a Drive upload failure (e.g. the
+// account hasn't reconnected since drive.file was added) still leaves the
+// image saved locally.
+async function attachTripDetailedImage(trip, pathPoints) {
+  if (!mapsConfigured()) return;
+  const url = detailedStaticMapUrlForTrip(trip, pathPoints);
+  if (!url) return;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const dataUrl = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    await putTripRouteImage(trip.id, dataUrl);
+    trip.hasDetailedImage = true;
+    if (state.sheetLink) {
+      try {
+        const link = await uploadTripImageToDrive(trip, blob);
+        if (link) trip.routeImageLink = link;
+      } catch (e) { console.warn("Couldn't upload detailed route image to Drive — reconnect Google Sync if this keeps happening", e); }
+    }
+  } catch (e) { console.warn("Detailed route image failed", e); }
+}
+
 async function finalizeTrip(trip) {
   trip.synced = false;
   await attachTripSummaryImage(trip);
+  if (trip._pathPoints) {
+    await attachTripDetailedImage(trip, trip._pathPoints);
+    delete trip._pathPoints;
+  }
   state.trips = [trip, ...state.trips];
   await storageSet(TRIPS_KEY, state.trips);
   await addRecentLocations([trip.startPoint, trip.endPoint]);
@@ -8370,6 +8579,7 @@ function attachAppHandlers() {
       await storageSet(TRIPS_KEY, state.trips);
       await storageSet(SUPERVISORS_KEY, state.supervisors);
       await storageSet(RECENT_LOCATIONS_KEY, state.recentLocations);
+      clearAllRouteImages();
       state.confirmingClearHistory = false;
       render();
     };
@@ -8377,6 +8587,15 @@ function attachAppHandlers() {
 
   if (state.editingTrip) {
     const et = state.editingTrip;
+    if (et.hasDetailedImage) {
+      getTripRouteImage(et.id).then(dataUrl => {
+        // state.editingTrip could have changed (a different trip opened, or
+        // this one closed) by the time the IndexedDB read resolves.
+        if (state.editingTrip !== et) return;
+        const img = document.getElementById("editTripDetailedImg");
+        if (img && dataUrl) img.src = dataUrl;
+      });
+    }
     document.getElementById("editDate").onchange = (e) => { et.date = e.target.value; };
     attachTimeInput(document.getElementById("editStartTime"), (v) => { et.startTime = v; });
     attachTimeInput(document.getElementById("editEndTime"), (v) => { et.endTime = v; });
@@ -8435,6 +8654,7 @@ function attachAppHandlers() {
       state.trips = state.trips.filter(t => t.id !== et.id);
       state.selectedTripIds = state.selectedTripIds.filter(id => id !== et.id);
       await storageSet(TRIPS_KEY, state.trips);
+      if (et.hasDetailedImage) deleteTripRouteImage(et.id);
       state.editingTrip = null;
       render();
     };
@@ -8479,8 +8699,10 @@ function attachAppHandlers() {
 
     const confirmBtn = document.getElementById("confirmDeleteSelectedBtn");
     if (confirmBtn) confirmBtn.onclick = async () => {
+      const deleted = state.trips.filter(t => state.selectedTripIds.includes(t.id));
       state.trips = state.trips.filter(t => !state.selectedTripIds.includes(t.id));
       await storageSet(TRIPS_KEY, state.trips);
+      deleted.forEach(t => { if (t.hasDetailedImage) deleteTripRouteImage(t.id); });
       state.selectedTripIds = [];
       state.confirmingDeleteSelected = false;
       state.historySelectMode = false;
