@@ -273,6 +273,13 @@
   .planner-sky-mask{display:none;position:absolute;top:0;left:0;right:0;height:24vh;z-index:15;pointer-events:none;
     background:linear-gradient(to bottom, var(--bg) 0%, var(--bg) 45%, transparent 100%);}
   .planner-sky-mask.show{display:block;}
+  /* Large, unmistakable "you're paused" indicator dead center -- pause was
+     otherwise only visible as a small icon-swap on the button itself. */
+  .planner-paused-overlay{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:25;
+    width:96px;height:96px;border-radius:50%;background:rgba(var(--amber-rgb),.16);
+    border:3px solid var(--amber);color:var(--amber);display:flex;align-items:center;justify-content:center;
+    pointer-events:none;}
+  .planner-paused-overlay .icon{width:44px;height:44px;}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
@@ -401,39 +408,35 @@
   .planner-legtags .planner-leg-row{padding:3px 0;}
   .planner-legtags .divider{margin:3px 0;}
 
-  /* Sits above the turn banner, right at the physical top of the screen —
-     the shield badge with the actual road it refers to underneath, so it
-     reads as "this is what road you're approaching" independent of the
-     banner's own turn-by-turn instruction below it. Reserves its space
-     unconditionally (rather than collapsing when no shield applies) so the
-     banner underneath doesn't jump up and down as shields come and go. */
-  .planner-shield-bar{position:absolute;top:0;left:0;right:0;z-index:31;
-    padding-top:calc(env(safe-area-inset-top) + 6px);
-    display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;}
-  .planner-shield-road{display:none;font-size:11px;font-weight:700;color:var(--text);
-    background:rgba(var(--bg-rgb),.85);padding:2px 9px;border-radius:6px;}
-  .planner-shield-road.show{display:inline-block;}
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
-    padding:calc(env(safe-area-inset-top) + 54px) 10px 16px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
-    display:flex;align-items:center;gap:14px;}
-  .planner-turn-icon{width:52px;height:52px;border-radius:14px;background:var(--amber);color:var(--bg);flex-shrink:0;
+    padding:calc(env(safe-area-inset-top) + 14px) 10px 16px;
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    display:flex;align-items:center;gap:12px;}
+  /* Google Maps' own maneuver icon is a blue rounded square with a white
+     arrow, top-left of the screen — this is the left-most element in the
+     row, and the row itself sits at the very top (see .planner-drive-banner
+     above), so it lands in the same corner. */
+  .planner-turn-icon{width:52px;height:52px;border-radius:14px;background:var(--blue);color:#fff;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;}
   .planner-turn-icon.arrive{background:var(--normal);}
   .planner-turn-icon .icon{width:26px;height:26px;}
-  /* A rough approximation of a route shield — the real thing's exact
-     white/green/yellow convention is baked into Google's own map tiles,
-     not something this app renders, so this is just a reasonable stand-in
-     when a route code (e.g. "A77") is found in the upcoming step's
-     instructions. Yellow text specifically requested (regardless of the
-     background) rather than matching any particular real shield style. */
+  /* Shield + the actual road it refers to, right of the maneuver icon. A
+     rough approximation of a route shield — the real thing's exact
+     white/green/yellow convention is baked into Google's own map tiles, not
+     something this app renders — shown when a route code (e.g. "A77") is
+     found in the upcoming step's instructions. Yellow text specifically
+     requested (regardless of the background) rather than matching any
+     particular real shield style. */
+  .planner-shield-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;}
   .planner-turn-shield{display:none;align-items:center;justify-content:center;flex-shrink:0;
     min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#FFD400;
     font-size:13px;font-weight:800;letter-spacing:.02em;border:1.5px solid #fff;}
   .planner-turn-shield.show{display:inline-flex;}
+  .planner-shield-road{display:none;font-size:10px;font-weight:700;color:var(--text);
+    background:rgba(var(--bg-rgb),.85);padding:1px 7px;border-radius:5px;white-space:nowrap;}
+  .planner-shield-road.show{display:inline-block;}
   .planner-turn-text{min-width:0;flex:1;}
   .planner-turn-text b{display:block;font-size:21px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .planner-turn-text span{display:block;font-size:12px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;max-width:38%;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
@@ -443,17 +446,21 @@
      edge), the ETA/Remaining/Distance row at the very bottom edge itself. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:14px 10px calc(10px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 35%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;}
-  /* Column, not row -- Next (multi-leg drives only) above Pause above Stop,
-     still pinned to the right edge above the bottom bar. */
-  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:10px;align-self:flex-end;}
+  /* Equal 1fr side columns (same trick as .planner-eta-metrics-row below)
+     so the road pill genuinely centers regardless of how wide the controls
+     column actually is, with both sitting at the same height -- the
+     controls used to be their own row entirely above the pill. */
+  .planner-eta-top-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;}
+  .planner-current-road-row{display:flex;justify-content:center;}
+  /* Column, not row -- Next (multi-leg drives only) above Pause above Stop. */
+  .planner-eta-controls{display:flex;flex-direction:column;align-items:center;gap:10px;justify-self:end;}
   .planner-next-leg-btn{width:40px;height:40px;border-radius:50%;flex-shrink:0;background:transparent;
     border:2px solid var(--blue);color:var(--blue);display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-next-leg-btn .icon{width:17px;height:17px;}
-  .planner-current-road-row{display:flex;justify-content:center;}
-  .planner-current-road-pill{display:none;font-size:12px;font-weight:700;color:var(--text);
-    background:rgba(var(--surface-rgb),.9);border:1px solid var(--border);border-radius:999px;padding:4px 12px;}
+  .planner-current-road-pill{display:none;font-size:12px;font-weight:700;color:var(--amber);
+    background:rgba(var(--amber-rgb),.12);border:1px solid rgba(var(--amber-rgb),.4);border-radius:999px;padding:4px 12px;}
   .planner-current-road-pill.show{display:inline-block;}
   .planner-pause-drive-btn, .planner-end-drive-btn{width:46px;height:46px;border-radius:50%;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;cursor:pointer;}
@@ -471,6 +478,11 @@
   .planner-eta-metrics-row .m.remain .v{font-size:22px;font-weight:800;color:var(--amber);}
   .planner-eta-bar.paused .planner-eta-metrics-row .m.remain .v{color:var(--muted);}
   .planner-eta-metrics-row .m.eta .v, .planner-eta-metrics-row .m.dist .v{font-size:15px;font-weight:700;color:var(--text);}
+  /* Tight number/unit kerning, same idea as .planner-turn-dist's own .unit —
+     a plain space between "1" and "hr", or the time and "PM", reads looser
+     than the rest of these tightly-set mono figures. */
+  .planner-eta-metrics-row .v .unit{font-size:.62em;font-weight:700;margin-left:1px;}
+  .planner-eta-metrics-row .v .ampm{font-size:.6em;font-weight:700;margin-left:1px;}
   .planner-eta-metrics-row .m.dist .v .unit{font-size:.65em;font-weight:700;margin-left:1px;}
   .planner-eta-metrics-row .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
@@ -489,7 +501,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-19.6";
+const APP_BUILD = "2026-08-19.7";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2619,7 +2631,7 @@ function formatLiveTurnDistance(distM) {
 function formatLiveDuration(mins) {
   const total = Math.max(0, Math.round(mins));
   const h = Math.floor(total / 60), m = total % 60;
-  return h === 0 ? `${m} min` : `${h} hr ${m} min`;
+  return h === 0 ? `${m}<span class="unit">min</span>` : `${h}<span class="unit">hr</span> ${m}<span class="unit">min</span>`;
 }
 function stepPlainInstruction(html) {
   const div = document.createElement("div");
@@ -3384,7 +3396,13 @@ function computeLiveRemaining() {
   const eta = new Date(Date.now() + remainingMin * 60000);
   // hour12 forced explicitly rather than left to the runtime locale's
   // default hour cycle, so ETA always reads as 12-hour time.
-  return { km: remainingM / 1000, min: remainingMin, etaStr: eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true }) };
+  const rawEta = eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
+  // Tighten the gap before AM/PM the same way distance/duration tighten
+  // theirs before "km"/"hr" -- a plain locale-inserted space there reads
+  // looser than the rest of this readout.
+  const ampmMatch = rawEta.match(/^(.*\d)\s*([AP]M)$/i);
+  const etaStr = ampmMatch ? `${ampmMatch[1]}<span class="ampm">${ampmMatch[2]}</span>` : rawEta;
+  return { km: remainingM / 1000, min: remainingMin, etaStr };
 }
 
 // Targeted DOM update on every GPS fix — deliberately not a full render(),
@@ -3395,7 +3413,6 @@ function updateLiveDriveDOM() {
   const step = liveDrive.steps[liveDrive.stepIdx];
   const turnIconWrap = document.getElementById("plannerTurnIconWrap");
   const turnMain = document.getElementById("plannerTurnMain");
-  const turnSub = document.getElementById("plannerTurnSub");
   const turnDistVal = document.getElementById("plannerTurnDistVal");
   const arrived = !step;
   const rerouting = !!liveDrive.rerouting;
@@ -3415,11 +3432,11 @@ function updateLiveDriveDOM() {
       : junctionStep ? stepStreetName(junctionStep.instructions)
       : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
-  // Same instruction text in both places: the sub-line under the main road
-  // name, and the label under the next-turn distance counter (which used to
-  // be the static word "next turn" regardless of what the turn actually is).
+  // The label under the next-turn distance counter (which used to be the
+  // static word "next turn" regardless of what the turn actually is) --
+  // the road name's own sub-instruction line was dropped as redundant with
+  // this, now that it says the same thing.
   const instructionText = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
-  if (turnSub) turnSub.textContent = instructionText;
   const turnDistLabel = document.getElementById("plannerTurnDistLabel");
   if (turnDistLabel) turnDistLabel.textContent = instructionText;
   const turnShield = document.getElementById("plannerTurnShield");
@@ -3458,8 +3475,8 @@ function updateLiveDriveDOM() {
   const remainTimeVal = document.getElementById("plannerRemainTimeVal");
   const etaVal = document.getElementById("plannerEtaVal");
   const remainDistVal = document.getElementById("plannerRemainVal");
-  if (remainTimeVal) remainTimeVal.textContent = arrived ? "Arrived" : formatLiveDuration(remain.min);
-  if (etaVal) etaVal.textContent = arrived ? "–" : remain.etaStr;
+  if (remainTimeVal) remainTimeVal.innerHTML = arrived ? "Arrived" : formatLiveDuration(remain.min);
+  if (etaVal) etaVal.innerHTML = arrived ? "–" : remain.etaStr;
   // Reuses formatLiveTurnDistance's tight number/unit markup and m/km (or
   // ft/mi) threshold — it takes meters, so the km figure here is converted
   // going in rather than duplicating that formatting logic.
@@ -3475,6 +3492,15 @@ async function endLiveDrive() {
   if (!liveDrive || !state.planner) return;
   const p = state.planner;
   if (liveWatchId != null) { navigator.geolocation.clearWatch(liveWatchId); liveWatchId = null; }
+
+  // Saved so the Drive Complete screen's Back button can put the drive right
+  // back the way it was -- liveDrive is plain data (flattenDirectionsSteps
+  // never keeps Maps SDK objects in it), safe to deep-clone with JSON.
+  // plannerDirectionsResult isn't clonable the same way, but a plain
+  // reference is enough since it's only ever reassigned below, never mutated.
+  p.preStopSnapshot = { liveDrive: JSON.parse(JSON.stringify(liveDrive)), directionsResult: plannerDirectionsResult, stoppedAt: Date.now() };
+  const legIdxAtStop = liveDrive.legIdx;
+  const hadPartialProgress = legIdxAtStop < p.legs.length && liveDrive.legDistanceM > 0;
 
   // Ending while paused: exclude the still-ongoing paused interval from the
   // final leg's duration, same math as a resume — just without restarting tracking.
@@ -3535,12 +3561,78 @@ async function endLiveDrive() {
     legs: liveDrive.completedLegs.map((cl, i) => ({ tag: p.legs[i] ? p.legs[i].tag : null, distanceKm: cl.distanceKm, durationMin: cl.durationMin })),
     trips,
   };
+  // Stopped before the final destination -- the map still has the full
+  // planned route loaded (start -> ... -> a stop that was never actually
+  // reached), which would show road ahead as "driven" that never was.
+  // Replace it with a fresh route covering only the stops actually reached,
+  // ending at wherever GPS last had the driver, so the map on this screen
+  // reflects the real drive instead of the plan.
+  if (legIdxAtStop < p.legs.length && p.stops[0].lat != null) {
+    try {
+      const library = await getRoutesLibrary();
+      if (!library) throw new Error("Directions service isn't ready");
+      const { DirectionsService } = library;
+      const service = new DirectionsService();
+      const destPoint = hadPartialProgress && liveDrive.lastFix
+        ? { lat: liveDrive.lastFix.lat, lng: liveDrive.lastFix.lng }
+        : { lat: p.stops[legIdxAtStop].lat, lng: p.stops[legIdxAtStop].lng };
+      const waypoints = p.stops.slice(1, legIdxAtStop).filter(s => s.lat != null)
+        .map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true }));
+      const result = await new Promise((resolve, reject) => {
+        service.route({
+          origin: { lat: p.stops[0].lat, lng: p.stops[0].lng }, destination: destPoint, waypoints,
+          travelMode: google.maps.TravelMode.DRIVING,
+        }, (res, status) => { if (status !== "OK") { reject(new Error(status)); return; } resolve(res); });
+      });
+      plannerDirectionsResult = result;
+    } catch (e) { /* keep showing the originally planned route rather than none at all */ }
+  }
   p.stage = "complete";
   p.mapFocusMode = false;
   liveDrive = null;
   plannerLiveMarker = null;
   stopLiveMoveAnimation();
   await storageDelete(LIVE_DRIVE_KEY);
+  render();
+}
+
+// Drive Complete's Back button — undoes endLiveDrive using the snapshot it
+// took right before mutating anything, then resumes GPS tracking exactly
+// like starting a fresh drive would. The gap between stopping and tapping
+// Back is excluded from the resumed leg's duration, same idea as a pause.
+async function resumeStoppedDrive() {
+  const p = state.planner;
+  if (!p || !p.preStopSnapshot) return;
+  const snap = p.preStopSnapshot;
+  const gapMs = Date.now() - snap.stoppedAt;
+  liveDrive = snap.liveDrive;
+  liveDrive.startedAt += gapMs;
+  liveDrive.legStartedAt += gapMs;
+  plannerDirectionsResult = snap.directionsResult;
+  p.preStopSnapshot = null;
+  p.completeSummary = null;
+  p.stage = "driving";
+  p.mapFocusMode = false;
+  plannerLiveMarker = null;
+  liveMapRotationDeg = 0;
+  liveMapLastHeadingDeg = 0;
+  liveMapLastSpeedMs = 0;
+  liveMapCurrentTilt = 0;
+  liveMapLastAppliedZoom = null;
+  stopLiveMoveAnimation();
+  await persistLiveDriveSnapshot();
+  render();
+  liveWatchId = navigator.geolocation.watchPosition(handleLiveFix, () => { /* a missed fix just means no update this tick */ }, {
+    enableHighAccuracy: true, maximumAge: 2000, timeout: 15000,
+  });
+}
+
+// Drive Complete's Discard button (after the confirm step) — abandons the
+// drive entirely; nothing's been saved yet at this point regardless, so
+// this is just leaving the planner the same as any other cancel.
+function discardStoppedDrive() {
+  state.planner = null;
+  plannerDirectionsResult = null;
   render();
 }
 
@@ -5025,6 +5117,7 @@ function renderPlanTab() {
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
     <button type="button" class="planner-zoom-fab ${liveDrive && liveDrive.zoomMode !== "auto" ? "active" : ""}" id="plannerZoomBtn" title="Cycle zoom: ${LIVE_ZOOM_MODE_CYCLE.join(" / ")}">${icons.zoomView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
+    ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
 
     ${driving ? renderPlannerDrivingBanner() : complete ? "" : `
     <div class="planner-topbar">
@@ -5056,8 +5149,24 @@ function renderPlanTab() {
       ${renderPlannerCompleteSummary()}
       ${p.saved
         ? `<button type="button" id="plannerCompleteCloseBtn" class="btn btn-amber">${icons.check} Done</button>`
-        : `<button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>`}
-    </div>` : (p.showSavedList ? "" : `
+        : `
+        <div class="row-2" style="margin-bottom:10px;">
+          <button type="button" id="plannerBackToDriveBtn" class="btn btn-ghost">${icons.chevronLeft} Back</button>
+          <button type="button" id="plannerDiscardDriveBtn" class="btn btn-ghost" style="color:var(--work);">${icons.trash} Discard</button>
+        </div>
+        <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>`}
+    </div>
+    ${p.confirmingDiscard ? `
+    <div class="modal-backdrop">
+      <div class="modal-card">
+        <h2 style="color:var(--work);">Discard this drive?</h2>
+        <p class="settings-desc" style="margin:0 0 18px;">Nothing from this drive will be saved. This action can't be undone.</p>
+        <div class="row-2">
+          <button type="button" id="plannerKeepDriveBtn" class="btn btn-ghost">Keep Drive</button>
+          <button type="button" id="plannerConfirmDiscardBtn" class="btn btn-stop">Discard</button>
+        </div>
+      </div>
+    </div>` : ""}` : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
       ${p.previewing && !plannerDirectionsResult ? `<p class="settings-desc" style="text-align:center;margin:0 0 8px;">${icons.route} Calculating route…</p>` : ""}
@@ -5137,13 +5246,13 @@ function renderPlannerCompleteSummary() {
 
 function renderPlannerDrivingBanner() {
   return `
-  <div class="planner-shield-bar" id="plannerShieldBar">
-    <span class="planner-turn-shield" id="plannerTurnShield"></span>
-    <span class="planner-shield-road" id="plannerShieldRoad"></span>
-  </div>
   <div class="planner-drive-banner">
     <span class="planner-turn-icon" id="plannerTurnIconWrap">${icons.straight}</span>
-    <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b><span id="plannerTurnSub">Getting your position</span></div>
+    <div class="planner-shield-col">
+      <span class="planner-turn-shield" id="plannerTurnShield"></span>
+      <span class="planner-shield-road" id="plannerShieldRoad"></span>
+    </div>
+    <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b></div>
     <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l" id="plannerTurnDistLabel">next turn</div></div>
   </div>`;
 }
@@ -5154,12 +5263,15 @@ function renderPlannerEtaBar() {
   const hasNextLeg = !!(liveDrive && p && liveDrive.legIdx < p.legs.length - 1);
   return `
   <div class="planner-eta-bar ${paused ? "paused" : ""}">
-    <div class="planner-eta-controls">
-      ${hasNextLeg ? `<button type="button" class="planner-next-leg-btn" id="plannerNextLegBtn" title="Mark this leg complete and start the next">${icons.skipForward}</button>` : ""}
-      <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
-      <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+    <div class="planner-eta-top-row">
+      <span></span>
+      <div class="planner-current-road-row"><span class="planner-current-road-pill" id="plannerCurrentRoadPill"></span></div>
+      <div class="planner-eta-controls">
+        ${hasNextLeg ? `<button type="button" class="planner-next-leg-btn" id="plannerNextLegBtn" title="Mark this leg complete and start the next">${icons.skipForward}</button>` : ""}
+        <button type="button" class="planner-pause-drive-btn ${paused ? "paused" : ""}" id="plannerPauseDriveBtn" title="${paused ? "Resume" : "Pause"}">${paused ? icons.play : icons.pause}</button>
+        <button type="button" class="planner-end-drive-btn" id="plannerEndDriveBtn" title="End Drive">${icons.stop}</button>
+      </div>
     </div>
-    <div class="planner-current-road-row"><span class="planner-current-road-pill" id="plannerCurrentRoadPill"></span></div>
     <div class="planner-eta-metrics-row">
       <div class="m eta"><div class="v mono" id="plannerEtaVal">–</div><div class="l">ETA</div></div>
       <div class="m remain"><div class="v mono" id="plannerRemainTimeVal">${paused ? "Paused" : "–"}</div><div class="l">Remaining</div></div>
@@ -7353,6 +7465,14 @@ function attachAppHandlers() {
       };
       const completeCloseBtn = document.getElementById("plannerCompleteCloseBtn");
       if (completeCloseBtn) completeCloseBtn.onclick = cancelPlanner;
+      const backToDriveBtn = document.getElementById("plannerBackToDriveBtn");
+      if (backToDriveBtn) backToDriveBtn.onclick = resumeStoppedDrive;
+      const discardDriveBtn = document.getElementById("plannerDiscardDriveBtn");
+      if (discardDriveBtn) discardDriveBtn.onclick = () => { p.confirmingDiscard = true; render(); };
+      const keepDriveBtn = document.getElementById("plannerKeepDriveBtn");
+      if (keepDriveBtn) keepDriveBtn.onclick = () => { p.confirmingDiscard = false; render(); };
+      const confirmDiscardBtn = document.getElementById("plannerConfirmDiscardBtn");
+      if (confirmDiscardBtn) confirmDiscardBtn.onclick = discardStoppedDrive;
       const browseSavedBtn = document.getElementById("plannerBrowseSavedBtn");
       if (browseSavedBtn) browseSavedBtn.onclick = () => { p.showSavedList = !p.showSavedList; render(); };
       const plannerSettingsBtn = document.getElementById("plannerSettingsBtn");
