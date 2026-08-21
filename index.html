@@ -493,10 +493,10 @@
      heading (see rotateLiveMap). */
   .planner-position-arrow{position:absolute;left:50%;bottom:100%;z-index:26;
     transform:translateX(-50%) rotate(var(--arrow-rot, 0deg));
-    width:34px;height:34px;border-radius:50%;margin-bottom:8px;
-    background:#4C9FF2;color:#fff;border:2px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.4);
+    width:30px;height:30px;margin-bottom:8px;color:#4C9FF2;
+    filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
-  .planner-position-arrow .icon{width:18px;height:18px;}
+  .planner-position-arrow .icon{width:100%;height:100%;}
   /* Equal 1fr side columns (same trick as .planner-eta-metrics-row below)
      so the road pill genuinely centers regardless of how wide the controls
      column actually is, with both sitting at the same height -- the
@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.3";
+const APP_BUILD = "2026-08-20.4";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3697,6 +3697,21 @@ function updateLiveDriveDOM() {
 }
 
 // Stop & Save: finalizes whatever's left of the leg in progress (its end
+// Bounds an otherwise-unbounded network call (geocoding, routing) to at
+// most ms before giving up on it. A rejection is one thing -- every await
+// below already has a fallback for that -- but a call that just never
+// calls back (a stalled connection, a quota hiccup) leaves a bare await
+// hanging forever with nothing to catch, and endLiveDrive used to have
+// several of exactly that shape in a row. Any one of them stalling meant
+// p.stage never reached "complete" -- Stop looked like it simply did
+// nothing, with no error and no way out of the drive short of reloading.
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timed out")), ms)),
+  ]);
+}
+
 // point becomes the current, reverse-geocoded location rather than the
 // planned stop, since that's genuinely where the drive ended), then commits
 // every completed/partial leg as a real trip using GPS-captured distance
@@ -3745,11 +3760,15 @@ async function endLiveDrive() {
     const endTimeStr = `${String(cursor.getHours()).padStart(2, "0")}:${String(cursor.getMinutes()).padStart(2, "0")}`;
     let endPoint = to ? (to.address.trim() || "Unspecified") : "Current location";
     if (!to && liveDrive.lastFix) {
-      const matched = mapsConfigured() ? await matchSavedAddressNear(liveDrive.lastFix.lat, liveDrive.lastFix.lng) : null;
+      let matched = null;
+      if (mapsConfigured()) {
+        try { matched = await withTimeout(matchSavedAddressNear(liveDrive.lastFix.lat, liveDrive.lastFix.lng), 6000); }
+        catch { /* rejected or timed out -- fall through to reverse geocoding below */ }
+      }
       if (matched) {
         endPoint = matched.address;
       } else {
-        try { endPoint = await reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng); } catch { /* keep the "Current location" fallback */ }
+        try { endPoint = await withTimeout(reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng), 6000); } catch { /* keep the "Current location" fallback */ }
       }
     }
     const trip = {
@@ -3787,7 +3806,7 @@ async function endLiveDrive() {
   // reflects the real drive instead of the plan.
   if (legIdxAtStop < p.legs.length && p.stops[0].lat != null) {
     try {
-      const library = await getRoutesLibrary();
+      const library = await withTimeout(getRoutesLibrary(), 6000);
       if (!library) throw new Error("Directions service isn't ready");
       const { DirectionsService } = library;
       const service = new DirectionsService();
@@ -3796,12 +3815,12 @@ async function endLiveDrive() {
         : { lat: p.stops[legIdxAtStop].lat, lng: p.stops[legIdxAtStop].lng };
       const waypoints = p.stops.slice(1, legIdxAtStop).filter(s => s.lat != null)
         .map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true }));
-      const result = await new Promise((resolve, reject) => {
+      const result = await withTimeout(new Promise((resolve, reject) => {
         service.route({
           origin: { lat: p.stops[0].lat, lng: p.stops[0].lng }, destination: destPoint, waypoints,
           travelMode: google.maps.TravelMode.DRIVING,
         }, (res, status) => { if (status !== "OK") { reject(new Error(status)); return; } resolve(res); });
-      });
+      }), 8000);
       plannerDirectionsResult = result;
     } catch (e) { /* keep showing the originally planned route rather than none at all */ }
   }
