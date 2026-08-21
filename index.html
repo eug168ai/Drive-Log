@@ -591,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.17";
+const APP_BUILD = "2026-08-21.18";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5789,83 +5789,34 @@ function renderSavedRoutesList() {
   }).join("");
 }
 
-// Single A-to-B drive: search or tap the map for a start/end (no waypoints),
-// then start a real live-timed drive right now. This is the quick path —
-// anything with a stop in between goes through the Trip Planner below.
+// Only ever renders anything for a Quick Drive already in progress (the
+// manual/no-GPS timer, started before this was retired below, or resumed
+// after a reload) -- its own pre-drive setup form (address fields,
+// Estimate Drive, Start Drive) used to live here too, but the Trip
+// Planner's Start Drive/Log Drive already cover the exact same single
+// A-to-B case and more, so that entry point is gone; this just keeps the
+// still-live in-progress card working rather than stranding it with no
+// way to see/end it.
 function renderQuickDriveSection() {
   const a = state.active;
-  if (a) {
-    return `
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
-        <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
-      </div>
-      <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
-
-      ${state.endDriveError ? `
-      <p class="settings-desc" style="color:var(--work);margin:0 0 10px;">${state.endDriveError}</p>
-      <label class="field-label">Distance (${unitLabel()})</label>
-      <input id="manualDistanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.manualDistanceFallback}" style="margin-bottom:10px;" />
-      <button id="saveManualDistanceBtn" class="btn btn-ghost" style="margin-bottom:14px;">${icons.check} Save with this distance</button>
-      ` : ""}
-
-      <button id="endDriveBtn" class="btn btn-stop" ${state.endDriveBusy ? "disabled" : ""}>${icons.stop} ${state.endDriveBusy ? "Ending Drive…" : "End Drive"}</button>
-    </div>
-    ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
-  }
-
+  if (!a) return "";
   return `
   <div class="card">
-    ${state.settings.showDriveTypeOnLog ? `
-    <label class="field-label">Drive Type</label>
-    <div class="toggle-row" style="margin-bottom:16px;">
-      <button class="toggle normal ${state.settings.driveType === "normal" ? "on" : ""}" data-drivetype="normal">Personal</button>
-      <button class="toggle work ${state.settings.driveType === "work" ? "on" : ""}" data-drivetype="work">Business</button>
-      <button class="toggle supervised ${state.settings.driveType === "supervised" ? "on" : ""}" data-drivetype="supervised">Supervised</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+      <span class="tag ${a.tag}">${labelFor(DRIVE_TYPES, a.tag)}</span>
+      <div class="timer">${icons.clock}<span id="timerDisplay" class="mono">00:00</span></div>
     </div>
+    <p style="color:var(--muted);font-size:13px;margin:0 0 16px;">From <b class="route-clip" style="color:var(--text);display:inline-block;width:auto;max-width:200px;vertical-align:bottom;overflow:hidden;white-space:nowrap;"><span class="route-track" id="activeStartPointTrack">${a.startPoint}</span></b> at ${formatTime24(a.startTime)}</p>
+
+    ${state.endDriveError ? `
+    <p class="settings-desc" style="color:var(--work);margin:0 0 10px;">${state.endDriveError}</p>
+    <label class="field-label">Distance (${unitLabel()})</label>
+    <input id="manualDistanceInput" class="input" placeholder="0.0" inputmode="decimal" value="${state.manualDistanceFallback}" style="margin-bottom:10px;" />
+    <button id="saveManualDistanceBtn" class="btn btn-ghost" style="margin-bottom:14px;">${icons.check} Save with this distance</button>
     ` : ""}
-    <label class="field-label">Start Location</label>
-    ${renderSavedAddressChips("startPointInput")}
-    <div class="input-icon" style="margin-bottom:16px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="startPointInput" list="recentLocations" placeholder="e.g. Home" value="${state.startPointInput}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-      </div>
-      <button id="locateStartBtn" class="locate-btn" type="button" title="Use my location" ${state.locatingStart ? "disabled" : ""}>${state.locatingStart ? "…" : icons.locate}</button>
-    </div>
-    ${state.locateError ? `<p class="settings-desc" style="color:var(--work);margin:-10px 0 14px;">${state.locateError}</p>` : ""}
 
-    <label class="field-label">End Location</label>
-    ${renderSavedAddressChips("preTripEndInput")}
-    <div class="input-icon" style="margin-bottom:10px;">
-      ${icons.pin}<div class="loc-field-wrap">
-        <input id="preTripEndInput" list="recentLocations" placeholder="e.g. Office" value="${state.preTripEndLocation}" onfocus="setTimeout(() => this.select())" />
-        <div class="loc-overlay"><div class="route-clip"><span class="route-track"></span></div></div>
-      </div>
-    </div>
-
-    <div id="preTripEstimateSection" style="${state.preTripEndLocation.trim() ? "margin-bottom:16px;" : "display:none;margin-bottom:16px;"}">
-      <div class="pretrip-row">
-        <button id="preTripEstimateBtn" class="chip" type="button" style="flex-shrink:0;white-space:nowrap;" ${state.preTripEstimating ? "disabled" : ""}>
-          ${icons.route} ${state.preTripEstimating ? "Calculating…" : "Estimate Drive"}
-        </button>
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<span class="mono pretrip-values">~${state.preTripDistance} ${unitLabel()} · ${state.preTripDuration} min</span>` : ""}
-        ${state.preTripDistance != null && !state.preTripEstimating ? `<button id="logEstimateBtn" class="chip pretrip-log-btn" type="button" style="white-space:nowrap;">${icons.clock} Log this Drive</button>` : ""}
-      </div>
-      ${state.preTripEstimateError ? `<p class="settings-desc" style="color:var(--work);margin:0;">${state.preTripEstimateError}</p>` : ""}
-    </div>
-    <p id="preTripEndHint" class="settings-desc" style="margin:0 0 16px;${state.preTripEndLocation.trim() ? "display:none;" : ""}">Optional - Blank to skip or enter to estimate drive.</p>
-
-    ${(() => { const sug = suggestRouteTag(); return sug ? `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:16px;">
-      <span style="font-size:12px;color:var(--muted);">Usually tagged <b class="tag ${sug.tag}" style="margin:0 2px;">${labelFor(DRIVE_TYPES, sug.tag)}</b> for this route</span>
-      <button id="applyRouteSuggestionBtn" class="chip active" data-suggesttag="${sug.tag}" type="button">Apply</button>
-    </div>` : ""; })()}
-
-    <button id="startTripBtn" class="btn btn-amber" ${state.startDriveBusy || !state.startPointInput.trim() ? "disabled" : ""}>${icons.play} ${state.startDriveBusy ? "Starting…" : "Start Drive"}</button>
-  </div>
-  ${state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate" ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : ""}`;
+    <button id="endDriveBtn" class="btn btn-stop" ${state.endDriveBusy ? "disabled" : ""}>${icons.stop} ${state.endDriveBusy ? "Ending Drive…" : "End Drive"}</button>
+  </div>`;
 }
 
 function renderPlanTab() {
@@ -5876,12 +5827,18 @@ function renderPlanTab() {
     // Saved routes live only inside the planner itself now (tap the star
     // in its header, see plannerBrowseSavedBtn) -- showing the same list
     // again here too just duplicated it on the Drive tab's home screen.
+    // Entering the planner itself is its own standalone, theme-colored
+    // button at the very bottom of the page now, rather than nested
+    // inside this card -- primary action for the page, not one buried
+    // under an "Under Construction" label.
+    const refuelBtn = state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate"
+      ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : "";
     const plannerEntry = state.active ? "" : `
     <div class="card card-construction">
-      <p class="settings-title" style="margin:0 0 10px;">${icons.route} Drive Planner<span class="construction-tag">Under Construction</span></p>
-      <button type="button" id="newPlannerRouteBtn" class="btn btn-grey">${icons.route} New Drive</button>
-    </div>`;
-    return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
+      <p class="settings-title" style="margin:0;">${icons.route} Drive Planner<span class="construction-tag">Under Construction</span></p>
+    </div>
+    <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} Plan Drive</button>`;
+    return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${refuelBtn}${plannerEntry}`;
   }
 
   const n = p.stops.length;
