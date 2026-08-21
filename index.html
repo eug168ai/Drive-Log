@@ -573,7 +573,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.1";
+const APP_BUILD = "2026-08-21.2";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1425,12 +1425,6 @@ const state = {
   // single trip the Quick Drive flow always has -- an array of trips
   // instead of one, applied to every trip in it tagged "supervised".
   pendingPlannerTrips: null,
-  // Distinguishes where pendingPlannerTrips came from once conditions are
-  // saved: the live-driven Save Drive flow stays on the Drive Complete
-  // screen afterward (it flips p.saved so its own Done button takes over),
-  // while logPlannedRouteNow's pre-trip "Log Drive" has no such screen and
-  // needs to close the planner and jump to the Log tab itself instead.
-  pendingPlannerTripsFromLog: false,
   confirmingDrive: false, // showing the drive summary review step, before any supervised conditions prompt
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -2569,16 +2563,36 @@ function minutesToTimeStr(totalMinutes) {
 // from a chosen date/start time, using each leg's estimated Directions
 // duration as its drive time — for logging a drive that already happened
 // (or that you don't want live-tracked) rather than live GPS tracking.
-async function logPlannedRouteNow(date, startTimeStr) {
+// Driven by the single redesigned "Log this Drive" window (renderPlannerLogModal)
+// -- same shape as Log Estimate/Drive Summary: conditions (if any leg is
+// Supervised) are already sitting on state.conditionsForm by the time this
+// runs, filled in inline rather than via a separate step afterward. endTimeStr
+// (possibly hand-edited away from the Directions estimate) sets the *total*
+// drive duration; each leg's own start/end is a proportional share of that
+// total by its estimated duration, so editing the overall time doesn't throw
+// off the relative length of a multi-leg trip.
+async function logPlannedRouteNow(date, startTimeStr, endTimeStr) {
   const p = state.planner;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
-  let cursor = startTimeStr != null ? (parseInt(startTimeStr.slice(0, 2), 10) * 60 + parseInt(startTimeStr.slice(3, 5), 10)) : (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
+  const toMinutes = (t) => parseInt(t.slice(0, 2), 10) * 60 + parseInt(t.slice(3, 5), 10);
+  const startMinutes = startTimeStr != null ? toMinutes(startTimeStr) : (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
+  const estTotalMin = p.legs.reduce((s, l) => s + (l.durationMin || 1), 0) || 1;
+  let totalMin = estTotalMin;
+  if (endTimeStr != null) {
+    let endMinutes = toMinutes(endTimeStr);
+    if (endMinutes < startMinutes) endMinutes += 24 * 60; // ran past midnight
+    totalMin = Math.max(1, endMinutes - startMinutes);
+  }
+  let cursor = startMinutes;
   const trips = [];
   for (let i = 0; i < p.legs.length; i++) {
     const leg = p.legs[i], from = p.stops[i], to = p.stops[i + 1];
-    const tripStartTime = minutesToTimeStr(cursor);
-    cursor += leg.durationMin || 1;
-    const endTime = minutesToTimeStr(cursor);
+    const isLast = i === p.legs.length - 1;
+    const tripStartTime = minutesToTimeStr(cursor % 1440);
+    // The last leg always lands exactly on the entered end time -- earlier
+    // legs get a proportional share, which can drift a minute from rounding.
+    cursor = isLast ? (startMinutes + totalMin) : cursor + Math.max(1, Math.round(((leg.durationMin || 1) / estTotalMin) * totalMin));
+    const endTime = minutesToTimeStr(cursor % 1440);
     const trip = {
       id: uid(), date: date || todayStr(), startTime: tripStartTime, endTime,
       distance: leg.distanceKm || 0,
@@ -2590,19 +2604,18 @@ async function logPlannedRouteNow(date, startTimeStr) {
     if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
     trips.push(trip);
   }
-  // Same as the live-driven Save Drive flow (plannerCompleteDoneBtn) -- ask
-  // for driving conditions once and apply them to every Supervised leg,
-  // rather than finalizing straight away with nothing recorded.
   if (trips.some(t => t.tag === "supervised")) {
-    const first = trips.find(t => t.tag === "supervised");
-    const dn = defaultDayNightFor(first.date, first.startTime, first.startLat, first.startLng);
-    state.pendingPlannerTrips = trips;
-    state.pendingPlannerTripsFromLog = true;
-    state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-    state.addingSupervisor = false;
-    state.newSupervisorName = ""; state.newSupervisorLicence = "";
-    render();
-    return;
+    const cf = state.conditionsForm;
+    const sup = state.supervisors.find(s => s.id === cf.supervisorId);
+    if (sup) {
+      state.settings.lastSupervisorId = sup.id;
+      await storageSet(SETTINGS_KEY, state.settings);
+    }
+    const conditions = {
+      timeOfDay: cf.timeOfDay, roadType: cf.roadType, weather: cf.weather, traffic: cf.traffic,
+      supervisorName: sup ? sup.name : "", supervisorLicence: sup ? sup.licence : "",
+    };
+    trips.forEach(t => { if (t.tag === "supervised") Object.assign(t, conditions); });
   }
   for (const trip of trips) await finalizeTrip(trip);
   state.planner = null;
@@ -5683,19 +5696,42 @@ function renderPlannerSaveAddressModal() {
   </div>`;
 }
 
+// Same single-window shape as Log this Drive/Drive Summary (see
+// renderLogEstimateModal): route preview on top, editable date/start/end
+// time (defaulted from the Directions estimate but not locked to it), and
+// driving conditions inline at the bottom when any leg is Supervised --
+// no separate step to hop to afterward, same as the other two flows.
 function renderPlannerLogModal() {
   const f = state.plannerLogForm;
   const p = state.planner;
   const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  const totalKm = p.legs.reduce((s, l) => s + (l.distanceKm || 0), 0);
+  const supervised = p.legs.some(l => l.tag === "supervised");
+  const mapUrl = mapsConfigured() ? staticMapUrlForPlannerRoute() : null;
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
       <h2>Log this Drive</h2>
-      <p class="settings-desc" style="margin:0 0 18px;">Logs every leg back-to-back from the time below, using the estimated durations from Preview (~${formatDuration(totalMin)} total) instead of live tracking.</p>
+      ${mapUrl ? `<img src="${mapUrl}" alt="" class="log-drive-map" />` : ""}
+      <p class="settings-desc" style="margin:0 0 18px;">Logs ${p.legs.length > 1 ? "every leg back-to-back" : "this drive"} using the estimated distance (~${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()}, ~${formatDuration(totalMin)}) instead of live tracking.</p>
+
       <label class="field-label">Date</label>
       <input id="plannerLogDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
-      <label class="field-label">Start time (24hr)</label>
-      <input id="plannerLogStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" style="margin-bottom:20px;" />
+
+      <div class="row-2">
+        <div>
+          <label class="field-label">Start time (24hr)</label>
+          <input id="plannerLogStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" />
+        </div>
+        <div>
+          <label class="field-label">End time (24hr)</label>
+          <input id="plannerLogEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.endTime || "")}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:6px 0 20px;">${p.legs.length > 1 ? "Both default from the total estimated drive time — edit either if it ran differently, split proportionally across legs." : "Both default from the estimated drive time — edit either if it ran differently."}</p>
+
+      ${supervised ? renderConditionsFields(state.conditionsForm) : ""}
+
       <div class="row-2">
         <button id="plannerLogCancelBtn" class="btn btn-ghost">Cancel</button>
         <button id="plannerLogConfirmBtn" class="btn btn-amber">Save Drive</button>
@@ -7437,6 +7473,33 @@ function staticMapUrlForTrip(trip) {
   if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${trip.startLat},${trip.startLng}|${trip.endLat},${trip.endLng}`);
   return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
 }
+// Same shape as staticMapUrlForTrip, for the Trip Planner's pre-trip "Log
+// Drive" window -- traces the actual planned route (already computed and
+// on screen at this point, via plannerDirectionsResult) rather than a
+// straight line between the first and last stop, since the real shape is
+// already known and a straight line across several stops would be
+// noticeably wrong for anything but a direct A-to-B route.
+function staticMapUrlForPlannerRoute() {
+  const p = state.planner;
+  if (!p) return null;
+  const first = p.stops[0], last = p.stops[p.stops.length - 1];
+  const hasStart = first && first.lat != null, hasEnd = last && last.lat != null;
+  if (!hasStart && !hasEnd) return null;
+  const overview = (plannerDirectionsResult && plannerDirectionsResult.routes[0])
+    ? plannerDirectionsResult.routes[0].overview_path.map(ll => ({ lat: ll.lat(), lng: ll.lng() }))
+    : [];
+  const points = overview.length > 1 ? overview.slice() : [];
+  if (hasStart) points.push({ lat: first.lat, lng: first.lng });
+  if (hasEnd) points.push({ lat: last.lat, lng: last.lng });
+  const center = centerOfBounds(points);
+  const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
+  if (center) params.set("center", `${center.lat},${center.lng}`);
+  if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${first.lat},${first.lng}`);
+  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${last.lat},${last.lng}`);
+  if (overview.length > 1) params.append("path", `color:0x4C9FF2|weight:4|enc:${encodePolyline(overview)}`);
+  else if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${first.lat},${first.lng}|${last.lat},${last.lng}`);
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
+}
 // Fetches that thumbnail and inlines it as a data URL directly on the trip
 // object, so it persists in the same local trips array/storage entry as
 // everything else -- no separate asset store, no broken image if a URL
@@ -8320,7 +8383,17 @@ function attachAppHandlers() {
       if (saveRouteBtn) saveRouteBtn.onclick = () => { if (p.savedRouteId) unsavePlannerRoute(); else openPlannerSaveRoutePrompt(); };
       const logDriveBtn = document.getElementById("plannerLogDriveBtn");
       if (logDriveBtn) logDriveBtn.onclick = () => {
-        state.plannerLogForm = { date: todayStr(), startTime: nowTimeStr() };
+        const startTime = nowTimeStr();
+        const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+        const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
+        const endTime = minutesToTimeStr(startMinutes + totalMin);
+        state.plannerLogForm = { date: todayStr(), startTime, endTime };
+        if (p.legs.some(l => l.tag === "supervised")) {
+          const dn = defaultDayNightFor(state.plannerLogForm.date, startTime);
+          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+          state.addingSupervisor = false;
+          state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        }
         render();
       };
       const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
@@ -8351,15 +8424,19 @@ function attachAppHandlers() {
         const pld = document.getElementById("plannerLogDate");
         if (pld) pld.onchange = (e) => { f.date = e.target.value; };
         attachTimeInput(document.getElementById("plannerLogStartTime"), (v) => { f.startTime = v; });
+        attachTimeInput(document.getElementById("plannerLogEndTime"), (v) => { f.endTime = v; });
+        if (p.legs.some(l => l.tag === "supervised")) bindConditionsFields(state.conditionsForm);
         const plCancel = document.getElementById("plannerLogCancelBtn");
-        if (plCancel) plCancel.onclick = () => { state.plannerLogForm = null; render(); };
+        if (plCancel) plCancel.onclick = () => { state.plannerLogForm = null; state.addingSupervisor = false; render(); };
         const plConfirm = document.getElementById("plannerLogConfirmBtn");
         if (plConfirm) plConfirm.onclick = async () => {
-          if (!f.date || !f.startTime) return;
+          if (!f.date || !f.startTime || !f.endTime) return;
           const startTime = clampTimeValue(f.startTime);
+          const endTime = clampTimeValue(f.endTime);
           const date = f.date;
           state.plannerLogForm = null;
-          await logPlannedRouteNow(date, startTime);
+          state.addingSupervisor = false;
+          await logPlannedRouteNow(date, startTime, endTime);
         };
       }
 
@@ -9069,7 +9146,6 @@ function attachAppHandlers() {
     if (backBtn) backBtn.onclick = () => {
       state.pendingTrip = null;
       state.pendingPlannerTrips = null;
-      state.pendingPlannerTripsFromLog = false;
       state.addingSupervisor = false;
       render();
     };
@@ -9090,21 +9166,10 @@ function attachAppHandlers() {
         // conditions -- a Personal or Business leg saved in the same drive
         // has nothing to do with them.
         const trips = state.pendingPlannerTrips.map(t => t.tag === "supervised" ? { ...t, ...conditions } : t);
-        const fromLog = state.pendingPlannerTripsFromLog;
         state.pendingPlannerTrips = null;
-        state.pendingPlannerTripsFromLog = false;
         for (const trip of trips) await finalizeTrip(trip);
-        if (fromLog) {
-          // logPlannedRouteNow has no Drive Complete screen to land back on
-          // -- close the planner and go straight to the Log tab, same as it
-          // always did once conditions weren't in the way.
-          state.planner = null;
-          plannerDirectionsResult = null;
-          state.tab = "history";
-        } else {
-          const p = state.planner;
-          if (p) p.saved = true;
-        }
+        const p = state.planner;
+        if (p) p.saved = true;
       } else {
         const trip = { ...state.pendingTrip, ...conditions };
         state.pendingTrip = null;
