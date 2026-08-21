@@ -585,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.12";
+const APP_BUILD = "2026-08-21.13";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -4440,15 +4440,16 @@ async function ensurePlannerMap() {
       if (document.getElementById("plannerMapCanvas") !== canvas) return;
       plannerDirectionsRenderer = new DirectionsRenderer({
         map: plannerMapInstance, draggable: !driving && !complete,
-        // While driving, a reroute replaces this result with one whose
-        // origin is wherever the car currently is — its own A/B pins would
-        // then jump around on every reroute. Suppressed here in favor of
-        // the dedicated, reroute-proof start marker placed below. Also
-        // suppressed once complete — Google's default teardrop pins anchor
-        // at their bottom tip, not their center, so they read as floating
-        // just above the route line rather than sitting centered on it;
-        // small circular dots placed below fix that.
-        suppressMarkers: driving || complete,
+        // Always suppressed -- Google's own default pins only ever come in
+        // stock red regardless of role, and (while driving specifically)
+        // a reroute replaces this result with one whose origin is wherever
+        // the car currently is, which would jump its own A/B pins around on
+        // every reroute. drawPlannerRoutePins below replaces them
+        // everywhere with the same Start/Stop/End colors, at the cost of
+        // losing the ability to drag an individual default pin to nudge a
+        // stop directly during Preview -- dragging the route line itself
+        // to insert a new one still works.
+        suppressMarkers: true,
         // Always true -- the default un-padded auto-fit centers the route
         // within the *entire* map div, ignoring that the topbar (address
         // fields) and bottom sheet (summary/buttons) overlay a big chunk of
@@ -4485,18 +4486,23 @@ async function ensurePlannerMap() {
             }
           });
           updatePlannerRouteSummaryDOM();
+          // Dragging the route line can insert a new via-point -- keeps the
+          // pins matching whatever the line actually shows now, same as the
+          // distance/time numbers just above.
+          drawPlannerRoutePins(result, true);
         });
       }
-      if (complete) {
-        // Start too, here -- the fixed reroute-proof start marker below is
-        // only ever drawn for a live "driving" map.
-        await drawPlannerRoutePins(plannerDirectionsResult, true);
-        if (document.getElementById("plannerMapCanvas") !== canvas) return;
-      } else if (driving) {
+      if (driving) {
         // Upcoming stops/destination, visible on the live nav map itself
         // rather than only appearing once the drive is over -- start is
         // covered separately below by the fixed, reroute-proof marker.
         await drawPlannerRoutePins(plannerDirectionsResult, false);
+        if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      } else {
+        // Preview and Complete both get the start pin too -- the fixed
+        // reroute-proof start marker below is only ever drawn for a live
+        // "driving" map.
+        await drawPlannerRoutePins(plannerDirectionsResult, true);
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
       }
     } catch { /* map still usable without the route line */ }
