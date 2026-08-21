@@ -73,6 +73,14 @@
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
+  /* Route preview at the top of Log this Drive / Drive Summary -- static,
+     not the live Maps JS API, since these are plain review/edit screens,
+     not something the driver needs to pan or zoom. Fixed 16:9 rather than
+     the raw 320x180 the Static Maps request itself comes back as, so the
+     layout doesn't jump between a version with two markers/a path and one
+     with only a single pin (a typed-but-not-yet-geocoded destination). */
+  .log-drive-map{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;
+    border-radius:10px;margin:0 0 16px;background:var(--bg);}
   /* Blend scrollbars into the dark theme instead of the bright default OS scrollbar. */
   .modal-card, .table-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
   .modal-card::-webkit-scrollbar, .table-scroll::-webkit-scrollbar{width:6px;height:6px;}
@@ -565,7 +573,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.15";
+const APP_BUILD = "2026-08-20.16";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2028,6 +2036,12 @@ async function beginEndDrive() {
   if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
   trip.endLat = endLat; trip.endLng = endLng;
 
+  if (trip.tag === "supervised") {
+    const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
+    state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+    state.addingSupervisor = false;
+    state.newSupervisorName = ""; state.newSupervisorLicence = "";
+  }
   state.driveSummary = { trip };
   render();
 }
@@ -6133,21 +6147,45 @@ function renderCancelDriveModal() {
   </div>`;
 }
 
+// Same single-window shape as Log this Drive (see renderLogEstimateModal):
+// route preview on top, editable times (these ones are real observed
+// times off the timer, not an estimate, but still worth a quick fix if
+// End Drive got tapped late), driving conditions inline at the bottom for
+// a Supervised trip. Business still continues to its own purpose/notes
+// step afterward -- unlike Personal/Supervised, that step still has
+// something real left to ask for once this one's done.
 function renderDriveSummaryModal() {
   const t = state.driveSummary.trip;
+  const supervised = t.tag === "supervised";
+  const mapUrl = mapsConfigured() ? staticMapUrlForTrip(t) : null;
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>Drive Summary</h2>
+      <h2>Log this Drive</h2>
+      ${mapUrl ? `<img src="${mapUrl}" alt="" class="log-drive-map" />` : ""}
       <div class="kv-line"><span class="k">Type</span><span class="tag ${t.tag}">${labelFor(DRIVE_TYPES, t.tag)}</span></div>
-      <div class="kv-line"><span class="k">Distance</span><span class="v mono">${kmToDisplay(t.distance).toFixed(1)} ${unitLabel()}</span></div>
-      <div class="kv-line"><span class="k">Duration</span><span class="v mono">${formatDuration(tripMinutes(t))}</span></div>
-      <div class="kv-line"><span class="k">Time</span><span class="v mono">${formatTime24(t.startTime)}–${formatTime24(t.endTime)}</span></div>
+      <div class="kv-line" style="margin-bottom:14px;"><span class="k">Distance</span><span class="v mono">${kmToDisplay(t.distance).toFixed(1)} ${unitLabel()}</span></div>
+
+      <div class="row-2">
+        <div>
+          <label class="field-label">Start time (24hr)</label>
+          <input id="summaryStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.startTime || "")}" />
+        </div>
+        <div>
+          <label class="field-label">End time (24hr)</label>
+          <input id="summaryEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(t.endTime || "")}" />
+        </div>
+      </div>
+      <p class="settings-desc" style="margin:6px 0 14px;">Edit either time if the drive didn't start or end exactly then.</p>
+
       <div class="kv-line" style="align-items:flex-start;"><span class="k">Start</span><span class="v" style="text-align:right;max-width:70%;">${escAttr(t.startPoint)}</span></div>
       <div class="kv-line" style="align-items:flex-start;margin-bottom:18px;"><span class="k">End</span><span class="v" style="text-align:right;max-width:70%;">${escAttr(t.endPoint)}</span></div>
+
+      ${supervised ? renderConditionsFields(state.conditionsForm) : ""}
+
       <div class="row-2">
         <button id="cancelDriveSummaryBtn" class="btn btn-ghost">Cancel</button>
-        <button id="continueDriveSummaryBtn" class="btn btn-amber">Continue</button>
+        <button id="continueDriveSummaryBtn" class="btn btn-amber">${t.tag === "work" ? "Continue" : "Save Drive"}</button>
       </div>
     </div>
   </div>`;
@@ -6171,13 +6209,13 @@ function renderBusinessDetailsModal() {
   </div>`;
 }
 
-function renderConditionsModal() {
-  const f = state.conditionsForm;
+// The Day/Night through Supervisor fields, shared by the standalone
+// Driving Conditions step (Trip Planner's multi-leg Save Drive, see
+// renderConditionsModal) and inlined directly into the single-window
+// Log this Drive / Drive Summary flows below -- one set of markup and
+// bindings either way rather than three near-duplicates drifting apart.
+function renderConditionsFields(f) {
   return `
-  <div class="modal-backdrop">
-    <div class="modal-card">
-      <h2>Driving conditions</h2>
-
       <label class="field-label">Day / Night <span style="opacity:.7;">(auto, from time of day)</span></label>
       <select id="condTimeOfDay" class="input" style="margin-bottom:14px;">
         <option value="day" ${f.timeOfDay === "day" ? "selected" : ""}>Day</option>
@@ -6215,7 +6253,18 @@ function renderConditionsModal() {
           <button id="saveSupervisorBtn" class="btn btn-ghost">Add supervisor</button>
         </div>
       ` : ""}
-
+  `;
+}
+// The standalone version -- its own screen with Back/Save, used only when
+// there's no single richer window to inline into (the Trip Planner's Save
+// Drive can commit several legs/trips at once; see pendingPlannerTrips).
+function renderConditionsModal() {
+  const f = state.conditionsForm;
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2>Driving conditions</h2>
+      ${renderConditionsFields(f)}
       <div class="row-2">
         <button id="backConditionsBtn" class="btn btn-ghost">Back</button>
         <button id="saveConditionsTripBtn" class="btn btn-amber">Save Drive</button>
@@ -6410,12 +6459,22 @@ function renderDeleteSelectedModal() {
   </div>`;
 }
 
+// Single window now, top to bottom: route preview, the estimate itself,
+// editable date/start/end time (defaulted from the estimate but not
+// locked to it), and -- inline, not a separate step to hop to afterward
+// -- driving conditions when logging a Supervised drive. logEstBtn's own
+// handler resolves f.start/endLat as a best-effort side effect once this
+// first renders, so the map fills in a moment after the window opens
+// rather than blocking it.
 function renderLogEstimateModal() {
   const f = state.logEstimateForm;
+  const supervised = state.settings.driveType === "supervised";
+  const mapUrl = mapsConfigured() && (f.startLat != null || f.endLat != null) ? staticMapUrlForTrip(f) : null;
   return `
   <div class="modal-backdrop">
     <div class="modal-card">
-      <h2>Log this Estimate</h2>
+      <h2>Log this Drive</h2>
+      ${mapUrl ? `<img src="${mapUrl}" alt="" class="log-drive-map" />` : ""}
       <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} ${unitLabel()}, ~${state.preTripDuration} min) without starting a live trip.</p>
 
       <label class="field-label">Date</label>
@@ -6431,7 +6490,9 @@ function renderLogEstimateModal() {
           <input id="logEstimateEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.endTime || "")}" />
         </div>
       </div>
-      <p class="settings-desc" style="margin:6px 0 20px;">End time is prefilled from the estimate — edit either time if the drive ran differently.</p>
+      <p class="settings-desc" style="margin:6px 0 20px;">Both default from the estimated drive time — edit either if the drive ran differently.</p>
+
+      ${supervised ? renderConditionsFields(state.conditionsForm) : ""}
 
       <div class="row-2">
         <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
@@ -7886,8 +7947,35 @@ function attachAppHandlers() {
         const startTime = nowTimeStr();
         const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
         const endTime = minutesToTimeStr(startMinutes + (state.preTripDuration || 0));
-        state.logEstimateForm = { date: todayStr(), startTime, endTime };
+        state.logEstimateForm = {
+          date: todayStr(), startTime, endTime,
+          startLat: state.startCoords ? state.startCoords.lat : null,
+          startLng: state.startCoords ? state.startCoords.lng : null,
+          endLat: null, endLng: null,
+        };
+        if (state.settings.driveType === "supervised") {
+          const dn = defaultDayNightFor(state.logEstimateForm.date, startTime);
+          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+          state.addingSupervisor = false;
+          state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        }
         render();
+        // Best-effort route-preview coordinates: state.startCoords only ever
+        // holds the start (from GPS/autocomplete), never the destination, and
+        // may itself be missing if the address was just typed. A failed or
+        // skipped geocode just means no map image, same as staticMapUrlForTrip
+        // already handles no coordinates at all.
+        const form = state.logEstimateForm;
+        if (form.startLat == null && state.startPointInput.trim()) {
+          forwardGeocode(state.startPointInput.trim()).then(geo => {
+            if (state.logEstimateForm === form) { form.startLat = geo.lat; form.startLng = geo.lng; render(); }
+          }).catch(() => {});
+        }
+        if (state.preTripEndLocation.trim()) {
+          forwardGeocode(state.preTripEndLocation.trim()).then(geo => {
+            if (state.logEstimateForm === form) { form.endLat = geo.lat; form.endLng = geo.lng; render(); }
+          }).catch(() => {});
+        }
       };
 
       const applySuggestBtn = document.getElementById("applyRouteSuggestionBtn");
@@ -7978,6 +8066,12 @@ function attachAppHandlers() {
         if (a.startLat != null) { trip.startLat = a.startLat; trip.startLng = a.startLng; }
         state.endDriveError = "";
         state.manualDistanceFallback = "";
+        if (trip.tag === "supervised") {
+          const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
+          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+          state.addingSupervisor = false;
+          state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        }
         state.driveSummary = { trip };
         render();
       };
@@ -8772,6 +8866,11 @@ function attachAppHandlers() {
       render();
     };
   } else if (state.driveSummary) {
+    const trip = state.driveSummary.trip;
+    attachTimeInput(document.getElementById("summaryStartTime"), (v) => { trip.startTime = v; });
+    attachTimeInput(document.getElementById("summaryEndTime"), (v) => { trip.endTime = v; });
+    if (trip.tag === "supervised") bindConditionsFields(state.conditionsForm);
+
     const cancelBtn = document.getElementById("cancelDriveSummaryBtn");
     if (cancelBtn) cancelBtn.onclick = () => {
       state.confirmingCancelDrive = true;
@@ -8780,7 +8879,8 @@ function attachAppHandlers() {
 
     const continueBtn = document.getElementById("continueDriveSummaryBtn");
     if (continueBtn) continueBtn.onclick = async () => {
-      const { trip } = state.driveSummary;
+      trip.startTime = clampTimeValue(trip.startTime);
+      trip.endTime = clampTimeValue(trip.endTime);
       state.driveSummary = null;
       state.active = null;
       state.startPointInput = "";
@@ -8789,11 +8889,16 @@ function attachAppHandlers() {
       autoFillCurrentLocation();
 
       if (trip.tag === "supervised") {
-        state.pendingTrip = trip;
-        const dn = defaultDayNightFor(trip.date, trip.startTime, trip.startLat, trip.startLng);
-        state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+        const cf = state.conditionsForm;
+        const sup = state.supervisors.find(s => s.id === cf.supervisorId);
+        trip.timeOfDay = cf.timeOfDay; trip.roadType = cf.roadType; trip.weather = cf.weather; trip.traffic = cf.traffic;
+        trip.supervisorName = sup ? sup.name : ""; trip.supervisorLicence = sup ? sup.licence : "";
+        if (sup) {
+          state.settings.lastSupervisorId = sup.id;
+          await storageSet(SETTINGS_KEY, state.settings);
+        }
         state.addingSupervisor = false;
-        state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        await finalizeTrip(trip);
         render();
       } else if (trip.tag === "work") {
         state.businessForm = { trip, purpose: "" };
@@ -8826,17 +8931,11 @@ function attachAppHandlers() {
     };
   }
 
-  if (state.pendingTrip || state.pendingPlannerTrips) {
-    const f = state.conditionsForm;
-
-    const backBtn = document.getElementById("backConditionsBtn");
-    if (backBtn) backBtn.onclick = () => {
-      state.pendingTrip = null;
-      state.pendingPlannerTrips = null;
-      state.addingSupervisor = false;
-      render();
-    };
-
+  // Wires the Day/Night through Supervisor fields shared by every place
+  // renderConditionsFields(f) gets inlined or shown standalone (see its own
+  // comment) -- one binding pass reused everywhere those fields appear,
+  // rather than copying this out again at each call site.
+  function bindConditionsFields(f) {
     const bind = (id, key) => {
       const el = document.getElementById(id);
       if (el) el.onchange = (e) => { f[key] = e.target.value; };
@@ -8874,6 +8973,19 @@ function attachAppHandlers() {
       f.supervisorId = sup.id;
       state.addingSupervisor = false;
       state.newSupervisorName = ""; state.newSupervisorLicence = "";
+      render();
+    };
+  }
+
+  if (state.pendingTrip || state.pendingPlannerTrips) {
+    const f = state.conditionsForm;
+    bindConditionsFields(f);
+
+    const backBtn = document.getElementById("backConditionsBtn");
+    if (backBtn) backBtn.onclick = () => {
+      state.pendingTrip = null;
+      state.pendingPlannerTrips = null;
+      state.addingSupervisor = false;
       render();
     };
 
@@ -9064,15 +9176,17 @@ function attachAppHandlers() {
     if (led) led.onchange = (e) => { f.date = e.target.value; };
     attachTimeInput(document.getElementById("logEstimateStartTime"), (v) => { f.startTime = v; });
     attachTimeInput(document.getElementById("logEstimateEndTime"), (v) => { f.endTime = v; });
+    if (state.settings.driveType === "supervised") bindConditionsFields(state.conditionsForm);
 
     const cancelLogBtn = document.getElementById("cancelLogEstimateBtn");
-    if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; render(); };
+    if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; state.addingSupervisor = false; render(); };
 
     const confirmLogBtn = document.getElementById("confirmLogEstimateBtn");
     if (confirmLogBtn) confirmLogBtn.onclick = async () => {
       if (!f.date || !f.startTime || !f.endTime) return;
       f.startTime = clampTimeValue(f.startTime);
       f.endTime = clampTimeValue(f.endTime);
+      const supervised = state.settings.driveType === "supervised";
       const trip = {
         id: uid(),
         date: f.date,
@@ -9081,27 +9195,30 @@ function attachAppHandlers() {
         distance: displayToKm(parseFloat(state.preTripDistance) || 0),
         startPoint: state.startPointInput.trim() || "Unspecified",
         endPoint: state.preTripEndLocation.trim() || "Unspecified",
-        tag: state.settings.driveType === "work" ? "work" : state.settings.driveType === "supervised" ? "supervised" : "normal",
+        tag: supervised ? "supervised" : state.settings.driveType === "work" ? "work" : "normal",
       };
+      if (f.startLat != null) { trip.startLat = f.startLat; trip.startLng = f.startLng; }
+      if (f.endLat != null) { trip.endLat = f.endLat; trip.endLng = f.endLng; }
+      if (supervised) {
+        const cf = state.conditionsForm;
+        const sup = state.supervisors.find(s => s.id === cf.supervisorId);
+        trip.timeOfDay = cf.timeOfDay; trip.roadType = cf.roadType; trip.weather = cf.weather; trip.traffic = cf.traffic;
+        trip.supervisorName = sup ? sup.name : ""; trip.supervisorLicence = sup ? sup.licence : "";
+        if (sup) {
+          state.settings.lastSupervisorId = sup.id;
+          await storageSet(SETTINGS_KEY, state.settings);
+        }
+      }
       state.logEstimateForm = null;
+      state.addingSupervisor = false;
       state.startPointInput = "";
       state.preTripEndLocation = "";
       state.preTripDistance = null;
       state.preTripDuration = null;
       state.preTripEstimateError = "";
       state.preTripEstimating = false;
-
-      if (state.settings.driveType === "supervised") {
-        state.pendingTrip = trip;
-        const dn = defaultDayNightFor(trip.date, trip.startTime);
-        state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-        state.addingSupervisor = false;
-        state.newSupervisorName = ""; state.newSupervisorLicence = "";
-        render();
-      } else {
-        await finalizeTrip(trip);
-        render();
-      }
+      await finalizeTrip(trip);
+      render();
     };
   }
 
