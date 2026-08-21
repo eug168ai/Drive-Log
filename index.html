@@ -399,6 +399,12 @@
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-recenter-fab .icon{width:18px;height:18px;}
+  /* Always in the DOM while driving, but hidden until a manual drag shows
+     it (see handleLiveDragStart) -- toggled directly via classList rather
+     than through render(), since a live drive's DOM is deliberately never
+     torn down/rebuilt by a full render() while it's running. */
+  .planner-resume-follow-fab{display:none;}
+  .planner-resume-follow-fab.show{display:flex;}
 
   .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
@@ -500,7 +506,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 26mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 31mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -585,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.6";
+const APP_BUILD = "2026-08-21.7";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3123,7 +3129,7 @@ async function startLiveDrive() {
     // committed name string rather than an index into liveDrive.steps --
     // nothing to hold onto yet at the very start, so it's shown right away.
     pillRoadName: initialSteps[0] ? stepStreetName(initialSteps[0].instructions) : "",
-    pillPendingRoadName: null, pillHoldRemainM: 0,
+    pillPendingRoadName: null, pillHoldAnchor: null,
     legIdx: 0,
     legStartedAt: Date.now(),
     legDistanceM: 0,
@@ -3135,6 +3141,7 @@ async function startLiveDrive() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
+    panMode: "auto",
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
@@ -3230,7 +3237,7 @@ function advanceToNextLegManually() {
   const nextStep = liveDrive.steps[liveDrive.stepIdx];
   liveDrive.pillRoadName = nextStep ? stepStreetName(nextStep.instructions) : "";
   liveDrive.pillPendingRoadName = null;
-  liveDrive.pillHoldRemainM = 0;
+  liveDrive.pillHoldAnchor = null;
   if (liveDrive.legIdx >= state.planner.legs.length) { endLiveDrive(); return; }
   render();
 }
@@ -3323,19 +3330,26 @@ function handleLiveFix(pos) {
   }
 
   // Current-road pill debounce (see LIVE_PILL_HOLD_M) -- a fresh advance
-  // restarts the hold distance (covering a step that itself advances again
-  // moments later); it only counts down, and only actually commits the new
-  // name once the fix has kept moving on whatever step is current now.
+  // restarts the hold, tracked as an anchor point (where the fix was at the
+  // moment of advance) rather than a running countdown of raw per-fix
+  // distances. Indoor/noisy GPS jitter bounces a stationary phone's
+  // reported position back and forth within a small radius -- summing
+  // those raw deltas could rack up "distance traveled" from pure noise
+  // alone even while parked, committing the pending (often still-upcoming)
+  // road name before any real progress happened. Measuring straight-line
+  // distance from a fixed anchor instead self-corrects: jitter bouncing
+  // around one spot stays bounded near zero rather than accumulating.
   // pillRoadName holds a committed *name string*, not a step index, so it
   // survives rerouteLiveDrive wholesale-replacing liveDrive.steps mid-hold
   // (see that function's own comment on why that distinction matters).
   if (liveDrive.stepIdx !== stepIdxBeforeAdvance) {
     liveDrive.pillPendingRoadName = step ? stepStreetName(step.instructions) : "";
-    liveDrive.pillHoldRemainM = LIVE_PILL_HOLD_M;
-  } else if (liveDrive.pillHoldRemainM > 0 && !(prev && deltaM > LIVE_MAX_JUMP_M)) {
-    liveDrive.pillHoldRemainM = Math.max(0, liveDrive.pillHoldRemainM - deltaM);
+    liveDrive.pillHoldAnchor = { lat, lng };
+  } else if (liveDrive.pillHoldAnchor && !(prev && deltaM > LIVE_MAX_JUMP_M)) {
+    const traveled = haversineMeters(liveDrive.pillHoldAnchor.lat, liveDrive.pillHoldAnchor.lng, lat, lng);
+    if (traveled >= LIVE_PILL_HOLD_M) liveDrive.pillHoldAnchor = null;
   }
-  if (liveDrive.pillHoldRemainM <= 0 && liveDrive.pillPendingRoadName != null) {
+  if (!liveDrive.pillHoldAnchor && liveDrive.pillPendingRoadName != null) {
     liveDrive.pillRoadName = liveDrive.pillPendingRoadName;
     liveDrive.pillPendingRoadName = null;
   }
@@ -3458,11 +3472,11 @@ async function rerouteLiveDrive(lat, lng) {
     const newPillRoadName = liveDrive.steps[0] ? stepStreetName(liveDrive.steps[0].instructions) : "";
     if (liveDrive.pillRoadName) {
       liveDrive.pillPendingRoadName = newPillRoadName;
-      liveDrive.pillHoldRemainM = LIVE_PILL_HOLD_M;
+      liveDrive.pillHoldAnchor = { lat, lng };
     } else {
       liveDrive.pillRoadName = newPillRoadName;
       liveDrive.pillPendingRoadName = null;
-      liveDrive.pillHoldRemainM = 0;
+      liveDrive.pillHoldAnchor = null;
     }
     plannerDirectionsResult = result;
     if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
@@ -3634,6 +3648,26 @@ function handleLiveZoomChanged() {
   liveDrive.zoomMode = "manual";
   liveDrive.manualZoom = z;
   liveMapLastAppliedZoom = z;
+  // A pure pinch-to-zoom (fingers moving apart around a fixed point, no
+  // pan) never fires dragstart, so panMode alone wouldn't catch it -- the
+  // very next frame's forced setCenter would re-tighten the view right back
+  // around the driver, undoing the zoom-out's visual effect even though the
+  // zoom level itself did change. Stopping that here too, not just on drag.
+  liveDrive.panMode = "manual";
+  const btn = document.getElementById("plannerResumeFollowBtn");
+  if (btn) btn.classList.add("show");
+}
+// A manual drag stops applyLiveMarkerFrame's per-frame setCenter from
+// fighting it (see panMode there) -- dragstart only ever fires from a real
+// user gesture, never from that same setCenter/panTo, so it's an
+// unambiguous signal. Direct DOM toggle, not render() -- this can fire
+// mid-gesture, and a full render() would tear down the very map instance
+// being dragged.
+function handleLiveDragStart() {
+  if (!liveDrive) return;
+  liveDrive.panMode = "manual";
+  const btn = document.getElementById("plannerResumeFollowBtn");
+  if (btn) btn.classList.add("show");
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
@@ -3670,6 +3704,11 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   // rendered tilt is still easing toward that target, and using the target
   // early would offset the camera for a tilt that isn't actually on screen
   // yet, drifting the marker off its intended spot until the ease catches up.
+  // Skipped entirely once the driver has manually dragged the map (see
+  // panMode/handleLiveDragStart) -- this runs up to 60 times a second, so a
+  // manual pan was otherwise overwritten within a single frame, reading as
+  // "touch doesn't work" even though the drag itself was registering fine.
+  if (liveDrive && liveDrive.panMode === "manual") return;
   plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
 }
 
@@ -4059,7 +4098,7 @@ async function resumeLiveDriveIfAny() {
     steps: [],
     stepIdx: 0,
     stepEndMinDist: null,
-    pillRoadName: "", pillPendingRoadName: null, pillHoldRemainM: 0,
+    pillRoadName: "", pillPendingRoadName: null, pillHoldAnchor: null,
     legIdx: saved.legIdx || 0,
     legStartedAt: saved.legStartedAt || saved.startedAt,
     legDistanceM: saved.legDistanceM || 0,
@@ -4071,6 +4110,7 @@ async function resumeLiveDriveIfAny() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
+    panMode: "auto",
   };
   stopLiveMoveAnimation();
   if (navigator.geolocation) {
@@ -4263,6 +4303,11 @@ async function ensurePlannerMap() {
 
   if (driving) {
     plannerMapInstance.addListener("zoom_changed", handleLiveZoomChanged);
+    // dragstart only ever fires from a genuine user gesture -- never from
+    // the per-frame setCenter/panTo calls this screen makes itself -- so
+    // it's the correct, unambiguous signal that the driver just took manual
+    // control of the camera (see panMode/applyLiveMarkerFrame).
+    plannerMapInstance.addListener("dragstart", handleLiveDragStart);
   }
 
   if (!driving && !complete) {
@@ -5587,6 +5632,7 @@ function renderPlanTab() {
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
+    ${driving ? `<button type="button" class="planner-recenter-fab planner-resume-follow-fab ${liveDrive && liveDrive.panMode === "manual" ? "show" : ""}" id="plannerResumeFollowBtn" title="Resume following your position">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m].replace("Angle: ", "")).join(" / ")}">${icons.angleView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
@@ -8555,6 +8601,17 @@ function attachAppHandlers() {
       if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
+      const resumeFollowBtn = document.getElementById("plannerResumeFollowBtn");
+      if (resumeFollowBtn) resumeFollowBtn.onclick = () => {
+        if (!liveDrive) return;
+        liveDrive.panMode = "auto";
+        liveDrive.zoomMode = "auto";
+        resumeFollowBtn.classList.remove("show");
+        if (plannerMapInstance && liveDrive.lastFix) {
+          updateLiveZoom(liveDrive.smoothSpeedMs || 0);
+          plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+        }
+      };
       updateLiveDriveDOM();
     }
 
