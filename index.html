@@ -557,7 +557,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.10";
+const APP_BUILD = "2026-08-20.11";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5141,11 +5141,18 @@ function renderPlannerFieldPills(idx) {
   return html;
 }
 
-function renderPlannerFieldBlock(stop, idx, total) {
+// trailingAddStop: only ever passed for the very last stop -- when its pill
+// row is showing (address still empty), the always-visible Add Stop chip
+// (see renderPlannerAddStopRow, skipped by the caller in that case) rides
+// the end of that same scrollable row instead of sitting on its own line
+// right below it, which used to read as two separate rows stacked for no
+// reason once both were visible at once.
+function renderPlannerFieldBlock(stop, idx, total, trailingAddStop) {
   const kind = plannerFieldKind(idx, total);
   const removable = kind === "stop";
   const placeholder = kind === "start" ? "Start location" : kind === "end" ? "End location" : "Add a stop";
   const trimmed = stop.address.trim();
+  const pillRowShows = !trimmed;
   const isSavedAddress = !!trimmed && savedAddressList().some(a => a.address.trim().toLowerCase() === trimmed.toLowerCase());
   return `
   <div class="planner-field-block" data-stopblock="${idx}">
@@ -5162,7 +5169,7 @@ function renderPlannerFieldBlock(stop, idx, total) {
     </div>
     ${stop.resolving ? `<p class="settings-desc" style="margin:4px 2px 0;">Locating…</p>` : ""}
     ${stop.resolveError ? `<p class="settings-desc" style="color:var(--work);margin:4px 2px 0;">${escAttr(stop.resolveError)}</p>` : ""}
-    <div class="planner-pill-row${stop.address.trim() ? "" : " show"}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}</div>
+    <div class="planner-pill-row${pillRowShows ? " show" : ""}" id="plannerPillRow-${idx}">${renderPlannerFieldPills(idx)}${trailingAddStop && pillRowShows ? `<button type="button" class="planner-addstop-chip plannerAddStopChip">${icons.plus} Add Stop</button>` : ""}</div>
   </div>`;
 }
 
@@ -5429,8 +5436,8 @@ function renderPlanTab() {
       ${mapsError}
       ${renderPlannerFieldBlock(p.stops[0], 0, n)}
       ${p.stops[0].lat != null ? `
-      ${p.stops.slice(1).map((s, i) => renderPlannerLegGapRow(i) + renderPlannerFieldBlock(s, i + 1, n)).join("")}
-      ${renderPlannerAddStopRow()}
+      ${p.stops.slice(1).map((s, i) => renderPlannerLegGapRow(i) + renderPlannerFieldBlock(s, i + 1, n, i === p.stops.length - 2)).join("")}
+      ${p.stops[p.stops.length - 1].address.trim() ? renderPlannerAddStopRow() : ""}
       ` : ""}
       `}
     </div>`}
