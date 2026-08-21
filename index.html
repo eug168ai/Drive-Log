@@ -17,13 +17,13 @@
   :root{
     --bg:#14171C; --bg-rgb:20,23,28; --surface:#1E2229; --surface-rgb:30,34,41; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --cost:#C2661C; --time:#F7CB89;
+    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --red:#E5484D; --cost:#C2661C; --time:#F7CB89;
     --grey-card:#27272A; --grey-border:#3F3F46; --grey-tag-bg:#3F3F46; --grey-tag-text:#D4D4D8; --grey-btn:#52525B; --grey-btn-text:#F4F4F5;
   }
   html[data-theme="light"]{
     --bg:#EEF0F3; --bg-rgb:238,240,243; --surface:#FFFFFF; --surface-rgb:255,255,255; --border:#DDE1E7;
     --text:#161A20; --muted:#666E7C; --faint:#9AA1AD;
-    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --cost:#9C5015; --time:#85540B;
+    --amber:#B9740F; --amber-rgb:185,116,15; --work:#B54A1E; --normal:#20794A; --blue:#2568C4; --red:#C22F35; --cost:#9C5015; --time:#85540B;
     --grey-card:#F4F4F5; --grey-border:#D4D4D8; --grey-tag-bg:#E4E4E7; --grey-tag-text:#52525B; --grey-btn:#71717A; --grey-btn-text:#FFFFFF;
   }
   /* Accent theme colors — override --amber (primary) / --cost (secondary
@@ -335,9 +335,9 @@
   .planner-field-row .input-icon{flex:1;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.2);padding:0 8px;}
   .planner-field-row .input-icon input{padding:6px 0;}
   .planner-field-row .input-icon .icon{color:var(--muted);}
-  .planner-field-row .input-icon.start .icon{color:var(--amber);}
-  .planner-field-row .input-icon.stop .icon{color:var(--blue);}
-  .planner-field-row .input-icon.end .icon{color:var(--work);}
+  .planner-field-row .input-icon.start .icon{color:var(--normal);}
+  .planner-field-row .input-icon.stop .icon{color:var(--work);}
+  .planner-field-row .input-icon.end .icon{color:var(--red);}
   .planner-remove-btn{flex-shrink:0;width:26px;height:26px;border-radius:50%;background:none;border:none;
     color:var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;}
   .planner-remove-btn:hover{color:var(--work);background:rgba(224,100,44,.12);}
@@ -500,7 +500,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 22mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 18mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -585,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.8";
+const APP_BUILD = "2026-08-21.9";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2700,23 +2700,25 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // city speed, easing toward a steeper look-ahead tilt and further-out zoom
 // at highway speed — since there's no API access to compare directly
 // against the real app.
-// low/medium/high are what auto's three speed tiers resolve to (see
+// low/medium are what auto's speed tiers resolve to (see
 // LIVE_ANGLE_TIER_MODE below) — overhead is a manual-only extra step, auto
 // never picks it (Google's own nav view never goes flat just from slowing
-// down, see LIVE_ANGLE_TIER_MODE's own comment).
+// down, see LIVE_ANGLE_TIER_MODE's own comment). A steeper "high" tier
+// (60°) existed here too but was pulled entirely rather than kept chasing
+// a rendering complaint with no further lead to go on once always-on road
+// labels (see updateLiveMapLabelVisibility) didn't resolve it.
 const LIVE_ANGLE_PROFILES = {
   overhead: { tilt: 0, rotates: false },
   low: { tilt: 22, rotates: true },
   medium: { tilt: 45, rotates: true },
-  high: { tilt: 60, rotates: true },
 };
-// The sky mask's height at the steepest tilt tier (high) -- see
+// The sky mask's height at the steepest tilt tier (medium) -- see
 // .planner-sky-mask's own CSS comment. Scaled down proportionally for
 // shallower tilts by skyMaskVh below rather than shown at this same size
 // regardless of actual tilt.
 const LIVE_SKY_MASK_MAX_VH = 24;
 function skyMaskVh(tiltDeg) {
-  return (Math.max(0, tiltDeg) / LIVE_ANGLE_PROFILES.high.tilt) * LIVE_SKY_MASK_MAX_VH;
+  return (Math.max(0, tiltDeg) / LIVE_ANGLE_PROFILES.medium.tilt) * LIVE_SKY_MASK_MAX_VH;
 }
 // far/normal/close are what auto's three speed tiers resolve to (see
 // LIVE_ZOOM_TIER_MODE below) — wide/tight are extra manual-only steps
@@ -3135,7 +3137,7 @@ async function startLiveDrive() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
-    panMode: "auto",
+    panMode: "auto", headingMode: "auto",
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
@@ -3497,7 +3499,7 @@ let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
 // The rendered tilt, eased toward whatever the current angle profile
 // targets — profile.tilt itself jumps between fixed tiers (e.g. auto
-// switching low -> medium -> high as speed changes, or a manual FAB tap),
+// switching low -> medium as speed changes, or a manual FAB tap),
 // and with no CSS transition to soften that anymore (see
 // .planner-map-rotate-wrap.driving's own comment), this is what keeps a
 // tier change easing smoothly instead of snapping.
@@ -3525,7 +3527,10 @@ function autoSpeedTier(speedMs, current) {
 // to map to "overhead" (flat), which flattened the view every time you
 // slowed down or stopped — the "low" angle tier keeps a real 3D perspective
 // at every speed.
-const LIVE_ANGLE_TIER_MODE = { low: "low", mid: "medium", high: "high" };
+// The "high" speed tier (fast driving) now caps out at the "medium" angle
+// profile too -- there's no steeper tier left since "high" was removed
+// from LIVE_ANGLE_PROFILES.
+const LIVE_ANGLE_TIER_MODE = { low: "low", mid: "medium", high: "medium" };
 const LIVE_ZOOM_TIER_MODE = { low: "close", mid: "normal", high: "far" };
 function resolveLiveAngleProfile(speedMs) {
   if (!liveDrive) return LIVE_ANGLE_PROFILES.low;
@@ -3549,15 +3554,22 @@ function rotateLiveMap(headingDeg, speedMs) {
   liveMapLastHeadingDeg = headingDeg || 0;
   if (speedMs != null) liveMapLastSpeedMs = speedMs;
   const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
-  // Overhead stays north-up: target 0 instead of the heading, via the same
-  // shortest-path delta math, so switching into it eases back to north
-  // rather than jumping.
-  const target = profile.rotates ? ((-liveMapLastHeadingDeg % 360) + 360) % 360 : 0;
-  const current = ((liveMapRotationDeg % 360) + 360) % 360;
-  let delta = target - current;
-  if (delta > 180) delta -= 360;
-  if (delta < -180) delta += 360;
-  liveMapRotationDeg += delta;
+  // A two-finger touch rotate (see handleLiveTouchMove) already set
+  // liveMapRotationDeg directly and owns it until released -- skipping the
+  // auto heading-follow here is what keeps this per-fix/per-frame call
+  // from snapping it straight back to the course-up target on the very
+  // next tick.
+  if (!liveDrive || liveDrive.headingMode !== "manual") {
+    // Overhead stays north-up: target 0 instead of the heading, via the same
+    // shortest-path delta math, so switching into it eases back to north
+    // rather than jumping.
+    const target = profile.rotates ? ((-liveMapLastHeadingDeg % 360) + 360) % 360 : 0;
+    const current = ((liveMapRotationDeg % 360) + 360) % 360;
+    let delta = target - current;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+    liveMapRotationDeg += delta;
+  }
   liveMapCurrentTilt += (profile.tilt - liveMapCurrentTilt) * LIVE_TILT_SMOOTHING;
   updateLiveMapLabelVisibility();
   const wrap = document.getElementById("plannerMapRotateWrap");
@@ -3604,8 +3616,8 @@ function updateLiveZoom(speedMs) {
 }
 // Ascending tilt/zoom order — simplest to reason about with five manual
 // steps rather than the earlier arbitrary ordering that only had three.
-const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium", "high"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium", high: "Angle: High" };
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium" };
 // Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
 // DOM update, not a render(), so it doesn't interrupt live tracking or
 // recreate the map. Zoom is a fully independent axis (its own FAB, its own
@@ -3643,25 +3655,64 @@ function handleLiveZoomChanged() {
   liveDrive.manualZoom = z;
   liveMapLastAppliedZoom = z;
 }
-// A manual drag stops applyLiveMarkerFrame's per-frame setCenter from
-// fighting it (see panMode there) for the duration of the gesture --
-// dragstart/dragend only ever fire from a real user gesture, never from
-// that same setCenter/panTo, so they're an unambiguous signal. Recentering
-// resumes (snapping straight back onto the driver's real position, one
-// zoom level or wherever they left it) the instant the touch is released,
-// rather than leaving the camera manually parked until some separate
-// button is tapped -- the position marker is otherwise just a fixed screen
-// overlay with nothing under it tracking where the car actually is.
-function handleLiveDragStart() {
-  if (!liveDrive) return;
-  liveDrive.panMode = "manual";
+// A touch on the map -- one finger to drag and look around, or two fingers
+// twisted to rotate the view -- pauses the camera's own per-frame follow
+// (see panMode in applyLiveMarkerFrame, headingMode in rotateLiveMap) for
+// as long as any finger is down, plus a grace period after the last one
+// lifts (see scheduleLiveSnapback), rather than fighting the gesture within
+// a single frame or snapping back the instant a finger releases. Native
+// touch listeners, not Maps' own dragstart/dragend -- those don't fire for
+// a pure two-finger rotate (no net pan), and this way one mechanism covers
+// both gestures instead of two separate, differently-timed ones.
+let liveRotateStartAngleDeg = null;
+let liveRotateStartRotationDeg = 0;
+function twoTouchAngleDeg(touches) {
+  const dx = touches[1].clientX - touches[0].clientX, dy = touches[1].clientY - touches[0].clientY;
+  return Math.atan2(dy, dx) * 180 / Math.PI;
 }
-function handleLiveDragEnd() {
+let liveSnapbackTimer = null;
+// How long to keep showing wherever a manual pan/rotate left the view
+// before snapping back onto the driver's real position -- long enough to
+// actually look around without the camera yanking itself back mid-glance.
+const LIVE_SNAPBACK_DELAY_MS = 5000;
+function cancelLiveSnapback() {
+  if (liveSnapbackTimer) { clearTimeout(liveSnapbackTimer); liveSnapbackTimer = null; }
+}
+function scheduleLiveSnapback() {
+  cancelLiveSnapback();
+  liveSnapbackTimer = setTimeout(() => {
+    liveSnapbackTimer = null;
+    if (!liveDrive) return;
+    liveDrive.panMode = "auto";
+    liveDrive.headingMode = "auto";
+    if (plannerMapInstance && liveDrive.lastFix) {
+      plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+    }
+  }, LIVE_SNAPBACK_DELAY_MS);
+}
+function handleLiveTouchStart(e) {
   if (!liveDrive) return;
-  liveDrive.panMode = "auto";
-  if (plannerMapInstance && liveDrive.lastFix) {
-    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  cancelLiveSnapback();
+  liveDrive.panMode = "manual";
+  if (e.touches.length === 2) {
+    liveRotateStartAngleDeg = twoTouchAngleDeg(e.touches);
+    liveRotateStartRotationDeg = liveMapRotationDeg;
+    liveDrive.headingMode = "manual";
   }
+}
+function handleLiveTouchMove(e) {
+  if (!liveDrive || e.touches.length !== 2 || liveRotateStartAngleDeg == null) return;
+  liveMapRotationDeg = liveRotateStartRotationDeg + (twoTouchAngleDeg(e.touches) - liveRotateStartAngleDeg);
+  const wrap = document.getElementById("plannerMapRotateWrap");
+  if (wrap) {
+    const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
+    wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
+  }
+}
+function handleLiveTouchEnd(e) {
+  if (e.touches.length > 0) return; // at least one finger still down
+  liveRotateStartAngleDeg = null;
+  scheduleLiveSnapback();
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
@@ -3698,8 +3749,8 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   // rendered tilt is still easing toward that target, and using the target
   // early would offset the camera for a tilt that isn't actually on screen
   // yet, drifting the marker off its intended spot until the ease catches up.
-  // Skipped entirely once the driver has manually dragged the map (see
-  // panMode/handleLiveDragStart) -- this runs up to 60 times a second, so a
+  // Skipped entirely once the driver has touched the map (see
+  // panMode/handleLiveTouchStart) -- this runs up to 60 times a second, so a
   // manual pan was otherwise overwritten within a single frame, reading as
   // "touch doesn't work" even though the drag itself was registering fine.
   if (liveDrive && liveDrive.panMode === "manual") return;
@@ -4104,7 +4155,7 @@ async function resumeLiveDriveIfAny() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
-    panMode: "auto",
+    panMode: "auto", headingMode: "auto",
   };
   stopLiveMoveAnimation();
   if (navigator.geolocation) {
@@ -4297,13 +4348,15 @@ async function ensurePlannerMap() {
 
   if (driving) {
     plannerMapInstance.addListener("zoom_changed", handleLiveZoomChanged);
-    // dragstart/dragend only ever fire from a genuine user gesture -- never
-    // from the per-frame setCenter/panTo calls this screen makes itself --
-    // so they're the correct, unambiguous signal for when the driver takes
-    // manual control of the camera and when they let go of it again (see
-    // panMode/applyLiveMarkerFrame).
-    plannerMapInstance.addListener("dragstart", handleLiveDragStart);
-    plannerMapInstance.addListener("dragend", handleLiveDragEnd);
+    // Native touch listeners rather than Maps' own dragstart/dragend -- see
+    // handleLiveTouchStart's own comment for why (a pure two-finger rotate
+    // needs catching too, and dragend doesn't fire for one). Passive: these
+    // never call preventDefault, so Maps' own pan/pinch-zoom handling on
+    // the same touches is untouched -- this only watches alongside it.
+    canvas.addEventListener("touchstart", handleLiveTouchStart, { passive: true });
+    canvas.addEventListener("touchmove", handleLiveTouchMove, { passive: true });
+    canvas.addEventListener("touchend", handleLiveTouchEnd, { passive: true });
+    canvas.addEventListener("touchcancel", handleLiveTouchEnd, { passive: true });
   }
 
   if (!driving && !complete) {
@@ -4395,7 +4448,7 @@ async function ensurePlannerMap() {
         dot(routeLegs[0].start_location, "#4C9F70", "Start");
         routeLegs.forEach((leg, i) => {
           const isLast = i === routeLegs.length - 1;
-          dot(leg.end_location, isLast ? "#E0642C" : "#8B92A0", isLast ? "End" : "Stop");
+          dot(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
         });
       }
     } catch { /* map still usable without the route line */ }
@@ -4416,7 +4469,7 @@ async function ensurePlannerMap() {
       plannerTripStartMarker = new Marker({
         map: plannerMapInstance,
         position: { lat: p.stops[0].lat, lng: p.stops[0].lng },
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#8B92A0", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#4C9F70", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
         zIndex: 3, title: "Start",
       });
     } catch { /* map still usable without the start pin */ }
@@ -7601,7 +7654,7 @@ function staticMapUrlForTrip(trip) {
   const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
   if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
-  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
+  if (hasEnd) params.append("markers", `color:0xE5484D|label:B|${trip.endLat},${trip.endLng}`);
   if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${trip.startLat},${trip.startLng}|${trip.endLat},${trip.endLng}`);
   return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
 }
@@ -7627,7 +7680,7 @@ function staticMapUrlForPlannerRoute() {
   const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
   if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${first.lat},${first.lng}`);
-  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${last.lat},${last.lng}`);
+  if (hasEnd) params.append("markers", `color:0xE5484D|label:B|${last.lat},${last.lng}`);
   if (overview.length > 1) params.append("path", `color:0x4C9FF2|weight:4|enc:${encodePolyline(overview)}`);
   else if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${first.lat},${first.lng}|${last.lat},${last.lng}`);
   return `https://maps.googleapis.com/maps/api/staticmap?${params.toString()}`;
@@ -7756,7 +7809,7 @@ function detailedStaticMapUrlForTrip(trip, pathPoints) {
   const params = new URLSearchParams({ size: "640x400", scale: "2", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
   if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
-  if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
+  if (hasEnd) params.append("markers", `color:0xE5484D|label:B|${trip.endLat},${trip.endLng}`);
   if (pathPoints && pathPoints.length > 1) {
     params.append("path", `color:0x4C9FF2|weight:4|enc:${encodePolyline(pathPoints)}`);
   } else if (hasStart && hasEnd) {
