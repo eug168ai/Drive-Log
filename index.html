@@ -500,7 +500,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 18mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 12mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -585,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.9";
+const APP_BUILD = "2026-08-21.10";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2700,25 +2700,27 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // city speed, easing toward a steeper look-ahead tilt and further-out zoom
 // at highway speed — since there's no API access to compare directly
 // against the real app.
-// low/medium are what auto's speed tiers resolve to (see
+// low/medium/high are what auto's three speed tiers resolve to (see
 // LIVE_ANGLE_TIER_MODE below) — overhead is a manual-only extra step, auto
 // never picks it (Google's own nav view never goes flat just from slowing
-// down, see LIVE_ANGLE_TIER_MODE's own comment). A steeper "high" tier
-// (60°) existed here too but was pulled entirely rather than kept chasing
-// a rendering complaint with no further lead to go on once always-on road
-// labels (see updateLiveMapLabelVisibility) didn't resolve it.
+// down, see LIVE_ANGLE_TIER_MODE's own comment). A prior "high" at 60°
+// existed here too but was pulled entirely over an unresolved rendering
+// complaint after always-on road labels (see updateLiveMapLabelVisibility)
+// didn't fix it -- reintroduced at a shallower 52° as a middle ground worth
+// re-testing, between that old 60° and medium's 45°.
 const LIVE_ANGLE_PROFILES = {
   overhead: { tilt: 0, rotates: false },
   low: { tilt: 22, rotates: true },
   medium: { tilt: 45, rotates: true },
+  high: { tilt: 52, rotates: true },
 };
-// The sky mask's height at the steepest tilt tier (medium) -- see
+// The sky mask's height at the steepest tilt tier (high) -- see
 // .planner-sky-mask's own CSS comment. Scaled down proportionally for
 // shallower tilts by skyMaskVh below rather than shown at this same size
 // regardless of actual tilt.
 const LIVE_SKY_MASK_MAX_VH = 24;
 function skyMaskVh(tiltDeg) {
-  return (Math.max(0, tiltDeg) / LIVE_ANGLE_PROFILES.medium.tilt) * LIVE_SKY_MASK_MAX_VH;
+  return (Math.max(0, tiltDeg) / LIVE_ANGLE_PROFILES.high.tilt) * LIVE_SKY_MASK_MAX_VH;
 }
 // far/normal/close are what auto's three speed tiers resolve to (see
 // LIVE_ZOOM_TIER_MODE below) — wide/tight are extra manual-only steps
@@ -3476,6 +3478,11 @@ async function rerouteLiveDrive(lat, lng) {
     }
     plannerDirectionsResult = result;
     if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
+    // Redraws the upcoming-stop/destination dots against the new route --
+    // ensurePlannerMap only draws these once at drive start, and a reroute
+    // never calls that again, so without this they'd keep pointing at
+    // wherever the pre-reroute route used to pass through/end.
+    drawPlannerRouteDots(result, false);
   } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
   if (!liveDrive) return;
   liveDrive.rerouting = false;
@@ -3499,7 +3506,7 @@ let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
 // The rendered tilt, eased toward whatever the current angle profile
 // targets — profile.tilt itself jumps between fixed tiers (e.g. auto
-// switching low -> medium as speed changes, or a manual FAB tap),
+// switching low -> medium -> high as speed changes, or a manual FAB tap),
 // and with no CSS transition to soften that anymore (see
 // .planner-map-rotate-wrap.driving's own comment), this is what keeps a
 // tier change easing smoothly instead of snapping.
@@ -3527,10 +3534,7 @@ function autoSpeedTier(speedMs, current) {
 // to map to "overhead" (flat), which flattened the view every time you
 // slowed down or stopped — the "low" angle tier keeps a real 3D perspective
 // at every speed.
-// The "high" speed tier (fast driving) now caps out at the "medium" angle
-// profile too -- there's no steeper tier left since "high" was removed
-// from LIVE_ANGLE_PROFILES.
-const LIVE_ANGLE_TIER_MODE = { low: "low", mid: "medium", high: "medium" };
+const LIVE_ANGLE_TIER_MODE = { low: "low", mid: "medium", high: "high" };
 const LIVE_ZOOM_TIER_MODE = { low: "close", mid: "normal", high: "far" };
 function resolveLiveAngleProfile(speedMs) {
   if (!liveDrive) return LIVE_ANGLE_PROFILES.low;
@@ -3616,8 +3620,8 @@ function updateLiveZoom(speedMs) {
 }
 // Ascending tilt/zoom order — simplest to reason about with five manual
 // steps rather than the earlier arbitrary ordering that only had three.
-const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium" };
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium", "high"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium", high: "Angle: High" };
 // Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
 // DOM update, not a render(), so it doesn't interrupt live tracking or
 // recreate the map. Zoom is a fully independent axis (its own FAB, its own
@@ -3666,15 +3670,27 @@ function handleLiveZoomChanged() {
 // both gestures instead of two separate, differently-timed ones.
 let liveRotateStartAngleDeg = null;
 let liveRotateStartRotationDeg = 0;
-function twoTouchAngleDeg(touches) {
-  const dx = touches[1].clientX - touches[0].clientX, dy = touches[1].clientY - touches[0].clientY;
+// Vertical on-screen distances are foreshortened by the current tilt (a
+// perspective projection of the tilted map plane) relative to horizontal
+// ones -- measured in raw screen coordinates with no correction, a
+// physical two-finger twist maps to a smaller and smaller effective angle
+// change the steeper the tilt, which is why rotate reads as unresponsive
+// in Low/Medium but fine in flat Overhead. Scaling dy back up by
+// 1/cos(tilt) is a simple, approximate undo of that foreshortening -- not
+// exact perspective math, but should track physical finger movement much
+// more directly at any tilt.
+function twoTouchAngleDeg(touches, tiltDeg) {
+  const dx = touches[1].clientX - touches[0].clientX;
+  let dy = touches[1].clientY - touches[0].clientY;
+  const tiltRad = (tiltDeg || 0) * Math.PI / 180;
+  if (tiltRad > 0.01) dy = dy / Math.cos(tiltRad);
   return Math.atan2(dy, dx) * 180 / Math.PI;
 }
 let liveSnapbackTimer = null;
 // How long to keep showing wherever a manual pan/rotate left the view
 // before snapping back onto the driver's real position -- long enough to
 // actually look around without the camera yanking itself back mid-glance.
-const LIVE_SNAPBACK_DELAY_MS = 5000;
+const LIVE_SNAPBACK_DELAY_MS = 3000;
 function cancelLiveSnapback() {
   if (liveSnapbackTimer) { clearTimeout(liveSnapbackTimer); liveSnapbackTimer = null; }
 }
@@ -3695,14 +3711,14 @@ function handleLiveTouchStart(e) {
   cancelLiveSnapback();
   liveDrive.panMode = "manual";
   if (e.touches.length === 2) {
-    liveRotateStartAngleDeg = twoTouchAngleDeg(e.touches);
+    liveRotateStartAngleDeg = twoTouchAngleDeg(e.touches, liveMapCurrentTilt);
     liveRotateStartRotationDeg = liveMapRotationDeg;
     liveDrive.headingMode = "manual";
   }
 }
 function handleLiveTouchMove(e) {
   if (!liveDrive || e.touches.length !== 2 || liveRotateStartAngleDeg == null) return;
-  liveMapRotationDeg = liveRotateStartRotationDeg + (twoTouchAngleDeg(e.touches) - liveRotateStartAngleDeg);
+  liveMapRotationDeg = liveRotateStartRotationDeg + (twoTouchAngleDeg(e.touches, liveMapCurrentTilt) - liveRotateStartAngleDeg);
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (wrap) {
     const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
@@ -4263,7 +4279,39 @@ let plannerDirectionsRenderer = null;
 let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
 let plannerTripStartMarker = null;
+let plannerRouteDots = [];
 let plannerMapIsNight = false;
+// Small circular dots, centered exactly on each stop's real coordinate --
+// Google's default DirectionsRenderer pins anchor at their bottom tip, not
+// their center, so they're suppressed (see suppressMarkers) in favor of
+// these both here and on the post-drive Drive Completed summary. Reads
+// straight off the given result's own legs rather than p.stops, so a
+// driving map's dots land on wherever the *current* route (post-reroute)
+// actually passes through/ends, not the original plan -- see
+// rerouteLiveDrive, which redraws these again whenever that changes.
+async function drawPlannerRouteDots(result, includeStart) {
+  if (!plannerMapInstance) return;
+  clearPlannerRouteDots();
+  try {
+    const { Marker } = await google.maps.importLibrary("marker");
+    if (!plannerMapInstance) return;
+    const legs = result.routes[0].legs;
+    const dot = (position, color, title) => plannerRouteDots.push(new Marker({
+      map: plannerMapInstance, position,
+      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+      zIndex: 3, title,
+    }));
+    if (includeStart) dot(legs[0].start_location, "#4C9F70", "Start");
+    legs.forEach((leg, i) => {
+      const isLast = i === legs.length - 1;
+      dot(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
+    });
+  } catch { /* map still usable without the stop pins */ }
+}
+function clearPlannerRouteDots() {
+  plannerRouteDots.forEach(m => m.setMap(null));
+  plannerRouteDots = [];
+}
 
 // Live-updates just the distance/time/hazard/leg-tag card in place, without
 // a full render() — used after a drag-to-reroute (directions_changed can
@@ -4295,6 +4343,7 @@ async function ensurePlannerMap() {
   plannerMapInstance = null;
   plannerLiveMarker = null;
   plannerTripStartMarker = null;
+  plannerRouteDots = []; // belonged to the old map instance, already gone
   if (!canvas || !mapsConfigured()) return;
   const library = await getMapsLibrary();
   if (!library) return;
@@ -4431,25 +4480,16 @@ async function ensurePlannerMap() {
         });
       }
       if (complete) {
-        // Small circular dots, centered exactly on each stop's real
-        // coordinate (unlike the suppressed default pins above) -- read
-        // straight off this route's own legs rather than p.stops, so they
-        // land on wherever the route actually starts/passes through/ends,
-        // including a drive stopped short of its final planned destination
-        // (see endLiveDrive's truncated-route redraw).
-        const { Marker } = await google.maps.importLibrary("marker");
+        // Start too, here -- the fixed reroute-proof start marker below is
+        // only ever drawn for a live "driving" map.
+        await drawPlannerRouteDots(plannerDirectionsResult, true);
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
-        const routeLegs = plannerDirectionsResult.routes[0].legs;
-        const dot = (position, color, title) => new Marker({
-          map: plannerMapInstance, position,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
-          zIndex: 3, title,
-        });
-        dot(routeLegs[0].start_location, "#4C9F70", "Start");
-        routeLegs.forEach((leg, i) => {
-          const isLast = i === routeLegs.length - 1;
-          dot(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
-        });
+      } else if (driving) {
+        // Upcoming stops/destination, visible on the live nav map itself
+        // rather than only appearing once the drive is over -- start is
+        // covered separately below by the fixed, reroute-proof marker.
+        await drawPlannerRouteDots(plannerDirectionsResult, false);
+        if (document.getElementById("plannerMapCanvas") !== canvas) return;
       }
     } catch { /* map still usable without the route line */ }
   }
