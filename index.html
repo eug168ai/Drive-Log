@@ -485,7 +485,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 10mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 15mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -565,7 +565,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.14";
+const APP_BUILD = "2026-08-20.15";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1412,6 +1412,11 @@ const state = {
   startLocArmed: false, // true once Start Location holds a real selection (not just typed text) — re-armed on every render, e.g. survives the Estimate Drive round-trip
   endLocArmed: false,   // same, for whichever End Location field is currently visible
   pendingTrip: null,
+  // Same conditions prompt as pendingTrip, but for the Trip Planner's Save
+  // Drive (which can commit several legs/trips at once) rather than the
+  // single trip the Quick Drive flow always has -- an array of trips
+  // instead of one, applied to every trip in it tagged "supervised".
+  pendingPlannerTrips: null,
   confirmingDrive: false, // showing the drive summary review step, before any supervised conditions prompt
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -5662,7 +5667,7 @@ function renderApp() {
     ${state.tab === "history" ? renderHistoryTab() : state.tab === "drive" ? renderPlanTab() : renderSettingsTab()}
     ${state.confirmingCancelDrive ? renderCancelDriveModal() : state.driveSummary ? renderDriveSummaryModal() : ""}
     ${state.businessForm ? renderBusinessDetailsModal() : ""}
-    ${state.pendingTrip ? renderConditionsModal() : ""}
+    ${(state.pendingTrip || state.pendingPlannerTrips) ? renderConditionsModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
@@ -8013,6 +8018,22 @@ function attachAppHandlers() {
         // until this tap actually commits the trips.
         const trips = p.completeSummary.trips;
         trips.forEach((trip, i) => { if (p.legs[i]) trip.tag = p.legs[i].tag; });
+        // A live/planned drive skipped the conditions prompt entirely for
+        // Supervised legs (unlike Quick Drive's own pendingTrip flow) --
+        // one supervised leg or several, ask once and apply it to all of
+        // them, same as the fields already available afterward in Edit
+        // Drive, just asked up front instead of only if you go looking.
+        if (trips.some(t => t.tag === "supervised")) {
+          completeDoneBtn.disabled = false;
+          const first = trips.find(t => t.tag === "supervised");
+          const dn = defaultDayNightFor(first.date, first.startTime, first.startLat, first.startLng);
+          state.pendingPlannerTrips = trips;
+          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+          state.addingSupervisor = false;
+          state.newSupervisorName = ""; state.newSupervisorLicence = "";
+          render();
+          return;
+        }
         for (const trip of trips) await finalizeTrip(trip);
         // Stay right here on the summary instead of jumping to the Log tab —
         // the button below turns into Done, which is the actual exit.
@@ -8805,12 +8826,13 @@ function attachAppHandlers() {
     };
   }
 
-  if (state.pendingTrip) {
+  if (state.pendingTrip || state.pendingPlannerTrips) {
     const f = state.conditionsForm;
 
     const backBtn = document.getElementById("backConditionsBtn");
     if (backBtn) backBtn.onclick = () => {
       state.pendingTrip = null;
+      state.pendingPlannerTrips = null;
       state.addingSupervisor = false;
       render();
     };
@@ -8858,17 +8880,28 @@ function attachAppHandlers() {
     const saveTripBtn = document.getElementById("saveConditionsTripBtn");
     if (saveTripBtn) saveTripBtn.onclick = async () => {
       const sup = state.supervisors.find(s => s.id === f.supervisorId);
-      const trip = {
-        ...state.pendingTrip,
-        timeOfDay: f.timeOfDay, roadType: f.roadType, weather: f.weather, traffic: f.traffic,
-        supervisorName: sup ? sup.name : "", supervisorLicence: sup ? sup.licence : "",
-      };
-      state.pendingTrip = null;
       if (sup) {
         state.settings.lastSupervisorId = sup.id;
         await storageSet(SETTINGS_KEY, state.settings);
       }
-      await finalizeTrip(trip);
+      const conditions = {
+        timeOfDay: f.timeOfDay, roadType: f.roadType, weather: f.weather, traffic: f.traffic,
+        supervisorName: sup ? sup.name : "", supervisorLicence: sup ? sup.licence : "",
+      };
+      if (state.pendingPlannerTrips) {
+        // Only the Supervised-tagged trips in this batch actually get the
+        // conditions -- a Personal or Business leg saved in the same drive
+        // has nothing to do with them.
+        const trips = state.pendingPlannerTrips.map(t => t.tag === "supervised" ? { ...t, ...conditions } : t);
+        state.pendingPlannerTrips = null;
+        for (const trip of trips) await finalizeTrip(trip);
+        const p = state.planner;
+        if (p) p.saved = true;
+      } else {
+        const trip = { ...state.pendingTrip, ...conditions };
+        state.pendingTrip = null;
+        await finalizeTrip(trip);
+      }
       render();
     };
   }
