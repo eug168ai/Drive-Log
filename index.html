@@ -506,7 +506,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 12mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 7mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -591,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.15";
+const APP_BUILD = "2026-08-21.16";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3509,7 +3509,7 @@ async function rerouteLiveDrive(lat, lng) {
     // ensurePlannerMap only draws these once at drive start, and a reroute
     // never calls that again, so without this they'd keep pointing at
     // wherever the pre-reroute route used to pass through/end.
-    drawPlannerRoutePins(result, false);
+    drawPlannerRoutePins(result, null, false, "#4C9FF2");
   } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
   if (!liveDrive) return;
   liveDrive.rerouting = false;
@@ -4393,25 +4393,44 @@ function plannerPinIcon(color) {
     scale: 1.5, anchor: new google.maps.Point(12, 24),
   };
 }
-// Pins for each stop on the route, colored Start/Stop/End -- read straight
-// off the given result's own legs rather than p.stops, so a driving map's
-// pins land on wherever the *current* route (post-reroute) actually
-// passes through/ends, not the original plan -- see rerouteLiveDrive,
-// which redraws these again whenever that changes.
-async function drawPlannerRoutePins(result, includeStart) {
+// Pins for each stop on the route, colored Start/Stop/End. A route's own
+// leg boundaries are snapped to the nearest routable road, which can
+// leave a real gap between where the line actually ends and a stop's real
+// coordinate (a building set back from the road, an inexact geocode,
+// etc.) -- when the real coordinates are known (the `stops` array, in the
+// same order as legs: stops[0] is the start, stops[i+1] is leg i's end),
+// the pin goes there instead of the snapped point, and a short connector
+// segment in the same route color bridges the two so the line visually
+// reaches all the way to the pin. Pass null for stops (the live driving
+// map's own caller does -- see rerouteLiveDrive) to skip all that and
+// just use the route's own snapped boundaries directly, when the leg
+// indices here can't be reliably lined up against p.stops (e.g. after a
+// reroute renumbers which stops are left).
+async function drawPlannerRoutePins(result, stops, includeStart, lineColor) {
   if (!plannerMapInstance) return;
   clearPlannerRoutePins();
   try {
     const { Marker } = await google.maps.importLibrary("marker");
     if (!plannerMapInstance) return;
     const legs = result.routes[0].legs;
+    const CONNECT_THRESHOLD_M = 15;
     const pin = (position, color, title) => plannerRoutePins.push(new Marker({
       map: plannerMapInstance, position, icon: plannerPinIcon(color), zIndex: 3, title,
     }));
-    if (includeStart) pin(legs[0].start_location, "#4C9F70", "Start");
+    const pinAt = (snappedLatLng, real, color, title) => {
+      const snapped = { lat: snappedLatLng.lat(), lng: snappedLatLng.lng() };
+      pin(real || snapped, color, title);
+      if (real && haversineMeters(real.lat, real.lng, snapped.lat, snapped.lng) > CONNECT_THRESHOLD_M) {
+        plannerRoutePins.push(new google.maps.Polyline({
+          map: plannerMapInstance, path: [snapped, real],
+          strokeColor: lineColor, strokeWeight: 8, strokeOpacity: 0.9,
+        }));
+      }
+    };
+    if (includeStart) pinAt(legs[0].start_location, stops ? stops[0] : null, "#4C9F70", "Start");
     legs.forEach((leg, i) => {
       const isLast = i === legs.length - 1;
-      pin(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
+      pinAt(leg.end_location, stops ? stops[i + 1] : null, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
     });
   } catch { /* map still usable without the stop pins */ }
 }
@@ -4600,23 +4619,44 @@ async function ensurePlannerMap() {
             }
           });
           updatePlannerRouteSummaryDOM();
-          // Dragging the route line can insert a new via-point -- keeps the
-          // pins matching whatever the line actually shows now, same as the
-          // distance/time numbers just above.
-          drawPlannerRoutePins(result, true);
+          // Dragging the route line can insert a new via-point that isn't
+          // reflected in pp.stops at all (it only changes the path/distance
+          // numbers, not the stop list) -- passing pp.stops when the
+          // lengths no longer match would misalign every pin after that
+          // point, so this falls back to the route's own snapped
+          // boundaries (no connector) rather than risk that.
+          const stopsForPins = pp.stops.length === route.legs.length + 1 ? pp.stops : null;
+          drawPlannerRoutePins(result, stopsForPins, true, "#4C9FF2");
         });
       }
       if (driving) {
         // Upcoming stops/destination, visible on the live nav map itself
         // rather than only appearing once the drive is over -- start is
         // covered separately below by the fixed, reroute-proof marker.
-        await drawPlannerRoutePins(plannerDirectionsResult, false);
+        // No real stop coordinates passed -- see rerouteLiveDrive's own
+        // call for why leg indices here can't be reliably lined up
+        // against p.stops after a reroute.
+        await drawPlannerRoutePins(plannerDirectionsResult, null, false, "#4C9FF2");
+        if (document.getElementById("plannerMapCanvas") !== canvas) return;
+      } else if (complete) {
+        // Built from completeSummary.trips, not p.stops -- a drive stopped
+        // short of its final planned destination gets its route redrawn
+        // (see endLiveDrive) to end wherever it actually did, which can
+        // mean *fewer* legs than the original plan; trips already has
+        // exactly one entry per leg of whatever route this now is, so
+        // this can't drift out of alignment with it the way re-deriving
+        // from the full original stop list could. Each entry is already
+        // the real endpoint either way -- the planned stop's own
+        // coordinate for one fully reached, or the real GPS one
+        // (reverse-geocoded) endLiveDrive resolved for a partial leg.
+        const realStops = [{ lat: p.stops[0].lat, lng: p.stops[0].lng },
+          ...p.completeSummary.trips.map(t => ({ lat: t.endLat, lng: t.endLng }))];
+        await drawPlannerRoutePins(plannerDirectionsResult, realStops, true, "#4C9F70");
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
       } else {
-        // Preview and Complete both get the start pin too -- the fixed
-        // reroute-proof start marker below is only ever drawn for a live
-        // "driving" map.
-        await drawPlannerRoutePins(plannerDirectionsResult, true);
+        // Preview gets the start pin too -- the fixed reroute-proof start
+        // marker below is only ever drawn for a live "driving" map.
+        await drawPlannerRoutePins(plannerDirectionsResult, p.stops, true, "#4C9FF2");
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
       }
     } catch { /* map still usable without the route line */ }
