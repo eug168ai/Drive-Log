@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.7";
+const APP_BUILD = "2026-08-20.8";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3254,6 +3254,17 @@ function checkLiveRouteDeviation(lat, lng) {
   if (!liveDrive || liveDrive.rerouting || !liveDrive.steps.length) return;
   const p = state.planner;
   if (!p || liveDrive.legIdx >= p.legs.length) return; // no remaining stop to reroute toward
+  // A real off-route departure only happens while actually moving -- while
+  // essentially stationary (parked, or just testing indoors), "distance
+  // from the route" is far more likely GPS/WiFi-positioning noise than a
+  // genuine wrong turn, and it isn't rare for that noise alone to clear
+  // LIVE_OFFROUTE_M for several fixes in a row. Rerouting on that produces
+  // a real, if bogus, new route from wherever the noisy fix happened to
+  // land -- which then shows up as "a drive that didn't happen" on the
+  // drawn line and, if it's the last thing before Stop, on the Drive
+  // Complete summary too. Same threshold already used to hold the map's
+  // heading steady on the same noise (see LIVE_MIN_ROTATE_SPEED_MS).
+  if ((liveDrive.smoothSpeedMs || 0) < LIVE_MIN_ROTATE_SPEED_MS) { liveDrive.offRouteStrikes = 0; return; }
   const offRoute = distanceToLiveRouteMeters(lat, lng) > LIVE_OFFROUTE_M;
   liveDrive.offRouteStrikes = offRoute ? liveDrive.offRouteStrikes + 1 : 0;
   if (liveDrive.offRouteStrikes < LIVE_OFFROUTE_CONFIRM_FIXES) return;
@@ -3733,6 +3744,16 @@ async function endLiveDrive() {
   p.preStopSnapshot = { liveDrive: JSON.parse(JSON.stringify(liveDrive)), directionsResult: plannerDirectionsResult, stoppedAt: Date.now() };
   const legIdxAtStop = liveDrive.legIdx;
   const hadPartialProgress = legIdxAtStop < p.legs.length && liveDrive.legDistanceM > 0;
+  // Prefers the last recorded breadcrumb of the leg in progress over the
+  // single raw lastFix for "where did the drive actually end" -- breadcrumbs
+  // already passed the same jump guard used for distance (LIVE_MAX_JUMP_M),
+  // where lastFix is stored unfiltered on every fix (only accuracy-gated).
+  // A single stray fix with a deceptively small reported accuracy (common
+  // with WiFi-based positioning indoors) could otherwise put the Complete
+  // screen's redrawn route, and the reverse-geocoded end address, somewhere
+  // the driver never actually was.
+  const lastLegCrumbs = liveDrive.breadcrumbs.filter(b => b.legIdx === legIdxAtStop);
+  const lastKnownPos = lastLegCrumbs.length ? lastLegCrumbs[lastLegCrumbs.length - 1] : liveDrive.lastFix;
 
   // Ending while paused: exclude the still-ongoing paused interval from the
   // final leg's duration, same math as a resume — just without restarting tracking.
@@ -3763,16 +3784,16 @@ async function endLiveDrive() {
     cursor = new Date(cursor.getTime() + cl.durationMin * 60000);
     const endTimeStr = `${String(cursor.getHours()).padStart(2, "0")}:${String(cursor.getMinutes()).padStart(2, "0")}`;
     let endPoint = to ? (to.address.trim() || "Unspecified") : "Current location";
-    if (!to && liveDrive.lastFix) {
+    if (!to && lastKnownPos) {
       let matched = null;
       if (mapsConfigured()) {
-        try { matched = await withTimeout(matchSavedAddressNear(liveDrive.lastFix.lat, liveDrive.lastFix.lng), 6000); }
+        try { matched = await withTimeout(matchSavedAddressNear(lastKnownPos.lat, lastKnownPos.lng), 6000); }
         catch { /* rejected or timed out -- fall through to reverse geocoding below */ }
       }
       if (matched) {
         endPoint = matched.address;
       } else {
-        try { endPoint = await withTimeout(reverseGeocode(liveDrive.lastFix.lat, liveDrive.lastFix.lng), 6000); } catch { /* keep the "Current location" fallback */ }
+        try { endPoint = await withTimeout(reverseGeocode(lastKnownPos.lat, lastKnownPos.lng), 6000); } catch { /* keep the "Current location" fallback */ }
       }
     }
     const trip = {
@@ -3782,7 +3803,7 @@ async function endLiveDrive() {
     };
     if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
     if (to && to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
-    else if (!to && liveDrive.lastFix) { trip.endLat = liveDrive.lastFix.lat; trip.endLng = liveDrive.lastFix.lng; }
+    else if (!to && lastKnownPos) { trip.endLat = lastKnownPos.lat; trip.endLng = lastKnownPos.lng; }
     // Consumed by finalizeTrip (see attachTripDetailedImage) once Save Drive
     // actually commits this trip -- stripped there rather than kept on the
     // trip long-term, since only the rendered image (not the raw points)
@@ -3814,8 +3835,8 @@ async function endLiveDrive() {
       if (!library) throw new Error("Directions service isn't ready");
       const { DirectionsService } = library;
       const service = new DirectionsService();
-      const destPoint = hadPartialProgress && liveDrive.lastFix
-        ? { lat: liveDrive.lastFix.lat, lng: liveDrive.lastFix.lng }
+      const destPoint = hadPartialProgress && lastKnownPos
+        ? { lat: lastKnownPos.lat, lng: lastKnownPos.lng }
         : { lat: p.stops[legIdxAtStop].lat, lng: p.stops[legIdxAtStop].lng };
       const waypoints = p.stops.slice(1, legIdxAtStop).filter(s => s.lat != null)
         .map(s => ({ location: { lat: s.lat, lng: s.lng }, stopover: true }));
