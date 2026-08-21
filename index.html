@@ -573,7 +573,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.17";
+const APP_BUILD = "2026-08-21.1";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1425,6 +1425,12 @@ const state = {
   // single trip the Quick Drive flow always has -- an array of trips
   // instead of one, applied to every trip in it tagged "supervised".
   pendingPlannerTrips: null,
+  // Distinguishes where pendingPlannerTrips came from once conditions are
+  // saved: the live-driven Save Drive flow stays on the Drive Complete
+  // screen afterward (it flips p.saved so its own Done button takes over),
+  // while logPlannedRouteNow's pre-trip "Log Drive" has no such screen and
+  // needs to close the planner and jump to the Log tab itself instead.
+  pendingPlannerTripsFromLog: false,
   confirmingDrive: false, // showing the drive summary review step, before any supervised conditions prompt
   conditionsForm: { timeOfDay: "day", roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: "" },
   addingSupervisor: false,
@@ -2583,6 +2589,20 @@ async function logPlannedRouteNow(date, startTimeStr) {
     if (from.lat != null) { trip.startLat = from.lat; trip.startLng = from.lng; }
     if (to.lat != null) { trip.endLat = to.lat; trip.endLng = to.lng; }
     trips.push(trip);
+  }
+  // Same as the live-driven Save Drive flow (plannerCompleteDoneBtn) -- ask
+  // for driving conditions once and apply them to every Supervised leg,
+  // rather than finalizing straight away with nothing recorded.
+  if (trips.some(t => t.tag === "supervised")) {
+    const first = trips.find(t => t.tag === "supervised");
+    const dn = defaultDayNightFor(first.date, first.startTime, first.startLat, first.startLng);
+    state.pendingPlannerTrips = trips;
+    state.pendingPlannerTripsFromLog = true;
+    state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+    state.addingSupervisor = false;
+    state.newSupervisorName = ""; state.newSupervisorLicence = "";
+    render();
+    return;
   }
   for (const trip of trips) await finalizeTrip(trip);
   state.planner = null;
@@ -4203,14 +4223,28 @@ async function ensurePlannerMap() {
         // then jump around on every reroute. Suppressed here in favor of
         // the dedicated, reroute-proof start marker placed below.
         suppressMarkers: driving,
-        // Otherwise setDirections() below re-fits the viewport to the whole
-        // route, undoing the street-level zoom/center just set above.
-        preserveViewport: driving,
+        // Always true -- the default un-padded auto-fit centers the route
+        // within the *entire* map div, ignoring that the topbar (address
+        // fields) and bottom sheet (summary/buttons) overlay a big chunk of
+        // it from the top and bottom. Fitted manually just below instead,
+        // padded to the real height of whichever of those are on screen, so
+        // the route ends up centered in the part of the map actually visible.
+        preserveViewport: true,
         // Thicker than Google's default, and green once the drive is done
         // (marking it as completed) rather than the in-progress blue.
         polylineOptions: { strokeColor: complete ? "#4C9F70" : "#4C9FF2", strokeWeight: 7, strokeOpacity: 0.9 },
       });
       plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
+      if (!driving) {
+        const routeBounds = plannerDirectionsResult.routes[0].bounds;
+        if (routeBounds) {
+          const topEl = document.querySelector(".planner-topbar");
+          const bottomEl = document.querySelector(".planner-bottom-sheet");
+          const topPad = (topEl ? topEl.getBoundingClientRect().height : 0) + 20;
+          const bottomPad = (bottomEl ? bottomEl.getBoundingClientRect().height : 0) + 20;
+          plannerMapInstance.fitBounds(routeBounds, { top: topPad, right: 24, bottom: bottomPad, left: 24 });
+        }
+      }
       if (!driving && !complete) {
         plannerDirectionsChangedListener = plannerDirectionsRenderer.addListener("directions_changed", () => {
           const result = plannerDirectionsRenderer.getDirections();
@@ -9035,6 +9069,7 @@ function attachAppHandlers() {
     if (backBtn) backBtn.onclick = () => {
       state.pendingTrip = null;
       state.pendingPlannerTrips = null;
+      state.pendingPlannerTripsFromLog = false;
       state.addingSupervisor = false;
       render();
     };
@@ -9055,10 +9090,21 @@ function attachAppHandlers() {
         // conditions -- a Personal or Business leg saved in the same drive
         // has nothing to do with them.
         const trips = state.pendingPlannerTrips.map(t => t.tag === "supervised" ? { ...t, ...conditions } : t);
+        const fromLog = state.pendingPlannerTripsFromLog;
         state.pendingPlannerTrips = null;
+        state.pendingPlannerTripsFromLog = false;
         for (const trip of trips) await finalizeTrip(trip);
-        const p = state.planner;
-        if (p) p.saved = true;
+        if (fromLog) {
+          // logPlannedRouteNow has no Drive Complete screen to land back on
+          // -- close the planner and go straight to the Log tab, same as it
+          // always did once conditions weren't in the way.
+          state.planner = null;
+          plannerDirectionsResult = null;
+          state.tab = "history";
+        } else {
+          const p = state.planner;
+          if (p) p.saved = true;
+        }
       } else {
         const trip = { ...state.pendingTrip, ...conditions };
         state.pendingTrip = null;
