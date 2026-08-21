@@ -296,7 +296,14 @@
   .planner-paused-overlay .icon{width:44px;height:44px;}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 80%, transparent 100%);
+    /* Fixed-size fade at the very bottom, not a percentage of the topbar's
+       own height -- with more than a couple of stops, or the saved-address
+       pill row expanding a focused field, this box gets tall, and a
+       percentage-based fade (its old 80%/100% stops) shrinks its solid
+       backing proportionally, leaving whatever sits in the last fifth --
+       often the always-visible Add Stop row -- rendered over a mostly
+       transparent gradient with the map bleeding through behind it. */
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99), rgba(var(--bg-rgb),.99) calc(100% - 28px), transparent 100%);
     transition:opacity .25s ease;}
   /* Tapping the map with every stop already filled has nothing left to
      pick, so it toggles this instead — hiding the address form and bottom
@@ -550,7 +557,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.9";
+const APP_BUILD = "2026-08-20.10";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
