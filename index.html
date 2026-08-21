@@ -591,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.16";
+const APP_BUILD = "2026-08-21.17";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5775,8 +5775,10 @@ function renderSavedRoutesList() {
     const untagged = r.legs.some(l => !l.tag);
     return `
     <div class="card">
-      <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.name || `${r.stops[0].address || "Start"} → ${r.stops[r.stops.length - 1].address || "Destination"}`)}</p>
-      <p class="settings-desc" style="margin:0 0 10px;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:10px;">
+        <p class="settings-title" style="margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;">${escAttr(r.name || `${r.stops[0].address || "Start"} → ${r.stops[r.stops.length - 1].address || "Destination"}`)}</p>
+        <p class="settings-desc" style="margin:0;flex-shrink:0;white-space:nowrap;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
+      </div>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn-ghost plannerLogSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
         <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Drive</button>
@@ -5871,12 +5873,14 @@ function renderPlanTab() {
   const mapsError = state.mapsAuthError ? `<div class="card" style="border-color:rgba(224,100,44,.4);"><p class="settings-desc" style="color:var(--work);margin:0;">${state.mapsAuthError}</p></div>` : "";
 
   if (!p) {
+    // Saved routes live only inside the planner itself now (tap the star
+    // in its header, see plannerBrowseSavedBtn) -- showing the same list
+    // again here too just duplicated it on the Drive tab's home screen.
     const plannerEntry = state.active ? "" : `
     <div class="card card-construction">
       <p class="settings-title" style="margin:0 0 10px;">${icons.route} Drive Planner<span class="construction-tag">Under Construction</span></p>
       <button type="button" id="newPlannerRouteBtn" class="btn btn-grey">${icons.route} New Drive</button>
-    </div>
-    ${renderSavedRoutesList()}`;
+    </div>`;
     return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${plannerEntry}`;
   }
 
@@ -7877,6 +7881,11 @@ function staticMapUrlForPlannerRoute() {
   const p = state.planner;
   if (!p) return null;
   const first = p.stops[0], last = p.stops[p.stops.length - 1];
+  // Every stop strictly between the first and last -- a genuinely
+  // multi-leg trip's whole point (the "stops" the other maps already mark
+  // in orange) was otherwise missing here entirely, only ever showing
+  // Start/End regardless of how many legs the drive actually had.
+  const middle = p.stops.slice(1, -1).filter(s => s.lat != null);
   const hasStart = first && first.lat != null, hasEnd = last && last.lat != null;
   if (!hasStart && !hasEnd) return null;
   const overview = (plannerDirectionsResult && plannerDirectionsResult.routes[0])
@@ -7884,11 +7893,13 @@ function staticMapUrlForPlannerRoute() {
     : [];
   const points = overview.length > 1 ? overview.slice() : [];
   if (hasStart) points.push({ lat: first.lat, lng: first.lng });
+  middle.forEach(s => points.push({ lat: s.lat, lng: s.lng }));
   if (hasEnd) points.push({ lat: last.lat, lng: last.lng });
   const center = centerOfBounds(points);
   const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
   if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${first.lat},${first.lng}`);
+  middle.forEach(s => params.append("markers", `color:0xE0642C|${s.lat},${s.lng}`));
   if (hasEnd) params.append("markers", `color:0xE5484D|label:B|${last.lat},${last.lng}`);
   if (overview.length > 1) params.append("path", `color:0x4C9FF2|weight:4|enc:${encodePolyline(overview)}`);
   else if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${first.lat},${first.lng}|${last.lat},${last.lng}`);
