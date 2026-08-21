@@ -394,7 +394,8 @@
 
   .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
-    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);
+    transform:translateZ(0);}
   .planner-angle-fab.active{background:rgba(var(--amber-rgb),.18);}
   .planner-angle-fab .icon{width:18px;height:18px;}
   .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 150px);z-index:31;
@@ -435,17 +436,23 @@
   .planner-legtags .planner-leg-row{padding:3px 0;}
   .planner-legtags .divider{margin:3px 0;}
 
-  /* Solid for a fixed 5mm off the very top edge, THEN the same fade curve
-     as the eta bar's own background below -- mirrored exactly (same
+  /* Solid for a fixed distance off the very top edge, THEN the same fade
+     curve as the eta bar's own background below -- mirrored exactly (same
      stops, opposite direction) rather than each panel having its own
      independently-tuned profile. Fixed-mm base rather than a pure
      percentage: this box's own height doesn't vary as wildly as the
      address form's did (see .planner-topbar's own fix for that failure
-     mode), but there's no reason for the two panels to drift apart either. */
+     mode), but there's no reason for the two panels to drift apart either.
+     translateZ(0) forces this onto its own GPU compositing layer, isolated
+     from .planner-map-rotate-wrap's own constantly-updating 3D transform
+     right behind it -- an experimental mitigation for page elements
+     intermittently vanishing, not a confirmed fix (no code path was found
+     that actually removes them; this targets the layer-eviction bugs
+     mobile Chrome can show near a large, busy 3D-transformed neighbor). */
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 10px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 5mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
-    display:flex;align-items:center;gap:12px;}
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 8mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    display:flex;align-items:center;gap:12px;transform:translateZ(0);}
   /* Google Maps' own maneuver icon is a blue rounded square with a white
      arrow, top-left of the screen — this is the left-most element in the
      row, and the row itself sits at the very top (see .planner-drive-banner
@@ -474,16 +481,17 @@
   /* Two rows: Pause/Stop above (pushed to the far right, above the bottom
      edge), the ETA/Remaining/Distance row at the very bottom edge itself.
      Background mirrors .planner-drive-banner's exactly (same stops,
-     opposite direction) -- see its own comment. */
+     opposite direction) -- see its own comment. Also on its own
+     compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 5mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
-    display:flex;flex-direction:column;align-items:stretch;gap:10px;}
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 10mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
      kept invisible now). Anchored here via bottom:100% of the eta bar's
      own box (its containing block, being position:absolute) plus a fixed
-     5mm gap, rather than a measured pixel offset, so it always sits a
+     1cm gap, rather than a measured pixel offset, so it always sits a
      fixed physical distance above the current-road pill -- the eta bar's
      top row -- regardless of which controls that bar is currently
      showing. Points straight up in every course-up angle mode (the map
@@ -493,11 +501,15 @@
      rendered position (not an independent guess) to decide where the
      camera re-centers the driver's real position to project onto, so the
      two can no longer drift apart the way two separately-chosen fixed
-     points could. */
+     points could. Blue again (matching the app's own route-line color),
+     but with a white halo stacked from two identical zero-offset drop-
+     shadows -- a plain blue-on-blue arrow disappeared against the route
+     line it's meant to sit on; the halo keeps it legible there without
+     giving up the color match. */
   .planner-position-arrow{position:absolute;left:50%;bottom:100%;z-index:26;
     transform:translateX(-50%) rotate(var(--arrow-rot, 0deg));
-    width:38px;height:38px;margin-bottom:5mm;color:#E5342B;
-    filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));
+    width:38px;height:38px;margin-bottom:1cm;color:#4C9FF2;
+    filter:drop-shadow(0 0 2.5px #fff) drop-shadow(0 0 2.5px #fff) drop-shadow(0 2px 4px rgba(0,0,0,.55));
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .planner-position-arrow .icon{width:100%;height:100%;}
   /* Equal 1fr side columns (same trick as .planner-eta-metrics-row below)
@@ -553,7 +565,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.13";
+const APP_BUILD = "2026-08-20.14";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
