@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.4";
+const APP_BUILD = "2026-08-20.5";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -8115,7 +8115,20 @@ function attachAppHandlers() {
       armPlannerLegRouteMarquee();
     } else if (p && p.stage === "driving") {
       const endDriveBtn = document.getElementById("plannerEndDriveBtn");
-      if (endDriveBtn) endDriveBtn.onclick = endLiveDrive;
+      // endLiveDrive can take a few real seconds now (see withTimeout) when
+      // network calls are slow rather than failing outright -- with nothing
+      // else on screen changing in the meantime, a tap with no immediate
+      // feedback reads as the button not having worked at all. Disabling it
+      // (re-enabled if endLiveDrive somehow returns without ever re-rendering
+      // the screen out from under it) makes the tap's effect visible right away.
+      if (endDriveBtn) endDriveBtn.onclick = () => {
+        if (endDriveBtn.disabled) return;
+        endDriveBtn.disabled = true;
+        endDriveBtn.style.opacity = ".5";
+        endLiveDrive().finally(() => {
+          if (endDriveBtn.isConnected) { endDriveBtn.disabled = false; endDriveBtn.style.opacity = ""; }
+        });
+      };
       const pauseDriveBtn = document.getElementById("plannerPauseDriveBtn");
       if (pauseDriveBtn) pauseDriveBtn.onclick = () => { if (liveDrive && liveDrive.paused) resumeLiveDrive(); else pauseLiveDrive(); };
       const nextLegBtn = document.getElementById("plannerNextLegBtn");
