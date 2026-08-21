@@ -430,6 +430,8 @@
   .planner-route-badge .icon{width:13px;height:13px;}
   .planner-save-star{padding:2px;color:var(--amber);}
   .planner-save-star .icon{width:18px;height:18px;}
+  .planner-discard-drive-btn{padding:2px;}
+  .planner-discard-drive-btn .icon{width:18px;height:18px;}
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
   .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
@@ -583,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.3";
+const APP_BUILD = "2026-08-21.4";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5409,10 +5411,18 @@ function renderPlannerLegBusinessBtn(legIdx) {
 // state.planner.legs tag rather than the `leg` param's own (which, for the
 // complete summary, is a distanceKm/durationMin snapshot of what was
 // actually driven — real numbers that shouldn't shift, unlike the tag).
-function renderPlannerLegRow(leg, idx, stops) {
+function renderPlannerLegRow(leg, idx, stops, actualTrip) {
   const fromStop = stops[idx], toStop = stops[idx + 1];
   const fromLabel = (fromStop && (fromStop.roadSuburb || fromStop.address)) || plannerStopLabel(idx, stops.length);
-  const toLabel = (toStop && (toStop.roadSuburb || toStop.address)) || plannerStopLabel(idx + 1, stops.length);
+  // actualTrip (only passed for the post-drive Drive Completed summary) is
+  // endLiveDrive's own record of where each leg actually ended -- for every
+  // leg that reached its planned stop this is the same address anyway, but
+  // a drive stopped before reaching its final destination ends at wherever
+  // GPS actually had the driver (reverse-geocoded), which the planned
+  // stop's own address would otherwise wrongly claim was reached.
+  const toLabel = actualTrip && actualTrip.endPoint && (!toStop || actualTrip.endPoint !== toStop.address)
+    ? actualTrip.endPoint
+    : (toStop && (toStop.roadSuburb || toStop.address)) || plannerStopLabel(idx + 1, stops.length);
   const hasDistance = leg.distanceKm != null;
   const liveLeg = state.planner && state.planner.legs[idx];
   const tag = liveLeg ? liveLeg.tag : leg.tag;
@@ -5665,10 +5675,10 @@ function renderPlannerCompleteSummary() {
   return `
   <div class="planner-route-summary">
     <div class="planner-route-badge">
-      <span class="planner-route-badge-label">${icons.flag} Drive Complete</span>
+      <span class="planner-route-badge-label">${icons.flag} Drive Completed</span>
       <div style="display:flex;align-items:center;gap:12px;">
+        <button type="button" class="icon-btn planner-discard-drive-btn" id="plannerDiscardDriveBtn" title="Discard drive" style="color:var(--work);">${icons.trash}</button>
         <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this Drive"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
-        <button type="button" class="icon-btn" id="plannerDiscardDriveBtn" title="Discard drive" style="color:var(--work);">${icons.trash}</button>
       </div>
     </div>
     <div class="planner-route-metrics">
@@ -5679,7 +5689,7 @@ function renderPlannerCompleteSummary() {
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
     </div>
     <div class="planner-legtags">
-      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops)).join(`<div class="divider"></div>`)}
+      ${legs.map((l, i) => renderPlannerLegRow(l, i, p.stops, p.completeSummary.trips[i])).join(`<div class="divider"></div>`)}
     </div>
   </div>`;
 }
