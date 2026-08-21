@@ -291,7 +291,7 @@
      flat 24vh regardless of angle -- that flat height was tuned for the
      steepest tilt tier and, applied identically at every shallower one
      too, masked off a needlessly large slice of perfectly good map at
-     gentle/low tilt where the artifact it's hiding barely exists yet. */
+     low/medium tilt where the artifact it's hiding barely exists yet. */
   .planner-sky-mask{display:none;position:absolute;top:0;left:0;right:0;height:var(--mask-vh, 24vh);z-index:15;pointer-events:none;
     background:linear-gradient(to bottom, var(--bg) 0%, var(--bg) 45%, transparent 100%);}
   .planner-sky-mask.show{display:block;}
@@ -484,6 +484,11 @@
   .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;max-width:38%;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
+  /* Tightens the gap either side of a decimal point in these monospace
+     figures (see tightenDecimal/formatLiveTurnDistance) -- a bare "."
+     otherwise takes up a whole fixed-width character cell, reading as a
+     much bigger gap than in a normal proportional font. */
+  .mono .dp{margin:0 -0.16em;}
   .planner-turn-dist .l{font-size:11px;color:var(--faint);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* Two rows: Pause/Stop above (pushed to the far right, above the bottom
@@ -493,7 +498,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 18mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 21mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -516,7 +521,7 @@
      giving up the color match. */
   .planner-position-arrow{position:absolute;left:50%;bottom:100%;z-index:26;
     transform:translateX(-50%) rotate(var(--arrow-rot, 0deg));
-    width:38px;height:38px;margin-bottom:8mm;color:#4C9FF2;
+    width:38px;height:38px;margin-bottom:5mm;color:#4C9FF2;
     filter:drop-shadow(0 0 2.5px #fff) drop-shadow(0 0 2.5px #fff) drop-shadow(0 2px 4px rgba(0,0,0,.55));
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .planner-position-arrow .icon{width:100%;height:100%;}
@@ -544,7 +549,12 @@
   /* Spread edge to edge, with Remaining as the sandwiched (so centered)
      middle column regardless of how wide ETA/Distance's own text runs. */
   .planner-eta-metrics-row{display:grid;grid-template-columns:1fr auto 1fr;align-items:end;column-gap:10px;width:100%;}
-  .planner-eta-metrics-row .m.eta{text-align:left;}
+  /* Shrink-wrapped and centered on itself (rather than stretched full-width
+     and left-flush) so the "ETA" label always sits centered directly under
+     the time value above it, whatever width that value renders at --
+     justify-self:start keeps the whole block anchored toward the column's
+     left edge, same overall position as before. */
+  .planner-eta-metrics-row .m.eta{display:inline-flex;flex-direction:column;align-items:center;text-align:center;justify-self:start;}
   .planner-eta-metrics-row .m.remain{text-align:center;}
   .planner-eta-metrics-row .m.dist{text-align:right;}
   .planner-eta-metrics-row .m.remain .v{font-size:22px;font-weight:800;color:var(--amber);}
@@ -573,7 +583,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.2";
+const APP_BUILD = "2026-08-21.3";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2636,10 +2646,10 @@ const LIVE_STEP_ADVANCE_M = 35;      // close enough to a step's end to call it 
 // alone fires while still approaching the turn, jumping the banner ahead to
 // announce the *following* turn before the driver had actually made this one.
 const LIVE_STEP_PASSED_HYSTERESIS_M = 8;
-// Extra distance driven on a newly-advanced step before the current-road
-// pill (see liveDrive.pillStepIdx) actually switches to its name -- a
-// small deliberate lag so a step-advance right at the edge of its own
-// hysteresis doesn't read as the pill flickering.
+// Extra distance driven on a newly-advanced step (or a reroute) before the
+// current-road pill (see liveDrive.pillRoadName) actually switches to its
+// name -- a small deliberate lag so a step-advance right at the edge of its
+// own hysteresis doesn't read as the pill flickering.
 const LIVE_PILL_HOLD_M = 20;
 const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
@@ -2678,23 +2688,25 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // Angle (tilt) and zoom are independent axes — each has its own FAB, cycle,
 // and "auto" that follows speed. "rotates" controls whether the map turns
 // to course-up at all: overhead stays north-up, so its labels are
-// guaranteed never upside-down regardless of heading. "roadLabels" is which
-// road labels stay on once upright-gated by updateLiveMapLabelVisibility —
-// "all" shows every road, "main" hides minor arterial/local roads to
-// reduce clutter at the zoomed-out, fast-driving end. Tilt/zoom values are
-// a best-effort match to Google's own normal driving nav view — a ~45°
-// tilt and closer zoom at city speed, easing toward a steeper look-ahead
-// tilt and further-out zoom at highway speed — since there's no API access
-// to compare directly against the real app.
-// gentle/low/high are what auto's three speed tiers resolve to (see
+// guaranteed never upside-down regardless of heading. Road labels always
+// stay on regardless of tier (only genuinely unreadable — rotated too far
+// from upright — ever turns them off, see updateLiveMapLabelVisibility); an
+// earlier "main" tier that hid minor/local road names at the steepest tilt
+// made road names disappear exactly when a driver most wanted to check
+// which street they were on. Tilt/zoom values are a best-effort match to
+// Google's own normal driving nav view — a ~45° tilt and closer zoom at
+// city speed, easing toward a steeper look-ahead tilt and further-out zoom
+// at highway speed — since there's no API access to compare directly
+// against the real app.
+// low/medium/high are what auto's three speed tiers resolve to (see
 // LIVE_ANGLE_TIER_MODE below) — overhead is a manual-only extra step, auto
 // never picks it (Google's own nav view never goes flat just from slowing
 // down, see LIVE_ANGLE_TIER_MODE's own comment).
 const LIVE_ANGLE_PROFILES = {
-  overhead: { tilt: 0, rotates: false, roadLabels: "all" },
-  gentle: { tilt: 22, rotates: true, roadLabels: "all" },
-  low: { tilt: 45, rotates: true, roadLabels: "all" },
-  high: { tilt: 60, rotates: true, roadLabels: "main" },
+  overhead: { tilt: 0, rotates: false },
+  low: { tilt: 22, rotates: true },
+  medium: { tilt: 45, rotates: true },
+  high: { tilt: 60, rotates: true },
 };
 // The sky mask's height at the steepest tilt tier (high) -- see
 // .planner-sky-mask's own CSS comment. Scaled down proportionally for
@@ -2714,7 +2726,7 @@ const LIVE_ZOOM_PROFILES = { wide: 15, far: 16.5, normal: 17, close: 18, tight: 
 // Speed tiers shared by both axes' "auto" — when both are left on auto
 // they move together the way Google's own nav view does; overriding just
 // one still lets the other keep following speed independently.
-const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> gentle angle / close zoom
+const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> low angle / close zoom
 const LIVE_AUTO_HIGH_TIER_MIN_MS = 18; // at/above ~65 km/h -> high angle / far zoom
 const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so hovering near one doesn't flicker
 // Road labels on the raster map tiles rotate along with everything else
@@ -2726,11 +2738,11 @@ const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so ho
 // on once heading swings back closer to upright. POIs/transit/admin labels
 // are always off — clutter the turn banner already covers better.
 const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 70;
-// `roadLabelsScope` ("all" | "main") is the current view profile's own
-// preference; `upright` overrides it to hide every road label regardless of
-// scope once the map's rotated far enough that they'd read sideways/upside
-// down — the one condition that always wins.
-function drivingMapStyles(roadLabelsScope, upright) {
+// Road labels (every class, not just highways) stay on regardless of tilt
+// or zoom tier -- `upright` is the one thing that ever turns them off, once
+// the map's rotated far enough from north that they'd read sideways/upside
+// down rather than just decluttered.
+function drivingMapStyles(upright) {
   const hide = [
     { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
     { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
@@ -2757,17 +2769,16 @@ function drivingMapStyles(roadLabelsScope, upright) {
     // road.arterial is included here (not just road.highway) because
     // Google classifies plenty of real numbered routes — state highways
     // like "A77" outside the US Interstate system, for one — as arterial
-    // rather than highway; only road.local (residential streets) is what
-    // "main" actually declutters. Whether Google draws the shield and name
-    // together, rather than just the shield, at a given zoom is its own
-    // label-placement decision — no lever here forces that either way.
+    // rather than highway. road.local (residential streets) gets the same
+    // explicit "on" so a name is never lost regardless of tilt/zoom tier.
+    // Whether Google draws the shield and name together, rather than just
+    // the shield, at a given zoom is its own label-placement decision — no
+    // lever here forces that either way.
     hide.push({ featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
     hide.push({ featureType: "road.highway", elementType: "labels.text", stylers: [{ visibility: "on" }] });
     hide.push({ featureType: "road.arterial", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
     hide.push({ featureType: "road.arterial", elementType: "labels.text", stylers: [{ visibility: "on" }] });
-    if (roadLabelsScope === "main") {
-      hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "off" }] });
-    }
+    hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "on" }] });
   }
   return [...(plannerMapIsNight ? NIGHT_MAP_STYLE : []), ...hide];
 }
@@ -2800,6 +2811,15 @@ function maneuverLabel(m) { return MANEUVER_LABELS[m] || "Continue"; }
 // Returns markup (number + a tightly-kerned unit span) rather than a plain
 // string so the caller can set it via innerHTML — a literal space char in a
 // plain string can't be tightened with CSS alone.
+// Wraps a decimal point in its own span so it can be kerned tighter via CSS
+// (see .dp) — in the monospace figure font these readouts use, a bare "."
+// takes up a whole fixed-width character cell, reading as a noticeably
+// wider gap either side of it than it would in a normal proportional font.
+function tightenDecimal(num) {
+  const s = String(num);
+  const i = s.indexOf(".");
+  return i === -1 ? s : `${s.slice(0, i)}<span class="dp">.</span>${s.slice(i + 1)}`;
+}
 function formatLiveTurnDistance(distM) {
   let num, unit;
   if (currentUnit() === "mi") {
@@ -2808,7 +2828,7 @@ function formatLiveTurnDistance(distM) {
     else { num = (distM / 1000 * 0.621371).toFixed(1); unit = "mi"; }
   } else if (distM < 950) { num = Math.round(distM / 10) * 10; unit = "m"; }
   else { num = (distM / 1000).toFixed(1); unit = "km"; }
-  return `${num}<span class="unit">${unit}</span>`;
+  return `${tightenDecimal(num)}<span class="unit">${unit}</span>`;
 }
 // Long-form "1 hr 20 min" duration for the nav remaining-time readout —
 // deliberately separate from the global formatDuration() ("1h 20m") used
@@ -2842,6 +2862,12 @@ function stepStreetName(html, stripCode) {
   div.innerHTML = html || "";
   const bolds = Array.from(div.querySelectorAll("b")).map(b => b.textContent.trim()).filter(Boolean);
   let name = bolds.length ? bolds[bolds.length - 1] : stepPlainInstruction(html);
+  // A turn onto an unnamed/private road has no real road name to bold --
+  // Google's own instructions bold just the bare direction ("Turn <b>right</b>")
+  // in that case, so the fallback above picks that up as if it were the
+  // name. Shown as-is it reads as a stray lowercase word where a road name
+  // normally goes; capitalized at least reads as a deliberate direction.
+  if (/^(left|right)$/i.test(name)) name = name[0].toUpperCase() + name.slice(1).toLowerCase();
   if (stripCode) {
     const esc = stripCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const stripped = name.replace(new RegExp(`^${esc}\\s*/\\s*|\\s*/\\s*${esc}$`, "i"), "").trim();
@@ -3085,12 +3111,17 @@ async function startLiveDrive() {
   catch (e) { p.previewError = e.message || "Couldn't get your location."; render(); return; }
   if (!state.planner) return; // cancelled while waiting on the permission prompt
 
+  const initialSteps = flattenDirectionsSteps(plannerDirectionsResult);
   liveDrive = {
     startedAt: Date.now(),
-    steps: flattenDirectionsSteps(plannerDirectionsResult),
+    steps: initialSteps,
     stepIdx: 0,
     stepEndMinDist: null,
-    pillStepIdx: 0, pillHoldRemainM: 0,
+    // See rerouteLiveDrive's own comment for why the road pill tracks a
+    // committed name string rather than an index into liveDrive.steps --
+    // nothing to hold onto yet at the very start, so it's shown right away.
+    pillRoadName: initialSteps[0] ? stepStreetName(initialSteps[0].instructions) : "",
+    pillPendingRoadName: null, pillHoldRemainM: 0,
     legIdx: 0,
     legStartedAt: Date.now(),
     legDistanceM: 0,
@@ -3194,7 +3225,9 @@ function advanceToNextLegManually() {
   // current-road pill should reflect that immediately, not sit through
   // its usual debounce (see LIVE_PILL_HOLD_M) as if this were a borderline
   // GPS-triggered advance.
-  liveDrive.pillStepIdx = liveDrive.stepIdx;
+  const nextStep = liveDrive.steps[liveDrive.stepIdx];
+  liveDrive.pillRoadName = nextStep ? stepStreetName(nextStep.instructions) : "";
+  liveDrive.pillPendingRoadName = null;
   liveDrive.pillHoldRemainM = 0;
   if (liveDrive.legIdx >= state.planner.legs.length) { endLiveDrive(); return; }
   render();
@@ -3289,15 +3322,21 @@ function handleLiveFix(pos) {
 
   // Current-road pill debounce (see LIVE_PILL_HOLD_M) -- a fresh advance
   // restarts the hold distance (covering a step that itself advances again
-  // moments later); it only counts down, and only the pill's own step
-  // reference catches up, once the fix has kept moving on whatever step is
-  // current now.
+  // moments later); it only counts down, and only actually commits the new
+  // name once the fix has kept moving on whatever step is current now.
+  // pillRoadName holds a committed *name string*, not a step index, so it
+  // survives rerouteLiveDrive wholesale-replacing liveDrive.steps mid-hold
+  // (see that function's own comment on why that distinction matters).
   if (liveDrive.stepIdx !== stepIdxBeforeAdvance) {
+    liveDrive.pillPendingRoadName = step ? stepStreetName(step.instructions) : "";
     liveDrive.pillHoldRemainM = LIVE_PILL_HOLD_M;
   } else if (liveDrive.pillHoldRemainM > 0 && !(prev && deltaM > LIVE_MAX_JUMP_M)) {
     liveDrive.pillHoldRemainM = Math.max(0, liveDrive.pillHoldRemainM - deltaM);
   }
-  if (liveDrive.pillHoldRemainM <= 0) liveDrive.pillStepIdx = liveDrive.stepIdx;
+  if (liveDrive.pillHoldRemainM <= 0 && liveDrive.pillPendingRoadName != null) {
+    liveDrive.pillRoadName = liveDrive.pillPendingRoadName;
+    liveDrive.pillPendingRoadName = null;
+  }
 
   const p = state.planner;
   if (p && liveDrive.legIdx < p.legs.length) {
@@ -3404,8 +3443,25 @@ async function rerouteLiveDrive(lat, lng) {
     liveDrive.steps = flattenDirectionsSteps(result).map(s => ({ ...s, legIdx: s.legIdx + legOffset }));
     liveDrive.stepIdx = 0;
     liveDrive.stepEndMinDist = null;
-    liveDrive.pillStepIdx = 0;
-    liveDrive.pillHoldRemainM = 0;
+    // Don't trust this new route's very first step for the road pill right
+    // away -- held through the same debounce as a normal step advance (see
+    // LIVE_PILL_HOLD_M) instead. A route recomputed from a raw device
+    // position can have Google snap that position to just past a nearby
+    // intersection, making step 0 the road *after* an upcoming turn the
+    // driver hasn't actually reached yet -- showing that immediately is
+    // exactly the "pill shows the upcoming road" bug. Holding the previous
+    // committed name a bit longer avoids it; nothing to hold onto right
+    // after a resume (steps started empty, pillRoadName is still ""), so
+    // that case still commits immediately rather than showing a blank pill.
+    const newPillRoadName = liveDrive.steps[0] ? stepStreetName(liveDrive.steps[0].instructions) : "";
+    if (liveDrive.pillRoadName) {
+      liveDrive.pillPendingRoadName = newPillRoadName;
+      liveDrive.pillHoldRemainM = LIVE_PILL_HOLD_M;
+    } else {
+      liveDrive.pillRoadName = newPillRoadName;
+      liveDrive.pillPendingRoadName = null;
+      liveDrive.pillHoldRemainM = 0;
+    }
     plannerDirectionsResult = result;
     if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
   } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
@@ -3431,7 +3487,7 @@ let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
 // The rendered tilt, eased toward whatever the current angle profile
 // targets — profile.tilt itself jumps between fixed tiers (e.g. auto
-// switching gentle -> low -> high as speed changes, or a manual FAB tap),
+// switching low -> medium -> high as speed changes, or a manual FAB tap),
 // and with no CSS transition to soften that anymore (see
 // .planner-map-rotate-wrap.driving's own comment), this is what keeps a
 // tier change easing smoothly instead of snapping.
@@ -3455,10 +3511,11 @@ function autoSpeedTier(speedMs, current) {
 // Google's own nav view stays tilted at every normal driving speed,
 // including stopped at lights or crawling in traffic — it only ever goes
 // flat/overhead on a deliberate zoom-out for a route overview, never
-// automatically just because you've slowed down. Auto's low tier used to
-// map to "overhead" (flat), which flattened the view every time you slowed
-// down or stopped — "gentle" keeps a real 3D perspective at every tier.
-const LIVE_ANGLE_TIER_MODE = { low: "gentle", mid: "low", high: "high" };
+// automatically just because you've slowed down. Auto's low speed tier used
+// to map to "overhead" (flat), which flattened the view every time you
+// slowed down or stopped — the "low" angle tier keeps a real 3D perspective
+// at every speed.
+const LIVE_ANGLE_TIER_MODE = { low: "low", mid: "medium", high: "high" };
 const LIVE_ZOOM_TIER_MODE = { low: "close", mid: "normal", high: "far" };
 function resolveLiveAngleProfile(speedMs) {
   if (!liveDrive) return LIVE_ANGLE_PROFILES.low;
@@ -3492,7 +3549,7 @@ function rotateLiveMap(headingDeg, speedMs) {
   if (delta < -180) delta += 360;
   liveMapRotationDeg += delta;
   liveMapCurrentTilt += (profile.tilt - liveMapCurrentTilt) * LIVE_TILT_SMOOTHING;
-  updateLiveMapLabelVisibility(profile);
+  updateLiveMapLabelVisibility();
   const wrap = document.getElementById("plannerMapRotateWrap");
   if (wrap) {
     const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
@@ -3513,16 +3570,15 @@ function rotateLiveMap(headingDeg, speedMs) {
 // re-styling the map is a real (if cheap) operation, so this only actually
 // calls setOptions on an actual change, not every fix.
 let liveMapLabelsKey = null;
-function updateLiveMapLabelVisibility(profile) {
+function updateLiveMapLabelVisibility() {
   if (!plannerMapInstance || !liveDrive) return;
-  profile = profile || resolveLiveAngleProfile(liveMapLastSpeedMs);
   const norm = ((liveMapRotationDeg % 360) + 360) % 360;
   const angleFromUpright = norm > 180 ? 360 - norm : norm;
   const upright = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
-  const key = `${profile.roadLabels}:${upright}`;
+  const key = `${upright}`;
   if (key === liveMapLabelsKey) return;
   liveMapLabelsKey = key;
-  plannerMapInstance.setOptions({ styles: drivingMapStyles(profile.roadLabels, upright) });
+  plannerMapInstance.setOptions({ styles: drivingMapStyles(upright) });
 }
 // Zoom is a real map property (not a CSS transform), so it's applied
 // directly rather than through the wrapper — throttled to avoid firing
@@ -3538,8 +3594,8 @@ function updateLiveZoom(speedMs) {
 }
 // Ascending tilt/zoom order — simplest to reason about with five manual
 // steps rather than the earlier arbitrary ordering that only had three.
-const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "gentle", "low", "high"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", gentle: "Angle: Gentle", low: "Angle: Low", high: "Angle: High" };
+const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium", "high"];
+const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium", high: "Angle: High" };
 // Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
 // DOM update, not a render(), so it doesn't interrupt live tracking or
 // recreate the map. Zoom is a fully independent axis (its own FAB, its own
@@ -3763,13 +3819,13 @@ function updateLiveDriveDOM() {
   // The road you're actually on right now (the current step, not the
   // upcoming junction the shield bar above points at) -- a small pill
   // sitting low on screen answering "what road is this" independent of
-  // whatever's coming up next. Reads liveDrive.pillStepIdx, not the live
-  // stepIdx directly -- see LIVE_PILL_HOLD_M -- so it doesn't flip the
-  // instant a step-advance clears, only once that's held for a bit.
+  // whatever's coming up next. Reads liveDrive.pillRoadName, a committed
+  // name string, not the live stepIdx directly -- see LIVE_PILL_HOLD_M --
+  // so it doesn't flip the instant a step-advance (or a reroute) clears,
+  // only once that's held for a bit.
   const currentRoadPill = document.getElementById("plannerCurrentRoadPill");
   if (currentRoadPill) {
-    const pillStep = liveDrive.steps[liveDrive.pillStepIdx];
-    const roadName = !arrived && !rerouting && pillStep ? stepStreetName(pillStep.instructions) : "";
+    const roadName = !arrived && !rerouting ? (liveDrive.pillRoadName || "") : "";
     currentRoadPill.textContent = roadName;
     currentRoadPill.classList.toggle("show", !!roadName);
   }
@@ -4001,7 +4057,7 @@ async function resumeLiveDriveIfAny() {
     steps: [],
     stepIdx: 0,
     stepEndMinDist: null,
-    pillStepIdx: 0, pillHoldRemainM: 0,
+    pillRoadName: "", pillPendingRoadName: null, pillHoldRemainM: 0,
     legIdx: saved.legIdx || 0,
     legStartedAt: saved.legStartedAt || saved.startedAt,
     legDistanceM: saved.legDistanceM || 0,
@@ -4196,7 +4252,7 @@ async function ensurePlannerMap() {
     // Upright at this point by construction (rotation always starts back at
     // 0 in startLiveDrive/resumeLiveDriveIfAny), so all road labels are safe
     // to show for this very first paint regardless of the chosen profile.
-    center, zoom, styles: driving ? drivingMapStyles("all", true) : (night ? NIGHT_MAP_STYLE : []),
+    center, zoom, styles: driving ? drivingMapStyles(true) : (night ? NIGHT_MAP_STYLE : []),
     disableDefaultUI: true, zoomControl: !driving, gestureHandling: "greedy",
     // Frees up double-click for toggling map-focus mode below instead of
     // the default double-click-to-zoom-in.
@@ -4245,7 +4301,7 @@ async function ensurePlannerMap() {
         preserveViewport: true,
         // Thicker than Google's default, and green once the drive is done
         // (marking it as completed) rather than the in-progress blue.
-        polylineOptions: { strokeColor: complete ? "#4C9F70" : "#4C9FF2", strokeWeight: 7, strokeOpacity: 0.9 },
+        polylineOptions: { strokeColor: complete ? "#4C9F70" : "#4C9FF2", strokeWeight: 8, strokeOpacity: 0.9 },
       });
       plannerDirectionsRenderer.setDirections(plannerDirectionsResult);
       if (!driving) {
@@ -5496,7 +5552,7 @@ function renderPlanTab() {
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m].replace("Angle: ", "")).join(" / ")}">${icons.angleView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
 
