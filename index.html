@@ -399,12 +399,6 @@
     background:rgba(var(--surface-rgb),.94);border:1px solid var(--border);color:var(--text);
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:25;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-recenter-fab .icon{width:18px;height:18px;}
-  /* Always in the DOM while driving, but hidden until a manual drag shows
-     it (see handleLiveDragStart) -- toggled directly via classList rather
-     than through render(), since a live drive's DOM is deliberately never
-     torn down/rebuilt by a full render() while it's running. */
-  .planner-resume-follow-fab{display:none;}
-  .planner-resume-follow-fab.show{display:flex;}
 
   .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
     background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
@@ -506,7 +500,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 31mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 22mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -591,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.7";
+const APP_BUILD = "2026-08-21.8";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3648,26 +3642,26 @@ function handleLiveZoomChanged() {
   liveDrive.zoomMode = "manual";
   liveDrive.manualZoom = z;
   liveMapLastAppliedZoom = z;
-  // A pure pinch-to-zoom (fingers moving apart around a fixed point, no
-  // pan) never fires dragstart, so panMode alone wouldn't catch it -- the
-  // very next frame's forced setCenter would re-tighten the view right back
-  // around the driver, undoing the zoom-out's visual effect even though the
-  // zoom level itself did change. Stopping that here too, not just on drag.
-  liveDrive.panMode = "manual";
-  const btn = document.getElementById("plannerResumeFollowBtn");
-  if (btn) btn.classList.add("show");
 }
 // A manual drag stops applyLiveMarkerFrame's per-frame setCenter from
-// fighting it (see panMode there) -- dragstart only ever fires from a real
-// user gesture, never from that same setCenter/panTo, so it's an
-// unambiguous signal. Direct DOM toggle, not render() -- this can fire
-// mid-gesture, and a full render() would tear down the very map instance
-// being dragged.
+// fighting it (see panMode there) for the duration of the gesture --
+// dragstart/dragend only ever fire from a real user gesture, never from
+// that same setCenter/panTo, so they're an unambiguous signal. Recentering
+// resumes (snapping straight back onto the driver's real position, one
+// zoom level or wherever they left it) the instant the touch is released,
+// rather than leaving the camera manually parked until some separate
+// button is tapped -- the position marker is otherwise just a fixed screen
+// overlay with nothing under it tracking where the car actually is.
 function handleLiveDragStart() {
   if (!liveDrive) return;
   liveDrive.panMode = "manual";
-  const btn = document.getElementById("plannerResumeFollowBtn");
-  if (btn) btn.classList.add("show");
+}
+function handleLiveDragEnd() {
+  if (!liveDrive) return;
+  liveDrive.panMode = "auto";
+  if (plannerMapInstance && liveDrive.lastFix) {
+    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  }
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
@@ -4303,11 +4297,13 @@ async function ensurePlannerMap() {
 
   if (driving) {
     plannerMapInstance.addListener("zoom_changed", handleLiveZoomChanged);
-    // dragstart only ever fires from a genuine user gesture -- never from
-    // the per-frame setCenter/panTo calls this screen makes itself -- so
-    // it's the correct, unambiguous signal that the driver just took manual
-    // control of the camera (see panMode/applyLiveMarkerFrame).
+    // dragstart/dragend only ever fire from a genuine user gesture -- never
+    // from the per-frame setCenter/panTo calls this screen makes itself --
+    // so they're the correct, unambiguous signal for when the driver takes
+    // manual control of the camera and when they let go of it again (see
+    // panMode/applyLiveMarkerFrame).
     plannerMapInstance.addListener("dragstart", handleLiveDragStart);
+    plannerMapInstance.addListener("dragend", handleLiveDragEnd);
   }
 
   if (!driving && !complete) {
@@ -5632,7 +5628,6 @@ function renderPlanTab() {
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-recenter-fab planner-resume-follow-fab ${liveDrive && liveDrive.panMode === "manual" ? "show" : ""}" id="plannerResumeFollowBtn" title="Resume following your position">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m].replace("Angle: ", "")).join(" / ")}">${icons.angleView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
@@ -8601,17 +8596,6 @@ function attachAppHandlers() {
       if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
-      const resumeFollowBtn = document.getElementById("plannerResumeFollowBtn");
-      if (resumeFollowBtn) resumeFollowBtn.onclick = () => {
-        if (!liveDrive) return;
-        liveDrive.panMode = "auto";
-        liveDrive.zoomMode = "auto";
-        resumeFollowBtn.classList.remove("show");
-        if (plannerMapInstance && liveDrive.lastFix) {
-          updateLiveZoom(liveDrive.smoothSpeedMs || 0);
-          plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
-        }
-      };
       updateLiveDriveDOM();
     }
 
