@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.8";
+const APP_BUILD = "2026-08-20.9";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2661,11 +2661,17 @@ function drivingMapStyles(roadLabelsScope, upright) {
     { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
   ];
   if (!upright) {
-    // Still rotated too far from upright to read — everything stays off,
+    // Still rotated too far from upright to read — every label stays off,
+    // not just road ones. featureType:"all" rather than just "road" here:
+    // building/POI names are already unconditionally hidden above via
+    // featureType:"poi", but real-world testing showed campus building
+    // labels ("Margaret Graham Building" etc.) rendering upside down
+    // anyway — Google's own building-footprint labels aren't reliably
+    // covered by the "poi" selector, so this is the actual catch-all.
     // road.highway included, since Google's more-specific-selector-wins
     // cascade means an "always on" rule for it here would override this
     // and show highway names upside down.
-    hide.push({ featureType: "road", elementType: "labels", stylers: [{ visibility: "off" }] });
+    hide.push({ featureType: "all", elementType: "labels", stylers: [{ visibility: "off" }] });
   } else {
     // road.highway and road.arterial are never hidden while upright,
     // explicit for both their shield badge (labels.icon — whose
