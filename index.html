@@ -550,7 +550,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.2";
+const APP_BUILD = "2026-08-20.3";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3146,6 +3146,16 @@ function handleLiveFix(pos) {
     }
   }
 
+  // Steps are deliberately left empty by a resume (see resumeLiveDriveIfAny),
+  // to be repopulated once a reroute has a fresh route to work from --
+  // checkLiveRouteDeviation can't be what eventually calls that reroute,
+  // since it also bails out early with no steps of its own to compare the
+  // fix against (see its own comment). Without this, a resumed drive had no
+  // path back to real turn-by-turn at all -- steps stayed empty forever,
+  // which (before updateLiveDriveDOM's own stepsLoaded guard) showed as a
+  // permanent, un-advancing "You have arrived".
+  if (!liveDrive.steps.length && !liveDrive.rerouting) rerouteLiveDrive(lat, lng);
+
   // A step only counts as done once the fix has both gotten close to its end
   // AND started moving away again — tracking just the minimum distance seen
   // (rather than a one-shot proximity check) means the step doesn't advance
@@ -3605,21 +3615,28 @@ function updateLiveDriveDOM() {
   const turnIconWrap = document.getElementById("plannerTurnIconWrap");
   const turnMain = document.getElementById("plannerTurnMain");
   const turnDistVal = document.getElementById("plannerTurnDistVal");
-  const arrived = !step;
+  // Steps are deliberately left empty right after a resume (see
+  // resumeLiveDriveIfAny) until a reroute repopulates them -- without this
+  // guard that looks identical to "ran off the end of the route", which
+  // used to show "You have arrived" (and stay there — see
+  // handleLiveFix's own matching guard on legStepsExhausted, and its
+  // proactive reroute below) for a drive that had barely started.
+  const stepsLoaded = liveDrive.steps.length > 0;
+  const arrived = stepsLoaded && !step;
   const rerouting = !!liveDrive.rerouting;
   // The upcoming junction (if any) rather than the raw current step — a
   // step with no maneuver is just the route continuing along a curve or
   // through a name change, not something worth announcing as a "turn".
-  const junctionIdx = arrived || rerouting ? -1 : nextJunctionStepIdx(liveDrive.stepIdx + 1);
+  const junctionIdx = arrived || rerouting || !stepsLoaded ? -1 : nextJunctionStepIdx(liveDrive.stepIdx + 1);
   const junctionStep = junctionIdx === -1 ? null : liveDrive.steps[junctionIdx];
   if (turnIconWrap) {
     turnIconWrap.className = arrived && !rerouting ? "planner-turn-icon arrive" : "planner-turn-icon";
-    turnIconWrap.innerHTML = rerouting ? icons.route : arrived ? icons.flag : junctionStep ? maneuverIcon(junctionStep.maneuver) : icons.straight;
+    turnIconWrap.innerHTML = rerouting || !stepsLoaded ? icons.route : arrived ? icons.flag : junctionStep ? maneuverIcon(junctionStep.maneuver) : icons.straight;
   }
   if (turnMain) {
     // The coming street — the road the turn (named below, in the smaller
     // text) leads onto — not the one currently being driven along.
-    turnMain.textContent = rerouting ? "Rerouting…" : arrived ? "You have arrived"
+    turnMain.textContent = rerouting ? "Rerouting…" : !stepsLoaded ? "Reconnecting…" : arrived ? "You have arrived"
       : junctionStep ? stepStreetName(junctionStep.instructions)
       : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
@@ -3627,7 +3644,7 @@ function updateLiveDriveDOM() {
   // static word "next turn" regardless of what the turn actually is) --
   // the road name's own sub-instruction line was dropped as redundant with
   // this, now that it says the same thing.
-  const instructionText = rerouting ? "Recalculating your route" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
+  const instructionText = rerouting ? "Recalculating your route" : !stepsLoaded ? "Rebuilding turn-by-turn" : arrived ? "" : junctionStep ? maneuverLabel(junctionStep.maneuver) : "";
   const turnDistLabel = document.getElementById("plannerTurnDistLabel");
   if (turnDistLabel) turnDistLabel.textContent = instructionText;
   const turnShield = document.getElementById("plannerTurnShield");
@@ -3669,12 +3686,14 @@ function updateLiveDriveDOM() {
   const remainTimeVal = document.getElementById("plannerRemainTimeVal");
   const etaVal = document.getElementById("plannerEtaVal");
   const remainDistVal = document.getElementById("plannerRemainVal");
-  if (remainTimeVal) remainTimeVal.innerHTML = arrived ? "Arrived" : formatLiveDuration(remain.min);
-  if (etaVal) etaVal.innerHTML = arrived ? "–" : remain.etaStr;
+  if (remainTimeVal) remainTimeVal.innerHTML = !stepsLoaded ? "–" : arrived ? "Arrived" : formatLiveDuration(remain.min);
+  if (etaVal) etaVal.innerHTML = !stepsLoaded || arrived ? "–" : remain.etaStr;
   // Reuses formatLiveTurnDistance's tight number/unit markup and m/km (or
   // ft/mi) threshold — it takes meters, so the km figure here is converted
-  // going in rather than duplicating that formatting logic.
-  if (remainDistVal) remainDistVal.innerHTML = formatLiveTurnDistance(arrived ? 0 : remain.km * 1000);
+  // going in rather than duplicating that formatting logic. computeLiveRemaining
+  // itself falls back to a rough distance/40kmh estimate with no steps loaded
+  // (empty reduce), which isn't a real number worth showing here.
+  if (remainDistVal) remainDistVal.innerHTML = !stepsLoaded ? "–" : formatLiveTurnDistance(arrived ? 0 : remain.km * 1000);
 }
 
 // Stop & Save: finalizes whatever's left of the leg in progress (its end
