@@ -397,15 +397,7 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
   .planner-angle-fab.active{background:rgba(var(--amber-rgb),.18);}
   .planner-angle-fab .icon{width:18px;height:18px;}
-  /* Pinch replaces the old zoom FAB (see handleLiveZoomChanged) -- this only
-     ever appears once a pinch has actually overridden auto-zoom, as the way
-     back to it, rather than sitting there permanently. */
-  .planner-resume-zoom-fab{display:none;position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 150px);
-    width:40px;height:40px;border-radius:50%;background:rgba(var(--amber-rgb),.18);border:1.5px solid var(--amber);
-    color:var(--amber);align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);}
-  .planner-resume-zoom-fab.show{display:flex;}
-  .planner-resume-zoom-fab .icon{width:18px;height:18px;}
-  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 194px);z-index:31;
+  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 150px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
     color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
   .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
@@ -443,10 +435,16 @@
   .planner-legtags .planner-leg-row{padding:3px 0;}
   .planner-legtags .divider{margin:3px 0;}
 
+  /* Solid for a fixed 5mm off the very top edge, THEN the same fade curve
+     as the eta bar's own background below -- mirrored exactly (same
+     stops, opposite direction) rather than each panel having its own
+     independently-tuned profile. Fixed-mm base rather than a pure
+     percentage: this box's own height doesn't vary as wildly as the
+     address form's did (see .planner-topbar's own fix for that failure
+     mode), but there's no reason for the two panels to drift apart either. */
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
-    --banner-pad-top:calc(env(safe-area-inset-top) + 8px);
-    padding:var(--banner-pad-top) 10px 10px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0%, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 10px;
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 5mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;align-items:center;gap:12px;}
   /* Google Maps' own maneuver icon is a blue rounded square with a white
      arrow, top-left of the screen — this is the left-most element in the
@@ -456,58 +454,49 @@
     display:flex;align-items:center;justify-content:center;}
   .planner-turn-icon.arrive{background:var(--normal);}
   .planner-turn-icon .icon{width:26px;height:26px;}
-  /* Shield + the actual road it refers to, right of the maneuver icon. A
-     rough approximation of a route shield — the real thing's exact
-     white/green/yellow convention is baked into Google's own map tiles, not
-     something this app renders — shown when a route code (e.g. "A77") is
-     found in the upcoming step's instructions. Yellow text specifically
-     requested (regardless of the background) rather than matching any
-     particular real shield style. */
-  /* Pulled back up by its own row's top padding -- when a shield is shown
-     it should sit flush with the very top of the screen (matching where
-     Google's own shield badges dock), not centered alongside the taller
-     turn icon like the rest of the row. Harmless when no shield is shown:
-     the column is empty either way. */
-  .planner-shield-col{display:flex;flex-direction:column;align-items:center;gap:3px;flex-shrink:0;
-    align-self:flex-start;margin-top:calc(-1 * var(--banner-pad-top));}
+  /* Road name + shield stacked in one column now (shield underneath),
+     rather than the shield sitting in its own column pinned to the very
+     top of the screen -- that pin routinely clipped the shield behind the
+     browser's own UI above the page. No separate "what road is the shield
+     for" caption underneath it either now -- the heading right above it
+     already says that. */
+  .planner-turn-text{min-width:0;flex:1;display:flex;flex-direction:column;align-items:flex-start;gap:4px;}
+  .planner-turn-text b{display:block;max-width:100%;font-size:19px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-shield{display:none;align-items:center;justify-content:center;flex-shrink:0;
     min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#FFD400;
     font-size:13px;font-weight:800;letter-spacing:.02em;border:1.5px solid #fff;}
   .planner-turn-shield.show{display:inline-flex;}
-  .planner-shield-road{display:none;font-size:10px;font-weight:700;color:var(--text);
-    background:rgba(var(--bg-rgb),.85);padding:1px 7px;border-radius:5px;white-space:nowrap;}
-  .planner-shield-road.show{display:inline-block;}
-  .planner-turn-text{min-width:0;flex:1;}
-  .planner-turn-text b{display:block;font-size:21px;font-weight:900;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;max-width:38%;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
   .planner-turn-dist .l{font-size:11px;color:var(--faint);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
   /* Two rows: Pause/Stop above (pushed to the far right, above the bottom
-     edge), the ETA/Remaining/Distance row at the very bottom edge itself. */
+     edge), the ETA/Remaining/Distance row at the very bottom edge itself.
+     Background mirrors .planner-drive-banner's exactly (same stops,
+     opposite direction) -- see its own comment. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 35%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 5mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
-     kept invisible now). Re-centering the map on every fix so the driver's
-     real position PROJECTS onto a fixed screen point still depends on
-     zoom/tilt math that's necessarily only approximate (e.g. Maps' own
-     zoom-change animation lagging the already-updated zoom property used
-     for that math) -- a marker driven by that same math inherits any of
-     its drift. Anchored here via bottom:100% of the eta bar's own box
-     (its containing block, being position:absolute) rather than a
-     measured pixel offset, so it always sits just above the current-road
-     pill -- the eta bar's top row -- regardless of which controls that
-     bar is currently showing. Points straight up in every course-up angle
-     mode (the map itself rotates to keep direction-of-travel screen-up);
-     only north-up "overhead" rotates the arrow itself, toward the actual
-     heading (see rotateLiveMap). */
+     kept invisible now). Anchored here via bottom:100% of the eta bar's
+     own box (its containing block, being position:absolute) plus a fixed
+     5mm gap, rather than a measured pixel offset, so it always sits a
+     fixed physical distance above the current-road pill -- the eta bar's
+     top row -- regardless of which controls that bar is currently
+     showing. Points straight up in every course-up angle mode (the map
+     itself rotates to keep direction-of-travel screen-up); only north-up
+     "overhead" rotates the arrow itself, toward the actual heading (see
+     rotateLiveMap). liveMarkerScreenFraction reads THIS element's actual
+     rendered position (not an independent guess) to decide where the
+     camera re-centers the driver's real position to project onto, so the
+     two can no longer drift apart the way two separately-chosen fixed
+     points could. */
   .planner-position-arrow{position:absolute;left:50%;bottom:100%;z-index:26;
     transform:translateX(-50%) rotate(var(--arrow-rot, 0deg));
-    width:30px;height:30px;margin-bottom:8px;color:#4C9FF2;
+    width:38px;height:38px;margin-bottom:5mm;color:#E5342B;
     filter:drop-shadow(0 2px 4px rgba(0,0,0,.5));
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .planner-position-arrow .icon{width:100%;height:100%;}
@@ -564,7 +553,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.12";
+const APP_BUILD = "2026-08-20.13";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2598,18 +2587,27 @@ const LIVE_REROUTE_COOLDOWN_MS = 15000; // minimum gap between reroute calls
 const LIVE_MIN_ROTATE_SPEED_MS = 1.4; // ~5 km/h — below this GPS course is noisy or absent, so the map holds its last heading instead of spinning on the noise
 const LIVE_HEADING_SMOOTHING = 0.35; // low-pass factor for the heading used to rotate the map
 const LIVE_POSITION_SMOOTHING = 0.35; // low-pass factor for the position used for the marker/camera (raw fixes still drive distance/arrival math)
-// The driver marker sits a fixed physical distance up from the bottom edge
-// (2cm) rather than a fixed fraction of the screen -- there's no on-screen
-// DOM element to just place at a literal CSS length (the marker's position
-// comes from panning the map center, see lookAheadCenter), so this converts
-// 2cm into a screen-height fraction using CSS's own standard 96px-per-inch
-// reference (2.54cm = 1in), recomputed against whatever the current
-// viewport's actual height is. Clamped so a very short (e.g. landscape)
-// viewport can't push the marker above the vertical center.
-const LIVE_MARKER_BOTTOM_CM = 2;
+// Where the camera re-centers so the driver's real (route-snapped)
+// position projects to on screen -- read directly off .planner-position-
+// arrow's own actual rendered position (a real, fixed CSS element; see its
+// own comment) rather than an independently-guessed physical distance from
+// the bottom edge. Two separately-chosen fixed points can drift apart from
+// each other in a way a single shared source of truth can't -- that
+// mismatch is what let the visible arrow and the route line it's supposed
+// to sit on disagree, however precisely either one was individually tuned.
+// Falls back to a fixed 2cm-from-bottom guess only if the element isn't in
+// the DOM yet (the very first frame, before any render has run).
 function liveMarkerScreenFraction(heightPx) {
-  const bottomPx = (LIVE_MARKER_BOTTOM_CM * 96) / 2.54;
-  return Math.min(0.95, Math.max(0.55, 1 - bottomPx / (heightPx || 700)));
+  const h = heightPx || 700;
+  const arrow = document.getElementById("plannerPositionArrow");
+  if (arrow) {
+    const rect = arrow.getBoundingClientRect();
+    if (rect.width > 0 || rect.height > 0) {
+      return Math.min(0.95, Math.max(0.55, (rect.top + rect.height / 2) / h));
+    }
+  }
+  const bottomPx = (2 * 96) / 2.54; // 2cm, via CSS's 96px/inch reference (2.54cm = 1in)
+  return Math.min(0.95, Math.max(0.55, 1 - bottomPx / h));
 }
 const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the fixed zoom used when the angled view is off
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
@@ -3488,8 +3486,9 @@ function cycleLiveAngleMode() {
 // zoom against liveMapLastAppliedZoom -- updateLiveZoom always updates that
 // value in the same call it sets zoom, so if they don't match, something
 // else (a pinch) changed it. Once that happens, auto-zoom stops touching
-// zoom at all until plannerResumeAutoZoomBtn (shown only while overridden)
-// is tapped.
+// zoom at all for the rest of the drive -- pinch is the only zoom control
+// now (no on-screen zoom button of any kind, resume included), so there's
+// nothing left to hand control back to auto-zoom.
 function handleLiveZoomChanged() {
   if (!liveDrive || !plannerMapInstance) return;
   const z = plannerMapInstance.getZoom();
@@ -3497,16 +3496,6 @@ function handleLiveZoomChanged() {
   liveDrive.zoomMode = "manual";
   liveDrive.manualZoom = z;
   liveMapLastAppliedZoom = z;
-  const btn = document.getElementById("plannerResumeAutoZoomBtn");
-  if (btn) btn.classList.add("show");
-}
-function resumeAutoZoom() {
-  if (!liveDrive) return;
-  liveDrive.zoomMode = "auto";
-  liveDrive.manualZoom = null;
-  const btn = document.getElementById("plannerResumeAutoZoomBtn");
-  if (btn) btn.classList.remove("show");
-  updateLiveZoom(liveMapLastSpeedMs);
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
@@ -3683,19 +3672,11 @@ function updateLiveDriveDOM() {
   const turnDistLabel = document.getElementById("plannerTurnDistLabel");
   if (turnDistLabel) turnDistLabel.textContent = instructionText;
   const turnShield = document.getElementById("plannerTurnShield");
-  const shieldRoad = document.getElementById("plannerShieldRoad");
-  {
+  if (turnShield) {
     const shieldStep = rerouting || arrived ? null : (junctionStep || step);
     const code = shieldStep ? extractRouteShield(shieldStep.instructions) : null;
-    if (turnShield) {
-      turnShield.textContent = code || "";
-      turnShield.classList.toggle("show", !!code);
-    }
-    if (shieldRoad) {
-      const roadName = code && shieldStep ? stepStreetName(shieldStep.instructions) : "";
-      shieldRoad.textContent = roadName;
-      shieldRoad.classList.toggle("show", !!roadName);
-    }
+    turnShield.textContent = code || "";
+    turnShield.classList.toggle("show", !!code);
   }
   // The road you're actually on right now (the current step, not the
   // upcoming junction the shield bar above points at) -- a small pill
@@ -5420,7 +5401,6 @@ function renderPlanTab() {
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.join(" / ")}">${icons.angleView}</button>
-    <button type="button" class="planner-resume-zoom-fab ${liveDrive && liveDrive.zoomMode === "manual" ? "show" : ""}" id="plannerResumeAutoZoomBtn" title="Resume auto zoom">${icons.zoomView}</button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
 
@@ -5556,11 +5536,10 @@ function renderPlannerDrivingBanner() {
   return `
   <div class="planner-drive-banner">
     <span class="planner-turn-icon" id="plannerTurnIconWrap">${icons.straight}</span>
-    <div class="planner-shield-col">
+    <div class="planner-turn-text">
+      <b id="plannerTurnMain">Starting…</b>
       <span class="planner-turn-shield" id="plannerTurnShield"></span>
-      <span class="planner-shield-road" id="plannerShieldRoad"></span>
     </div>
-    <div class="planner-turn-text"><b id="plannerTurnMain">Starting…</b></div>
     <div class="planner-turn-dist"><div class="v mono" id="plannerTurnDistVal">–</div><div class="l" id="plannerTurnDistLabel">next turn</div></div>
   </div>`;
 }
@@ -8197,8 +8176,6 @@ function attachAppHandlers() {
       if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
-      const resumeZoomBtn = document.getElementById("plannerResumeAutoZoomBtn");
-      if (resumeZoomBtn) resumeZoomBtn.onclick = resumeAutoZoom;
       updateLiveDriveDOM();
     }
 
