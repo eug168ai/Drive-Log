@@ -133,7 +133,7 @@
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
   /* .btn has no margin of its own, unlike .card's built-in margin-bottom —
      without this, the button sat flush against whatever followed it. */
-  #logFillupBtnLog{margin-bottom:11px;}
+  #logFillupBtnLog, #newPlannerRouteBtn{margin-bottom:11px;}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
   .chip.active{background:var(--amber);color:var(--bg);border-color:var(--amber);}
@@ -586,7 +586,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.20";
+const APP_BUILD = "2026-08-21.21";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
