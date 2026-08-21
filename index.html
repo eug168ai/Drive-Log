@@ -493,13 +493,13 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 15mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 18mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
      kept invisible now). Anchored here via bottom:100% of the eta bar's
      own box (its containing block, being position:absolute) plus a fixed
-     1cm gap, rather than a measured pixel offset, so it always sits a
+     physical gap, rather than a measured pixel offset, so it always sits a
      fixed physical distance above the current-road pill -- the eta bar's
      top row -- regardless of which controls that bar is currently
      showing. Points straight up in every course-up angle mode (the map
@@ -516,7 +516,7 @@
      giving up the color match. */
   .planner-position-arrow{position:absolute;left:50%;bottom:100%;z-index:26;
     transform:translateX(-50%) rotate(var(--arrow-rot, 0deg));
-    width:38px;height:38px;margin-bottom:1cm;color:#4C9FF2;
+    width:38px;height:38px;margin-bottom:8mm;color:#4C9FF2;
     filter:drop-shadow(0 0 2.5px #fff) drop-shadow(0 0 2.5px #fff) drop-shadow(0 2px 4px rgba(0,0,0,.55));
     display:flex;align-items:center;justify-content:center;pointer-events:none;}
   .planner-position-arrow .icon{width:100%;height:100%;}
@@ -573,7 +573,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-20.16";
+const APP_BUILD = "2026-08-20.17";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2794,11 +2794,27 @@ function stepPlainInstruction(html) {
 // <b>right</b> onto <b>Main St</b>") — the last bold run is the road being
 // turned onto or continued along, which reads cleaner under the maneuver
 // label than the full sentence.
-function stepStreetName(html) {
+//
+// stripCode: when a route shield is already shown alongside this name (see
+// extractRouteShield), Google's own bolded text often combines the
+// secondary/local road name with that same code as a "Name/CODE" pair
+// (e.g. "Portrush Rd/A21") — with the code already in its own badge,
+// showing it again here reads as redundant, so a leading/trailing
+// "CODE/"-style match gets stripped back out, using whichever plain local
+// name is left. If the bolded text genuinely was just the code with
+// nothing else, there's nothing left to fall back to, so it's shown here
+// once rather than not at all.
+function stepStreetName(html, stripCode) {
   const div = document.createElement("div");
   div.innerHTML = html || "";
   const bolds = Array.from(div.querySelectorAll("b")).map(b => b.textContent.trim()).filter(Boolean);
-  return bolds.length ? bolds[bolds.length - 1] : stepPlainInstruction(html);
+  let name = bolds.length ? bolds[bolds.length - 1] : stepPlainInstruction(html);
+  if (stripCode) {
+    const esc = stripCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const stripped = name.replace(new RegExp(`^${esc}\\s*/\\s*|\\s*/\\s*${esc}$`, "i"), "").trim();
+    if (stripped) name = stripped;
+  }
+  return name;
 }
 // Pulls a route/highway designation code (e.g. "A77", "M1", "B4632") out of
 // a step's raw instruction text, for the small shield badge shown next to
@@ -3688,12 +3704,16 @@ function updateLiveDriveDOM() {
     turnIconWrap.className = arrived && !rerouting ? "planner-turn-icon arrive" : "planner-turn-icon";
     turnIconWrap.innerHTML = rerouting || !stepsLoaded ? icons.route : arrived ? icons.flag : junctionStep ? maneuverIcon(junctionStep.maneuver) : icons.straight;
   }
+  // The step the heading and shield both describe -- computed once so the
+  // shield's own code can be stripped back out of the heading's name below
+  // rather than showing it twice (see stepStreetName's own comment).
+  const headingStep = rerouting || arrived ? null : (junctionStep || step);
+  const headingCode = headingStep ? extractRouteShield(headingStep.instructions) : null;
   if (turnMain) {
     // The coming street — the road the turn (named below, in the smaller
     // text) leads onto — not the one currently being driven along.
     turnMain.textContent = rerouting ? "Rerouting…" : !stepsLoaded ? "Reconnecting…" : arrived ? "You have arrived"
-      : junctionStep ? stepStreetName(junctionStep.instructions)
-      : stepStreetName(step.instructions); // no turn ahead — show what road you're on instead of a bare "Continue"
+      : stepStreetName(headingStep.instructions, headingCode); // no turn ahead — show what road you're on instead of a bare "Continue"
   }
   // The label under the next-turn distance counter (which used to be the
   // static word "next turn" regardless of what the turn actually is) --
@@ -3704,10 +3724,8 @@ function updateLiveDriveDOM() {
   if (turnDistLabel) turnDistLabel.textContent = instructionText;
   const turnShield = document.getElementById("plannerTurnShield");
   if (turnShield) {
-    const shieldStep = rerouting || arrived ? null : (junctionStep || step);
-    const code = shieldStep ? extractRouteShield(shieldStep.instructions) : null;
-    turnShield.textContent = code || "";
-    turnShield.classList.toggle("show", !!code);
+    turnShield.textContent = headingCode || "";
+    turnShield.classList.toggle("show", !!headingCode);
   }
   // The road you're actually on right now (the current step, not the
   // upcoming junction the shield bar above points at) -- a small pill
@@ -7345,6 +7363,24 @@ async function syncUnsyncedTrips() {
   render();
 }
 
+// Bounding-box midpoint of a set of points -- used to center a Static Maps
+// request ourselves instead of leaving it to the API's own marker/path
+// auto-fit, which reliably comes out biased toward one side of the actual
+// route (confirmed side by side against several real requests: the
+// route consistently sits low/left of center with auto-fit, dead center
+// once this is passed explicitly). zoom is deliberately left for the API
+// to keep auto-fitting on its own -- giving it a center is enough for
+// that same auto-fit to also frame the markers/path correctly; it's only
+// the centering half that needed overriding.
+function centerOfBounds(points) {
+  if (!points.length) return null;
+  let minLat = points[0].lat, maxLat = points[0].lat, minLng = points[0].lng, maxLng = points[0].lng;
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat; if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lng < minLng) minLng = p.lng; if (p.lng > maxLng) maxLng = p.lng;
+  }
+  return { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 };
+}
 // A small route-thumbnail image via Google's Static Maps API -- a real
 // interactive map isn't available once a drive is over (no live Map
 // instance to screenshot), and this is a separate, simpler REST API that
@@ -7356,7 +7392,12 @@ async function syncUnsyncedTrips() {
 function staticMapUrlForTrip(trip) {
   const hasStart = trip.startLat != null, hasEnd = trip.endLat != null;
   if (!hasStart && !hasEnd) return null;
+  const points = [];
+  if (hasStart) points.push({ lat: trip.startLat, lng: trip.startLng });
+  if (hasEnd) points.push({ lat: trip.endLat, lng: trip.endLng });
+  const center = centerOfBounds(points);
   const params = new URLSearchParams({ size: "320x180", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
+  if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
   if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
   if (hasStart && hasEnd) params.append("path", `color:0x4C9FF2|weight:4|${trip.startLat},${trip.startLng}|${trip.endLat},${trip.endLng}`);
@@ -7475,7 +7516,16 @@ function clearAllRouteImages() {
 function detailedStaticMapUrlForTrip(trip, pathPoints) {
   const hasStart = trip.startLat != null, hasEnd = trip.endLat != null;
   if (!hasStart && !hasEnd) return null;
+  // The real driven path (when available) is what actually needs to be
+  // centered/fit correctly here -- a curvy or looping GPS trail is exactly
+  // the shape the API's own marker-biased auto-fit (see centerOfBounds)
+  // tends to frame off-center, more so than the simple two-point case.
+  const points = (pathPoints && pathPoints.length > 1) ? pathPoints.slice() : [];
+  if (hasStart) points.push({ lat: trip.startLat, lng: trip.startLng });
+  if (hasEnd) points.push({ lat: trip.endLat, lng: trip.endLng });
+  const center = centerOfBounds(points);
   const params = new URLSearchParams({ size: "640x400", scale: "2", maptype: "roadmap", key: GOOGLE_MAPS_API_KEY });
+  if (center) params.set("center", `${center.lat},${center.lng}`);
   if (hasStart) params.append("markers", `color:0x4C9F70|label:A|${trip.startLat},${trip.startLng}`);
   if (hasEnd) params.append("markers", `color:0xE0642C|label:B|${trip.endLat},${trip.endLng}`);
   if (pathPoints && pathPoints.length > 1) {
