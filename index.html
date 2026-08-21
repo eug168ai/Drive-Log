@@ -585,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.10";
+const APP_BUILD = "2026-08-21.11";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3478,11 +3478,11 @@ async function rerouteLiveDrive(lat, lng) {
     }
     plannerDirectionsResult = result;
     if (plannerDirectionsRenderer) plannerDirectionsRenderer.setDirections(result);
-    // Redraws the upcoming-stop/destination dots against the new route --
+    // Redraws the upcoming-stop/destination pins against the new route --
     // ensurePlannerMap only draws these once at drive start, and a reroute
     // never calls that again, so without this they'd keep pointing at
     // wherever the pre-reroute route used to pass through/end.
-    drawPlannerRouteDots(result, false);
+    drawPlannerRoutePins(result, false);
   } catch { /* offline or no viable route from here — keep following the last known route until the next off-route check retries */ }
   if (!liveDrive) return;
   liveDrive.rerouting = false;
@@ -4279,38 +4279,46 @@ let plannerDirectionsRenderer = null;
 let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
 let plannerTripStartMarker = null;
-let plannerRouteDots = [];
+let plannerRoutePins = [];
 let plannerMapIsNight = false;
-// Small circular dots, centered exactly on each stop's real coordinate --
-// Google's default DirectionsRenderer pins anchor at their bottom tip, not
-// their center, so they're suppressed (see suppressMarkers) in favor of
-// these both here and on the post-drive Drive Completed summary. Reads
-// straight off the given result's own legs rather than p.stops, so a
-// driving map's dots land on wherever the *current* route (post-reroute)
-// actually passes through/ends, not the original plan -- see
-// rerouteLiveDrive, which redraws these again whenever that changes.
-async function drawPlannerRouteDots(result, includeStart) {
+// A teardrop pin path (viewBox-style coordinates, tip at 12,24) rather than
+// Google's own default marker -- that one only comes in its stock red, and
+// suppressed here anyway (see suppressMarkers) since a plain, unlabeled
+// default pin can't carry the Start/Stop/End color coding. The anchor
+// point matches the path's own tip coordinate, so (like Google's default)
+// it's the tip that sits exactly on the real coordinate, not the balloon.
+function plannerPinIcon(color) {
+  return {
+    path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z",
+    fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 1.2,
+    scale: 1.5, anchor: new google.maps.Point(12, 24),
+  };
+}
+// Pins for each stop on the route, colored Start/Stop/End -- read straight
+// off the given result's own legs rather than p.stops, so a driving map's
+// pins land on wherever the *current* route (post-reroute) actually
+// passes through/ends, not the original plan -- see rerouteLiveDrive,
+// which redraws these again whenever that changes.
+async function drawPlannerRoutePins(result, includeStart) {
   if (!plannerMapInstance) return;
-  clearPlannerRouteDots();
+  clearPlannerRoutePins();
   try {
     const { Marker } = await google.maps.importLibrary("marker");
     if (!plannerMapInstance) return;
     const legs = result.routes[0].legs;
-    const dot = (position, color, title) => plannerRouteDots.push(new Marker({
-      map: plannerMapInstance, position,
-      icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
-      zIndex: 3, title,
+    const pin = (position, color, title) => plannerRoutePins.push(new Marker({
+      map: plannerMapInstance, position, icon: plannerPinIcon(color), zIndex: 3, title,
     }));
-    if (includeStart) dot(legs[0].start_location, "#4C9F70", "Start");
+    if (includeStart) pin(legs[0].start_location, "#4C9F70", "Start");
     legs.forEach((leg, i) => {
       const isLast = i === legs.length - 1;
-      dot(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
+      pin(leg.end_location, isLast ? "#E5484D" : "#E0642C", isLast ? "End" : "Stop");
     });
   } catch { /* map still usable without the stop pins */ }
 }
-function clearPlannerRouteDots() {
-  plannerRouteDots.forEach(m => m.setMap(null));
-  plannerRouteDots = [];
+function clearPlannerRoutePins() {
+  plannerRoutePins.forEach(m => m.setMap(null));
+  plannerRoutePins = [];
 }
 
 // Live-updates just the distance/time/hazard/leg-tag card in place, without
@@ -4343,7 +4351,7 @@ async function ensurePlannerMap() {
   plannerMapInstance = null;
   plannerLiveMarker = null;
   plannerTripStartMarker = null;
-  plannerRouteDots = []; // belonged to the old map instance, already gone
+  plannerRoutePins = []; // belonged to the old map instance, already gone
   if (!canvas || !mapsConfigured()) return;
   const library = await getMapsLibrary();
   if (!library) return;
@@ -4482,13 +4490,13 @@ async function ensurePlannerMap() {
       if (complete) {
         // Start too, here -- the fixed reroute-proof start marker below is
         // only ever drawn for a live "driving" map.
-        await drawPlannerRouteDots(plannerDirectionsResult, true);
+        await drawPlannerRoutePins(plannerDirectionsResult, true);
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
       } else if (driving) {
         // Upcoming stops/destination, visible on the live nav map itself
         // rather than only appearing once the drive is over -- start is
         // covered separately below by the fixed, reroute-proof marker.
-        await drawPlannerRouteDots(plannerDirectionsResult, false);
+        await drawPlannerRoutePins(plannerDirectionsResult, false);
         if (document.getElementById("plannerMapCanvas") !== canvas) return;
       }
     } catch { /* map still usable without the route line */ }
@@ -4509,7 +4517,7 @@ async function ensurePlannerMap() {
       plannerTripStartMarker = new Marker({
         map: plannerMapInstance,
         position: { lat: p.stops[0].lat, lng: p.stops[0].lng },
-        icon: { path: google.maps.SymbolPath.CIRCLE, scale: 6, fillColor: "#4C9F70", fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+        icon: plannerPinIcon("#4C9F70"),
         zIndex: 3, title: "Start",
       });
     } catch { /* map still usable without the start pin */ }
