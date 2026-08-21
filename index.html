@@ -591,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.18";
+const APP_BUILD = "2026-08-21.19";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -618,9 +618,9 @@ window.gm_authFailure = function () {
 
 // Cached promise so every geocoding/routing/places call can simply await
 // "the script is ready" instead of racing it — app init calls this once,
-// fire-and-forget, but autoFillCurrentLocation() and friends run at nearly
-// the same moment and would otherwise see google.maps as not-yet-defined
-// and give up immediately (showing raw coordinates instead of an address).
+// fire-and-forget, but other init work (resuming a live drive, etc.) runs
+// at nearly the same moment and would otherwise see google.maps as
+// not-yet-defined and give up immediately.
 let googleMapsScriptPromise = null;
 function loadGoogleMapsScript() {
   if (!mapsConfigured()) return Promise.reject(new Error("Location lookup isn't set up for this app yet."));
@@ -1388,16 +1388,6 @@ const state = {
   plannedRoutes: [],
   planner: null,
   pendingTag: "normal",
-  startPointInput: "",
-  startCoords: null,
-  preTripEndLocation: "",
-  preTripEstimating: false,
-  preTripDistance: null,
-  preTripDuration: null,
-  preTripEstimateError: "",
-  locatingStart: false,
-  locateError: "",
-  startDriveBusy: false,
   endDriveBusy: false,
   endDriveError: "",
   manualDistanceFallback: "",
@@ -1414,7 +1404,7 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: true, showSavedAddresses: true, routeMatchRadius: 500,
+    unit: null, learnRoutes: true, routeMatchRadius: 500,
     odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
@@ -1435,8 +1425,6 @@ const state = {
   mapsAuthError: "",
   supervisors: [],
   recentLocations: [],
-  startLocArmed: false, // true once Start Location holds a real selection (not just typed text) — re-armed on every render, e.g. survives the Estimate Drive round-trip
-  endLocArmed: false,   // same, for whichever End Location field is currently visible
   pendingTrip: null,
   // Same conditions prompt as pendingTrip, but for the Trip Planner's Save
   // Drive (which can commit several legs/trips at once) rather than the
@@ -1455,7 +1443,6 @@ const state = {
   filterMinDistance: 0,
   selectedTripIds: [],
   confirmingDeleteSelected: false,
-  logEstimateForm: null,
   plannerLogForm: null,
   plannerSaveRouteForm: null,
   plannerSaveAddressForm: null,
@@ -1856,45 +1843,6 @@ async function geocodeCandidateAddresses(a) {
   if (state.addDrives === a) { a.geocoding = false; render(); }
 }
 
-async function useMyLocation() {
-  if (!mapsConfigured()) { state.locateError = "Location lookup isn't set up for this app yet."; render(); return; }
-  state.locateError = "";
-  state.locatingStart = true;
-  render();
-  try {
-    const coords = await getCurrentPosition();
-    const address = await reverseGeocode(coords.latitude, coords.longitude);
-    state.startPointInput = address;
-    state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-    state.startLocArmed = true;
-  } catch (e) {
-    state.locateError = e.message || "Couldn't get your location.";
-  }
-  state.locatingStart = false;
-  render();
-}
-
-async function autoFillCurrentLocation() {
-  if (state.active || state.startPointInput || !mapsConfigured()) return;
-  let coords;
-  try {
-    coords = await getCurrentPosition();
-  } catch (e) {
-    return; // No GPS fix — user can still type manually or tap the locate button.
-  }
-  // Resolving a label is a separate, independently-failable step: if it
-  // errors (e.g. the Maps script hasn't finished loading yet), the GPS fix
-  // itself is still good and must not be thrown away — losing it here means
-  // the drive starts with no coordinates, which later breaks End Drive's
-  // distance calculation entirely.
-  const address = await resolveLocationLabel(coords.latitude, coords.longitude);
-  if (state.active || state.startPointInput) return;
-  state.startPointInput = address || `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}`;
-  state.startCoords = { lat: coords.latitude, lng: coords.longitude };
-  state.startLocArmed = true;
-  render();
-}
-
 function escAttr(str) {
   return String(str).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -1912,29 +1860,6 @@ function resolveSavedAddress(value) {
   if (!query) return value;
   const match = savedAddressList().find(a => a.name.trim().toLowerCase() === query);
   return match ? match.address : value;
-}
-
-function renderSavedAddressChips(targetId) {
-  if (state.settings.showSavedAddresses === false) return "";
-  const list = savedAddressList();
-  if (!list.length) return "";
-  // Pills: Home, Work, and the first 2 "Other" addresses. Any further
-  // "Other" addresses go in a dropdown instead, to keep the row from
-  // growing unbounded as more addresses get saved.
-  const homeWork = list.filter(a => a.id === "home" || a.id === "work");
-  const others = list.filter(a => a.id !== "home" && a.id !== "work");
-  const pills = [...homeWork, ...others.slice(0, 2)];
-  const overflow = others.slice(2);
-  const pillsHtml = pills.map(a =>
-    `<button type="button" class="chip savedAddressChip" data-target="${targetId}" data-address="${escAttr(a.address)}">${escAttr(a.name)}</button>`
-  ).join("");
-  const overflowHtml = overflow.length ? `
-    <select class="input savedAddressOverflowSelect" data-target="${targetId}" style="flex:1 1 100%;margin-top:2px;">
-      <option value="">More saved addresses…</option>
-      ${overflow.map(a => `<option value="${escAttr(a.address)}">${escAttr(a.name)}</option>`).join("")}
-    </select>
-  ` : "";
-  return `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${pillsHtml}${overflowHtml}</div>`;
 }
 
 async function addRecentLocations(locs) {
@@ -1978,23 +1903,6 @@ async function estimateRoute(origin, destination) {
       });
     });
   });
-}
-
-async function runPreTripEstimate(origin, destination) {
-  if (!mapsConfigured()) { state.preTripEstimateError = "Distance lookup isn't set up for this app yet."; render(); return; }
-  if (!destination) return;
-  if (!origin) { state.preTripEstimateError = "Enter a start location first."; render(); return; }
-  state.preTripEstimating = true; state.preTripEstimateError = ""; render();
-  try {
-    const { distanceKm, durationMin } = await estimateRoute(origin, destination);
-    state.preTripDistance = kmToDisplay(distanceKm).toFixed(1);
-    state.preTripDuration = durationMin;
-  } catch (e) {
-    state.preTripEstimateError = e.message || "Couldn't calculate distance and time.";
-    state.preTripDistance = null; state.preTripDuration = null;
-  }
-  state.preTripEstimating = false;
-  render();
 }
 
 // Ends the active drive: grabs the current GPS fix as the end location and
@@ -2164,9 +2072,7 @@ async function resolveLocationLabel(lat, lng) {
 // proximity alone (within routeMatchRadius metres of both endpoints),
 // rather than an exact address match — a search result, a dropped pin, and
 // a "use my location" fix for the same real-world spot are all slightly
-// different strings/coordinates. Distinct from suggestRouteTag() (the
-// quick-log suggestion), which matches on exact address text plus a same
-// time-of-day window; this one only needs the two points to be close.
+// different strings/coordinates.
 function suggestTagForCoords(startLat, startLng, endLat, endLng) {
   if (!state.settings.learnRoutes) return null;
   if (startLat == null || endLat == null) return null;
@@ -4814,7 +4720,6 @@ async function loadData() {
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
   if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 500;
-  if (state.settings.showSavedAddresses === undefined) state.settings.showSavedAddresses = true;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
   if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
   if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
@@ -4870,10 +4775,6 @@ async function loadData() {
     await storageDelete(LIVE_DRIVE_KEY);
   } else {
     await resumeLiveDriveIfAny();
-  }
-  if (!state.active) {
-    state.startPointInput = "";
-    autoFillCurrentLocation();
   }
   if (state.active) startTicker();
   checkOdometerDue();
@@ -5523,31 +5424,6 @@ function tripFuelCost(t) {
   if (perKm == null) return null;
   return t.distance * perKm;
 }
-function suggestRouteTag() {
-  if (!state.settings || !state.settings.learnRoutes) return null;
-  if (state.active) return null;
-  const start = (state.startPointInput || "").trim().toLowerCase();
-  const end = (state.preTripEndLocation || "").trim().toLowerCase();
-  if (!start || !end) return null;
-  const now = new Date();
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const matches = state.trips.filter(t => {
-    if ((t.startPoint || "").trim().toLowerCase() !== start) return false;
-    if ((t.endPoint || "").trim().toLowerCase() !== end) return false;
-    const parts = formatTime24(t.startTime).split(":").map(Number);
-    if (parts.length < 2 || isNaN(parts[0]) || isNaN(parts[1])) return false;
-    const tMinutes = parts[0] * 60 + parts[1];
-    const diff = Math.min(Math.abs(tMinutes - nowMinutes), 1440 - Math.abs(tMinutes - nowMinutes));
-    return diff <= 90;
-  });
-  if (matches.length < 2) return null;
-  const counts = {};
-  matches.forEach(t => { counts[t.tag] = (counts[t.tag] || 0) + 1; });
-  const [topTag, topCount] = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
-  if (topTag === state.settings.driveType) return null;
-  return { tag: topTag, count: topCount, total: matches.length };
-}
-
 function filteredTrips() {
   return state.trips.filter(t => {
     if (state.filterTag !== "all" && t.tag !== state.filterTag) return false;
@@ -6051,9 +5927,9 @@ function renderPlannerSaveAddressModal() {
   </div>`;
 }
 
-// Same single-window shape as Log this Drive/Drive Summary (see
-// renderLogEstimateModal): route preview on top, editable date/start/end
-// time (defaulted from the Directions estimate but not locked to it), and
+// Same single-window shape as Drive Summary: route preview on top,
+// editable date/start/end time (defaulted from the Directions estimate
+// but not locked to it), and
 // driving conditions inline at the bottom when any leg is Supervised --
 // no separate step to hop to afterward, same as the other two flows.
 function renderPlannerLogModal() {
@@ -6128,7 +6004,6 @@ function renderApp() {
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
-    ${state.logEstimateForm ? renderLogEstimateModal() : ""}
     ${state.splittingTrip ? renderSplitTripModal() : ""}
     ${state.odometerPrompt ? renderOdometerPromptModal() : ""}
     ${state.syncReminderPrompt ? renderSyncReminderModal() : ""}
@@ -6139,10 +6014,6 @@ function renderApp() {
     ${state.logBookForm ? renderLogBookModal() : ""}
     ${state.addDrives ? renderAddDrivesModal() : ""}
     ${state.sheetChoiceCandidates ? renderSheetChoiceModal() : ""}
-    <datalist id="recentLocations">
-      ${savedAddressList().map(address => `<option value="${escAttr(address.name)}" label="${escAttr(address.address)}"></option>`).join("")}
-      ${state.recentLocations.map(loc => `<option value="${escAttr(loc)}"></option>`).join("")}
-    </datalist>
   </div>`;
 }
 
@@ -6408,10 +6279,7 @@ function renderSettingsTab() {
   <div class="card">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;">
       <p class="settings-title" style="margin:0;">${icons.pin} Saved Addresses</p>
-      <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
-        ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
-        <div id="showSavedAddressesSwitch" class="switch ${state.settings.showSavedAddresses !== false ? "on" : ""}"><div class="knob"></div></div>
-      </div>
+      ${!state.addingSavedOther ? `<button id="addSavedOtherBtn" class="chip" type="button">+ Add</button>` : ""}
     </div>
     <label class="field-label">Home</label>
     <div class="input-icon" style="margin-bottom:14px;">
@@ -6590,8 +6458,8 @@ function renderCancelDriveModal() {
   </div>`;
 }
 
-// Same single-window shape as Log this Drive (see renderLogEstimateModal):
-// route preview on top, editable times (these ones are real observed
+// Same single-window shape as the other log modals: route preview on
+// top, editable times (these ones are real observed
 // times off the timer, not an estimate, but still worth a quick fix if
 // End Drive got tapped late), driving conditions inline at the bottom for
 // a Supervised trip. Business still continues to its own purpose/notes
@@ -6909,42 +6777,6 @@ function renderDeleteSelectedModal() {
 // handler resolves f.start/endLat as a best-effort side effect once this
 // first renders, so the map fills in a moment after the window opens
 // rather than blocking it.
-function renderLogEstimateModal() {
-  const f = state.logEstimateForm;
-  const supervised = state.settings.driveType === "supervised";
-  const mapUrl = mapsConfigured() && (f.startLat != null || f.endLat != null) ? staticMapUrlForTrip(f) : null;
-  return `
-  <div class="modal-backdrop">
-    <div class="modal-card">
-      <h2>Log this Drive</h2>
-      ${mapUrl ? `<img src="${mapUrl}" alt="" class="log-drive-map" />` : ""}
-      <p class="settings-desc" style="margin:0 0 18px;">Saves a drive using the estimated distance (~${state.preTripDistance} ${unitLabel()}, ~${state.preTripDuration} min) without starting a live trip.</p>
-
-      <label class="field-label">Date</label>
-      <input id="logEstimateDate" type="date" class="input date-compact" value="${f.date}" style="margin-bottom:14px;" />
-
-      <div class="row-2">
-        <div>
-          <label class="field-label">Start time (24hr)</label>
-          <input id="logEstimateStartTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.startTime || "")}" />
-        </div>
-        <div>
-          <label class="field-label">End time (24hr)</label>
-          <input id="logEstimateEndTime" type="text" inputmode="numeric" maxlength="5" placeholder="HH:MM" class="input time-compact" value="${escAttr(f.endTime || "")}" />
-        </div>
-      </div>
-      <p class="settings-desc" style="margin:6px 0 20px;">Both default from the estimated drive time — edit either if the drive ran differently.</p>
-
-      ${supervised ? renderConditionsFields(state.conditionsForm) : ""}
-
-      <div class="row-2">
-        <button id="cancelLogEstimateBtn" class="btn btn-ghost">Cancel</button>
-        <button id="confirmLogEstimateBtn" class="btn btn-amber">Save Drive</button>
-      </div>
-    </div>
-  </div>`;
-}
-
 function renderSplitTripModal() {
   const s = state.splittingTrip;
   return `
@@ -8273,17 +8105,6 @@ function armLocationMarquee(inputId) {
   if (m) m.arm();
 }
 
-// Start Drive must not be tappable with no start location at all — that's
-// how a drive ends up as "Unspecified" with no coordinates, leaving End
-// Drive with nothing to calculate distance from. Several inputs can set
-// startPointInput without going through a full render() (typing, tapping a
-// saved-address chip, autocomplete selection), so this syncs the button's
-// disabled state directly after each of them.
-function syncStartTripBtnEnabled() {
-  const btn = document.getElementById("startTripBtn");
-  if (btn && !state.startDriveBusy) btn.disabled = !state.startPointInput.trim();
-}
-
 // The active-trip "From X at HH:MM" line — the start point there is already
 // a confirmed, in-use address, so its preview just needs the same 3s pause.
 function attachActiveStartMarquee() {
@@ -8315,36 +8136,6 @@ function attachAppHandlers() {
 
   const appHomeBtn = document.getElementById("appHomeBtn");
   if (appHomeBtn) appHomeBtn.onclick = () => { state.tab = "drive"; render(); };
-
-  function applySavedAddressSelection(targetId, address) {
-    const el = document.getElementById(targetId);
-    if (el) el.value = address;
-    if (targetId === "startPointInput") {
-      state.startPointInput = address;
-      state.startLocArmed = true;
-      syncStartTripBtnEnabled();
-    } else if (targetId === "preTripEndInput") {
-      state.preTripEndLocation = address;
-      state.endLocArmed = true;
-      const section = document.getElementById("preTripEstimateSection");
-      const hint = document.getElementById("preTripEndHint");
-      if (section) section.style.display = "";
-      if (hint) hint.style.display = "none";
-    }
-    armLocationMarquee(targetId);
-  }
-
-  document.querySelectorAll(".savedAddressChip").forEach(chip => {
-    chip.onclick = () => applySavedAddressSelection(chip.dataset.target, chip.dataset.address);
-  });
-
-  document.querySelectorAll(".savedAddressOverflowSelect").forEach(sel => {
-    sel.onchange = () => {
-      if (!sel.value) return;
-      applySavedAddressSelection(sel.dataset.target, sel.value);
-      sel.value = "";
-    };
-  });
 
   const settingsBtn = document.getElementById("settingsBtn");
   if (settingsBtn) settingsBtn.onclick = (e) => { e.stopPropagation(); state.tab = "settings"; render(); };
@@ -8408,159 +8199,7 @@ function attachAppHandlers() {
 
     if (state.planner) {
       // Builder UI is shown instead — its own handlers are wired below.
-    } else if (!state.active) {
-      document.querySelectorAll("[data-drivetype]").forEach(btn => {
-        btn.onclick = async () => {
-          state.settings.driveType = btn.dataset.drivetype;
-          await storageSet(SETTINGS_KEY, state.settings);
-          render();
-        };
-      });
-
-      const spi = document.getElementById("startPointInput");
-      if (spi) {
-        spi.oninput = (e) => { state.startPointInput = e.target.value; state.startLocArmed = false; syncStartTripBtnEnabled(); };
-        attachPlacesAutocomplete(spi, (desc) => {
-          spi.value = desc;
-          state.startPointInput = desc;
-          state.startLocArmed = true;
-          armLocationMarquee("startPointInput");
-          syncStartTripBtnEnabled();
-        });
-      }
-      const locStartBtn = document.getElementById("locateStartBtn");
-      if (locStartBtn) locStartBtn.onclick = () => useMyLocation();
-
-      const peti = document.getElementById("preTripEndInput");
-      if (peti) {
-        peti.oninput = (e) => {
-          state.preTripEndLocation = e.target.value;
-          state.endLocArmed = false;
-          const hasText = !!state.preTripEndLocation.trim();
-          const section = document.getElementById("preTripEstimateSection");
-          const hint = document.getElementById("preTripEndHint");
-          if (section) section.style.display = hasText ? "" : "none";
-          if (hint) hint.style.display = hasText ? "none" : "";
-        };
-        attachPlacesAutocomplete(peti, (desc) => {
-          peti.value = desc;
-          state.preTripEndLocation = desc;
-          state.endLocArmed = true;
-          const section = document.getElementById("preTripEstimateSection");
-          const hint = document.getElementById("preTripEndHint");
-          if (section) section.style.display = "";
-          if (hint) hint.style.display = "none";
-          armLocationMarquee("preTripEndInput");
-        });
-      }
-      const preTripEstBtn = document.getElementById("preTripEstimateBtn");
-      if (preTripEstBtn) preTripEstBtn.onclick = () => {
-        const origin = state.startPointInput.trim();
-        const dest = state.preTripEndLocation.trim();
-        if (dest) runPreTripEstimate(origin, dest);
-      };
-
-      const logEstBtn = document.getElementById("logEstimateBtn");
-      if (logEstBtn) logEstBtn.onclick = () => {
-        const startTime = nowTimeStr();
-        const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
-        const endTime = minutesToTimeStr(startMinutes + (state.preTripDuration || 0));
-        state.logEstimateForm = {
-          date: todayStr(), startTime, endTime,
-          startLat: state.startCoords ? state.startCoords.lat : null,
-          startLng: state.startCoords ? state.startCoords.lng : null,
-          endLat: null, endLng: null,
-        };
-        if (state.settings.driveType === "supervised") {
-          const dn = defaultDayNightFor(state.logEstimateForm.date, startTime);
-          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-          state.addingSupervisor = false;
-          state.newSupervisorName = ""; state.newSupervisorLicence = "";
-        }
-        render();
-        // Best-effort route-preview coordinates: state.startCoords only ever
-        // holds the start (from GPS/autocomplete), never the destination, and
-        // may itself be missing if the address was just typed. A failed or
-        // skipped geocode just means no map image, same as staticMapUrlForTrip
-        // already handles no coordinates at all.
-        const form = state.logEstimateForm;
-        if (form.startLat == null && state.startPointInput.trim()) {
-          forwardGeocode(state.startPointInput.trim()).then(geo => {
-            if (state.logEstimateForm === form) { form.startLat = geo.lat; form.startLng = geo.lng; render(); }
-          }).catch(() => {});
-        }
-        if (state.preTripEndLocation.trim()) {
-          forwardGeocode(state.preTripEndLocation.trim()).then(geo => {
-            if (state.logEstimateForm === form) { form.endLat = geo.lat; form.endLng = geo.lng; render(); }
-          }).catch(() => {});
-        }
-      };
-
-      const applySuggestBtn = document.getElementById("applyRouteSuggestionBtn");
-      if (applySuggestBtn) applySuggestBtn.onclick = async () => {
-        state.settings.driveType = applySuggestBtn.dataset.suggesttag;
-        await storageSet(SETTINGS_KEY, state.settings);
-        render();
-      };
-
-      const startBtn = document.getElementById("startTripBtn");
-      if (startBtn) startBtn.onclick = async () => {
-        // Fired synchronously, before any await below, so the browser still
-        // counts this as a direct response to the tap and doesn't block the
-        // popup. Quick Drive has no required end location, so there's only
-        // something to navigate to when one was actually typed in.
-        if (state.settings.launchGoogleMapsNav && state.preTripEndLocation.trim()) {
-          launchGoogleMapsNavigation({
-            origin: state.startCoords || state.startPointInput.trim(),
-            destination: state.preTripEndLocation.trim(),
-          });
-        }
-        // A typed/auto-filled address may not have come with coordinates
-        // (e.g. reverse-geocoding hadn't finished). Grab a GPS fix now if we
-        // don't have one, so the trip always starts with coordinates —
-        // without them, End Drive has nothing to calculate distance from.
-        let startLat = state.startCoords ? state.startCoords.lat : null;
-        let startLng = state.startCoords ? state.startCoords.lng : null;
-        if (startLat == null) {
-          state.startDriveBusy = true;
-          render();
-          try {
-            const coords = await getCurrentPosition();
-            startLat = coords.latitude; startLng = coords.longitude;
-          } catch (e) {
-            // No GPS fix available — the drive starts without coordinates.
-          }
-          state.startDriveBusy = false;
-        }
-
-        const trip = {
-          tag: state.settings.driveType === "work" ? "work" : state.settings.driveType === "supervised" ? "supervised" : "normal",
-          startPoint: state.startPointInput.trim() || "Unspecified",
-          startTime: nowTimeStr(),
-          date: todayStr(),
-          startedAt: Date.now(),
-        };
-        if (startLat != null) { trip.startLat = startLat; trip.startLng = startLng; }
-        state.active = trip;
-        state.startPointInput = "";
-        state.startCoords = null;
-        state.preTripEndLocation = "";
-        state.preTripDistance = null;
-        state.preTripDuration = null;
-        state.preTripEstimateError = "";
-        state.preTripEstimating = false;
-        state.endDriveError = "";
-        state.manualDistanceFallback = "";
-        await storageSet(ACTIVE_KEY, trip);
-        startTicker();
-        render();
-      };
-
-      setupLocationMarquee("startPointInput");
-      setupLocationMarquee("preTripEndInput");
-      if (state.startLocArmed) armLocationMarquee("startPointInput");
-      if (state.endLocArmed) armLocationMarquee("preTripEndInput");
-    } else {
+    } else if (state.active) {
       renderTimerOnly();
       attachActiveStartMarquee();
       const endDriveBtn = document.getElementById("endDriveBtn");
@@ -8907,12 +8546,6 @@ function attachAppHandlers() {
       await storageSet(SETTINGS_KEY, state.settings);
     };
 
-    const showSavedAddressesSwitch = document.getElementById("showSavedAddressesSwitch");
-    if (showSavedAddressesSwitch) showSavedAddressesSwitch.onclick = async () => {
-      state.settings.showSavedAddresses = state.settings.showSavedAddresses === false;
-      await storageSet(SETTINGS_KEY, state.settings);
-      render();
-    };
 
     const fuelTrackingSwitch = document.getElementById("fuelTrackingSwitch");
     if (fuelTrackingSwitch) fuelTrackingSwitch.onclick = async () => {
@@ -9386,11 +9019,9 @@ function attachAppHandlers() {
       state.confirmingCancelDrive = false;
       state.driveSummary = null;
       state.active = null;
-      state.startPointInput = "";
       state.endDriveError = "";
       await storageDelete(ACTIVE_KEY);
       stopTicker();
-      autoFillCurrentLocation();
       render();
     };
   } else if (state.driveSummary) {
@@ -9411,10 +9042,8 @@ function attachAppHandlers() {
       trip.endTime = clampTimeValue(trip.endTime);
       state.driveSummary = null;
       state.active = null;
-      state.startPointInput = "";
       await storageDelete(ACTIVE_KEY);
       stopTicker();
-      autoFillCurrentLocation();
 
       if (trip.tag === "supervised") {
         const cf = state.conditionsForm;
@@ -9694,58 +9323,6 @@ function attachAppHandlers() {
       state.selectedTripIds = [];
       state.confirmingDeleteSelected = false;
       state.historySelectMode = false;
-      render();
-    };
-  }
-
-  if (state.logEstimateForm) {
-    const f = state.logEstimateForm;
-    const led = document.getElementById("logEstimateDate");
-    if (led) led.onchange = (e) => { f.date = e.target.value; };
-    attachTimeInput(document.getElementById("logEstimateStartTime"), (v) => { f.startTime = v; });
-    attachTimeInput(document.getElementById("logEstimateEndTime"), (v) => { f.endTime = v; });
-    if (state.settings.driveType === "supervised") bindConditionsFields(state.conditionsForm);
-
-    const cancelLogBtn = document.getElementById("cancelLogEstimateBtn");
-    if (cancelLogBtn) cancelLogBtn.onclick = () => { state.logEstimateForm = null; state.addingSupervisor = false; render(); };
-
-    const confirmLogBtn = document.getElementById("confirmLogEstimateBtn");
-    if (confirmLogBtn) confirmLogBtn.onclick = async () => {
-      if (!f.date || !f.startTime || !f.endTime) return;
-      f.startTime = clampTimeValue(f.startTime);
-      f.endTime = clampTimeValue(f.endTime);
-      const supervised = state.settings.driveType === "supervised";
-      const trip = {
-        id: uid(),
-        date: f.date,
-        startTime: f.startTime,
-        endTime: f.endTime,
-        distance: displayToKm(parseFloat(state.preTripDistance) || 0),
-        startPoint: state.startPointInput.trim() || "Unspecified",
-        endPoint: state.preTripEndLocation.trim() || "Unspecified",
-        tag: supervised ? "supervised" : state.settings.driveType === "work" ? "work" : "normal",
-      };
-      if (f.startLat != null) { trip.startLat = f.startLat; trip.startLng = f.startLng; }
-      if (f.endLat != null) { trip.endLat = f.endLat; trip.endLng = f.endLng; }
-      if (supervised) {
-        const cf = state.conditionsForm;
-        const sup = state.supervisors.find(s => s.id === cf.supervisorId);
-        trip.timeOfDay = cf.timeOfDay; trip.roadType = cf.roadType; trip.weather = cf.weather; trip.traffic = cf.traffic;
-        trip.supervisorName = sup ? sup.name : ""; trip.supervisorLicence = sup ? sup.licence : "";
-        if (sup) {
-          state.settings.lastSupervisorId = sup.id;
-          await storageSet(SETTINGS_KEY, state.settings);
-        }
-      }
-      state.logEstimateForm = null;
-      state.addingSupervisor = false;
-      state.startPointInput = "";
-      state.preTripEndLocation = "";
-      state.preTripDistance = null;
-      state.preTripDuration = null;
-      state.preTripEstimateError = "";
-      state.preTripEstimating = false;
-      await finalizeTrip(trip);
       render();
     };
   }
