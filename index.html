@@ -438,6 +438,12 @@
   .planner-route-metrics .metric .v .unit{font-size:.65em;font-weight:700;margin-left:2px;}
   .planner-route-metrics .metric .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.06em;margin-top:1px;}
   .planner-route-metrics .div{width:1px;height:24px;background:var(--border);}
+  /* Just Distance/Est. time (no leading type badge, unlike the Drive
+     Completed card's 3-up row) -- shrink-to-content and centered as one
+     compact group in the middle of the card, rather than each stretching
+     to fill its own half of the full width via the shared flex:1 above. */
+  .planner-route-metrics.centered{justify-content:center;gap:28px;}
+  .planner-route-metrics.centered .metric{flex:0 0 auto;}
   .planner-hazard-row{display:flex;align-items:center;gap:7px;margin-top:6px;padding-top:6px;
     border-top:1px solid var(--border);color:var(--work);}
   .planner-hazard-row .icon{width:15px;height:15px;flex-shrink:0;color:var(--work);}
@@ -585,7 +591,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.14";
+const APP_BUILD = "2026-08-21.15";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2571,6 +2577,27 @@ function minutesToTimeStr(totalMinutes) {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
+// Opens the pre-trip "Log Drive" window (renderPlannerLogModal), seeded
+// from the current preview's own estimate -- shared by the preview
+// screen's own Log Drive button and the Saved Routes list's, which loads
+// a route into the planner and previews it first (see its own caller)
+// since this reads state.planner.legs, populated only after Preview runs.
+function openPlannerLogForm() {
+  const p = state.planner;
+  if (!p) return;
+  const startTime = nowTimeStr();
+  const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
+  const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
+  const endTime = minutesToTimeStr(startMinutes + totalMin);
+  state.plannerLogForm = { date: todayStr(), startTime, endTime };
+  if (p.legs.some(l => l.tag === "supervised")) {
+    const dn = defaultDayNightFor(state.plannerLogForm.date, startTime);
+    state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+    state.addingSupervisor = false;
+    state.newSupervisorName = ""; state.newSupervisorLicence = "";
+  }
+  render();
+}
 // Manual "Log Drive" path: commits every leg as a logged trip, back-to-back
 // from a chosen date/start time, using each leg's estimated Directions
 // duration as its drive time — for logging a drive that already happened
@@ -5711,7 +5738,8 @@ function renderSavedRoutesList() {
       <p class="settings-title" style="margin:0 0 6px;">${escAttr(r.name || `${r.stops[0].address || "Start"} → ${r.stops[r.stops.length - 1].address || "Destination"}`)}</p>
       <p class="settings-desc" style="margin:0 0 10px;">${stopCount > 0 ? `${stopCount} stop${stopCount > 1 ? "s" : ""} · ` : ""}${kmToDisplay(totalKm).toFixed(1)} ${unitLabel()} · ${formatDuration(totalMin)}${untagged ? " · needs tagging" : ""}</p>
       <div style="display:flex;gap:8px;">
-        <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Driving</button>
+        <button type="button" class="btn btn-ghost plannerLogSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
+        <button type="button" class="btn btn-amber plannerStartSavedBtn" data-routeid="${r.id}" style="width:auto;flex:1;">${icons.play} Start Drive</button>
         <button type="button" class="icon-btn plannerEditSavedBtn" data-routeid="${r.id}" title="Edit">${icons.edit}</button>
         <button type="button" class="icon-btn plannerDeleteSavedBtn" data-routeid="${r.id}" title="Delete">${icons.trash}</button>
       </div>
@@ -5905,8 +5933,8 @@ function renderPlannerRouteSummary() {
       <span class="planner-route-badge-label">${icons.route} ${cardLabel}</span>
       <button type="button" class="icon-btn planner-save-star ${p.savedRouteId ? "active" : ""}" id="plannerSaveRouteBtn" title="${p.savedRouteId ? "Saved — tap to remove" : "Save this Drive"}">${p.savedRouteId ? icons.starFilled : icons.starOutline}</button>
     </div>
-    <div class="planner-route-metrics">
-      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
+    <div class="planner-route-metrics centered">
+      <div class="metric"><div class="v mono">${tightenDecimal(kmToDisplay(totalKm).toFixed(1))}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
       <div class="div"></div>
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Est. time</div></div>
     </div>
@@ -5944,7 +5972,7 @@ function renderPlannerCompleteSummary() {
     <div class="planner-route-metrics">
       <div class="metric" style="text-align:left;"><span class="tag ${overallTag}">${labelFor(DRIVE_TYPES, overallTag)}</span></div>
       <div class="div"></div>
-      <div class="metric"><div class="v mono">${kmToDisplay(totalKm).toFixed(1)}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
+      <div class="metric"><div class="v mono">${tightenDecimal(kmToDisplay(totalKm).toFixed(1))}<span class="unit">${unitLabel()}</span></div><div class="l">Distance</div></div>
       <div class="div"></div>
       <div class="metric"><div class="v mono">${formatDuration(totalMin)}</div><div class="l">Duration</div></div>
     </div>
@@ -8571,6 +8599,15 @@ function attachAppHandlers() {
         if (state.planner && state.planner.stage === "preview") await startLiveDrive();
       };
     });
+    document.querySelectorAll(".plannerLogSavedBtn").forEach(btn => {
+      btn.onclick = async () => {
+        const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
+        if (!route) return;
+        openSavedRouteInPlanner(route);
+        await runPlannerPreview();
+        if (state.planner && state.planner.stage === "preview") openPlannerLogForm();
+      };
+    });
     document.querySelectorAll(".plannerEditSavedBtn").forEach(btn => {
       btn.onclick = () => {
         const route = state.plannedRoutes.find(r => r.id === btn.dataset.routeid);
@@ -8717,20 +8754,7 @@ function attachAppHandlers() {
       const saveRouteBtn = document.getElementById("plannerSaveRouteBtn");
       if (saveRouteBtn) saveRouteBtn.onclick = () => { if (p.savedRouteId) unsavePlannerRoute(); else openPlannerSaveRoutePrompt(); };
       const logDriveBtn = document.getElementById("plannerLogDriveBtn");
-      if (logDriveBtn) logDriveBtn.onclick = () => {
-        const startTime = nowTimeStr();
-        const totalMin = p.legs.reduce((s, l) => s + (l.durationMin || 0), 0);
-        const startMinutes = parseInt(startTime.slice(0, 2), 10) * 60 + parseInt(startTime.slice(3, 5), 10);
-        const endTime = minutesToTimeStr(startMinutes + totalMin);
-        state.plannerLogForm = { date: todayStr(), startTime, endTime };
-        if (p.legs.some(l => l.tag === "supervised")) {
-          const dn = defaultDayNightFor(state.plannerLogForm.date, startTime);
-          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-          state.addingSupervisor = false;
-          state.newSupervisorName = ""; state.newSupervisorLicence = "";
-        }
-        render();
-      };
+      if (logDriveBtn) logDriveBtn.onclick = openPlannerLogForm;
       const startDrivingBtn = document.getElementById("plannerStartDrivingBtn");
       if (startDrivingBtn) startDrivingBtn.onclick = startLiveDrive;
 
