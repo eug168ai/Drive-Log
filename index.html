@@ -431,7 +431,7 @@
   .planner-save-star{padding:2px;color:var(--amber);}
   .planner-save-star .icon{width:18px;height:18px;}
   .planner-discard-drive-btn{padding:2px;}
-  .planner-discard-drive-btn .icon{width:18px;height:18px;}
+  .planner-discard-drive-btn .icon{width:18px;height:16px;}
   .planner-route-metrics{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;}
   .planner-route-metrics .metric{text-align:center;flex:1;}
   .planner-route-metrics .metric .v{font-size:16px;font-weight:700;}
@@ -585,7 +585,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.5";
+const APP_BUILD = "2026-08-21.6";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -4292,8 +4292,12 @@ async function ensurePlannerMap() {
         // While driving, a reroute replaces this result with one whose
         // origin is wherever the car currently is — its own A/B pins would
         // then jump around on every reroute. Suppressed here in favor of
-        // the dedicated, reroute-proof start marker placed below.
-        suppressMarkers: driving,
+        // the dedicated, reroute-proof start marker placed below. Also
+        // suppressed once complete — Google's default teardrop pins anchor
+        // at their bottom tip, not their center, so they read as floating
+        // just above the route line rather than sitting centered on it;
+        // small circular dots placed below fix that.
+        suppressMarkers: driving || complete,
         // Always true -- the default un-padded auto-fit centers the route
         // within the *entire* map div, ignoring that the topbar (address
         // fields) and bottom sheet (summary/buttons) overlay a big chunk of
@@ -4330,6 +4334,27 @@ async function ensurePlannerMap() {
             }
           });
           updatePlannerRouteSummaryDOM();
+        });
+      }
+      if (complete) {
+        // Small circular dots, centered exactly on each stop's real
+        // coordinate (unlike the suppressed default pins above) -- read
+        // straight off this route's own legs rather than p.stops, so they
+        // land on wherever the route actually starts/passes through/ends,
+        // including a drive stopped short of its final planned destination
+        // (see endLiveDrive's truncated-route redraw).
+        const { Marker } = await google.maps.importLibrary("marker");
+        if (document.getElementById("plannerMapCanvas") !== canvas) return;
+        const routeLegs = plannerDirectionsResult.routes[0].legs;
+        const dot = (position, color, title) => new Marker({
+          map: plannerMapInstance, position,
+          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: color, fillOpacity: 1, strokeColor: "#fff", strokeWeight: 2 },
+          zIndex: 3, title,
+        });
+        dot(routeLegs[0].start_location, "#4C9F70", "Start");
+        routeLegs.forEach((leg, i) => {
+          const isLast = i === routeLegs.length - 1;
+          dot(leg.end_location, isLast ? "#E0642C" : "#8B92A0", isLast ? "End" : "Stop");
         });
       }
     } catch { /* map still usable without the route line */ }
