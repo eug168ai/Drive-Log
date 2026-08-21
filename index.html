@@ -48,7 +48,7 @@
   }
   .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
   .wrap{max-width:640px;margin:0 auto;padding:12px 16px 12px;}
-  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:10px;}
   .header:active{opacity:.7;}
   .stats-row{display:flex;align-items:flex-start;gap:8px;}
   .stat-block{display:flex;flex-direction:column;align-items:center;}
@@ -90,7 +90,7 @@
   .field-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
   .date-compact{width:150px;flex-shrink:0;}
   .time-compact{width:84px;flex-shrink:0;text-align:center;font-variant-numeric:tabular-nums;}
-  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;margin-bottom:14px;}
+  .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:0;margin-bottom:8px;}
   .tab-btn{flex:1;padding:6px 0;border:none;background:transparent;border-radius:10px;font-size:14px;
            font-weight:600;color:var(--muted);cursor:pointer;text-transform:capitalize;}
   .tab-btn.active{background:var(--amber);color:var(--bg);}
@@ -131,13 +131,8 @@
   .beta-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
             background:rgba(var(--amber-rgb),.18);color:var(--amber);border:1px solid rgba(var(--amber-rgb),.35);
             border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
-  .construction-tag{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
-            background:var(--grey-tag-bg);color:var(--grey-tag-text);border:1px solid var(--grey-border);
-            border-radius:4px;padding:1px 5px;margin-left:6px;vertical-align:middle;}
-  .card-construction{background:var(--grey-card);border-color:var(--grey-border);}
   /* .btn has no margin of its own, unlike .card's built-in margin-bottom —
-     without this, the button sat flush against whatever card followed it
-     (the Drive Planner card, right underneath, with zero gap). */
+     without this, the button sat flush against whatever followed it. */
   #logFillupBtnLog{margin-bottom:11px;}
   .chip{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;padding:5px 12px;border-radius:999px;font-size:12px;font-weight:600;border:1px solid var(--border);
         color:var(--muted);background:transparent;cursor:pointer;text-transform:capitalize;}
@@ -591,7 +586,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.19";
+const APP_BUILD = "2026-08-21.20";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5710,9 +5705,6 @@ function renderPlanTab() {
     const refuelBtn = state.settings.fuelTrackingEnabled !== false && state.settings.fuelMode === "accurate"
       ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : "";
     const plannerEntry = state.active ? "" : `
-    <div class="card card-construction">
-      <p class="settings-title" style="margin:0;">${icons.route} Drive Planner<span class="construction-tag">Under Construction</span></p>
-    </div>
     <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} Plan Drive</button>`;
     return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${refuelBtn}${plannerEntry}`;
   }
@@ -9715,6 +9707,27 @@ function attachAppHandlers() {
       render();
     };
   }
+
+  armSelectAllOnTap();
+}
+
+// Per-field onfocus->select() (the pattern used everywhere in this app)
+// only reselects when the field actually receives a fresh `focus` event --
+// which doesn't fire on a field that was already focused (e.g. right after
+// picking an autocomplete suggestion or a saved-address chip, which leaves
+// the field focused without blurring it first). A second tap on it then did
+// nothing. `mouseup` fires on every tap regardless of prior focus state, so
+// handling it here too closes that gap for every text field app-wide, on
+// top of (not instead of) each field's own onfocus wiring -- preventDefault
+// stops the browser's own mouseup from collapsing the selection into a
+// plain caret right after. Runs after every render() (via attachAppHandlers)
+// so newly-rendered fields are always covered.
+function armSelectAllOnTap() {
+  const skip = ["checkbox", "radio", "button", "submit", "range", "color", "file"];
+  document.querySelectorAll("input").forEach(el => {
+    if (skip.includes(el.type)) return;
+    el.onmouseup = (e) => { e.preventDefault(); setTimeout(() => el.select()); };
+  });
 }
 
 (async function init() {
