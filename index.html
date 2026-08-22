@@ -204,16 +204,16 @@
 
   /* Log-tab dashboard (bar-chart cards) */
   .divider{height:1px;background:var(--border);margin:7px 0;}
-  .seg{display:flex;gap:5px;margin-bottom:8px;}
-  .seg button{flex:1;padding:7px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
+  .seg{display:flex;gap:5px;margin-bottom:6px;}
+  .seg button{flex:1;padding:6px 0;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;}
   .seg button.on{background:rgba(var(--amber-rgb),.14);border-color:var(--amber);color:var(--amber);}
-  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:8px;}
-  .rangenav button{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
+  .rangenav{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:6px;}
+  .rangenav button{width:26px;height:26px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:inherit;}
   .rangenav .range{font-size:12px;color:var(--muted);min-width:112px;text-align:center;}
   svg.chart{width:100%;display:block;overflow:visible;}
-  .daylabels{position:relative;height:13px;margin-top:2px;}
+  .daylabels{position:relative;height:13px;margin-top:1px;}
   .daylabels span{position:absolute;top:0;transform:translateX(-50%);font-size:10px;color:var(--faint);white-space:nowrap;}
-  .legend2{display:flex;row-gap:4px;column-gap:20px;margin-top:6px;flex-wrap:wrap;}
+  .legend2{display:flex;row-gap:4px;column-gap:20px;margin-top:4px;flex-wrap:wrap;}
   .legend2 .item{display:flex;align-items:baseline;gap:6px;}
   .legend2 .sw{display:inline-block;width:9px;height:9px;border-radius:2px;margin-bottom:1px;}
   .legend2 .lbl{font-size:11px;color:var(--muted);}
@@ -596,7 +596,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.3";
+const APP_BUILD = "2026-08-22.4";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5013,23 +5013,6 @@ function formatHM(mins) {
   const h = Math.floor(m / 60);
   return h === 0 ? `${m % 60}m` : `${h}h ${m % 60}m`;
 }
-// Terser than formatHM for a chart axis label, where a whole-hour tick
-// (the common case, since ticks are round numbers) reads better as "3h"
-// than "3h 0m".
-function fmtAxisHM(mins) {
-  const m = Math.max(0, Math.round(mins));
-  return m % 60 === 0 ? `${Math.floor(m / 60)}h` : formatHM(m);
-}
-// Rounds a chart axis's top tick up to a "nice" number (1/2/5 × a power of
-// ten) so the scale reads as 25/50/100 rather than the raw data max.
-function niceCeil(v) {
-  if (v <= 0) return 1;
-  const exp = Math.floor(Math.log10(v));
-  const base = Math.pow(10, exp);
-  const frac = v / base;
-  const niceFrac = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
-  return niceFrac * base;
-}
 // Server-rendered (no DOM measurement) click-to-reveal tooltip: estimates its
 // own text width from character count so it can be positioned purely from
 // the string that will be shown, matching the bar it was clicked on.
@@ -5054,16 +5037,6 @@ function dashColumnLayout(n) {
   const xs = Array.from({ length: n }, (_, i) => sidePad + i * (barW + gap));
   return { w, barW, xs };
 }
-// Adds left/right gutters for the axis-scale labels (see renderBarChart) on
-// top of the plain bar layout, and returns one shared object so the bars
-// and the day labels beneath them always agree on where 0%/100% of the
-// chart's width actually is -- both are rendered against this same layout
-// rather than each computing their own.
-function dashChartLayout(n, hasLeft, hasRight) {
-  const base = dashColumnLayout(n);
-  const padLeft = hasLeft ? 32 : 0, padRight = hasRight ? 32 : 0;
-  return { w: base.w + padLeft + padRight, barsW: base.w, barW: base.barW, xs: base.xs.map(x => x + padLeft), padLeft, padRight };
-}
 // Bucket labels positioned as absolute spans aligned to each bar's exact
 // horizontal center (not flexbox spacing, which can't match capped/spread
 // bar positions once bucket counts get uneven).
@@ -5078,28 +5051,23 @@ function renderChartLabels(buckets, layout, period) {
   return `<div class="daylabels">${items}</div>`;
 }
 // N-series overlay bar chart: every series shares the same column, drawn
-// from the same baseline. The first series with `axisSide: "left"` and the
-// first with `axisSide: "right"` (at most one of each) are scaled to their
-// own true max (rounded up to a "nice" number) and get that scale printed,
-// color-matched, down their edge -- no gridlines, since each label's own
-// vertical position already shows where it sits. Any further series (no
-// axisSide) falls back to the old relative-shrink approach (`bFactor`, < 1
-// shrinks it relative to its own max) so it stays visually smaller rather
-// than fighting the two real-axis series for the same space. For each
-// bucket, series are drawn tallest-to-shortest so shorter ones end up on
-// top/in front and always stay visible, even where the shrink isn't enough.
-// `series` is an array of { data, avg, color, axisSide, fmtAxis, bFactor }.
-// `layout` is a dashChartLayout() result shared with renderChartLabels so
-// the bars and the day labels beneath them always agree on positioning.
-function renderBarChart(chartId, buckets, series, height, tipIndex, layout) {
-  const padTop = 10, padBottom = 10;
+// from the same baseline. Each series' `bFactor` (< 1 shrinks it relative to
+// its own max) lets it read as visually "smaller" than the others rather
+// than risking an exact-height match — and for each bucket, series are drawn
+// tallest-to-shortest so the shorter ones end up on top/in front and always
+// stay visible, even on the rare bucket where the shrink still isn't enough.
+// `series` is an array of { data, avg, color, bFactor }.
+function renderBarChart(chartId, buckets, series, height, tipIndex) {
+  const padTop = 6, padBottom = 6;
   const plotH = height - padTop - padBottom;
-  const { w, barW, xs, padLeft, barsW } = layout;
+  const n = buckets.length;
+  const { w, barW, xs } = dashColumnLayout(n);
   const baseline = height - padBottom;
-  const prepared = series.map(s => {
-    const dataMax = Math.max(1, ...s.data.map(v => v || 0));
-    return s.axisSide ? { ...s, factor: 1, max: niceCeil(dataMax) } : { ...s, factor: s.bFactor || 1, max: dataMax };
-  });
+  const prepared = series.map(s => ({
+    ...s,
+    factor: s.bFactor || 1,
+    max: Math.max(1, ...s.data.map(v => v || 0)),
+  }));
   let tip = "";
   const cols = buckets.map((b, i) => {
     const x = xs[i];
@@ -5116,21 +5084,12 @@ function renderBarChart(chartId, buckets, series, height, tipIndex, layout) {
   }).join("");
   const avgLines = prepared.map(s => {
     const yAvg = baseline - (s.avg / s.max) * plotH * s.factor;
-    return `<line x1="${padLeft}" y1="${yAvg.toFixed(1)}" x2="${padLeft + barsW}" y2="${yAvg.toFixed(1)}" stroke="${s.color}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>`;
-  }).join("");
-  const axisText = prepared.filter(s => s.axisSide).map(s => {
-    const tx = s.axisSide === "left" ? padLeft - 6 : padLeft + barsW + 6;
-    const anchor = s.axisSide === "left" ? "end" : "start";
-    return [s.max, s.max / 2, 0].map(v => {
-      const y = baseline - (v / s.max) * plotH;
-      return `<text x="${tx}" y="${(y + (v === 0 ? 0 : 3)).toFixed(1)}" text-anchor="${anchor}" font-size="9" fill="${s.color}" opacity=".8">${v === 0 ? "0" : s.fmtAxis(v)}</text>`;
-    }).join("");
+    return `<line x1="0" y1="${yAvg.toFixed(1)}" x2="${w}" y2="${yAvg.toFixed(1)}" stroke="${s.color}" stroke-width="1" stroke-dasharray="3,4" opacity=".6"/>`;
   }).join("");
   return `<svg class="chart" viewBox="0 0 ${w} ${height}" preserveAspectRatio="none" style="height:${height}px;">
     ${avgLines}
     <g class="cols">${cols}</g>
     ${tip}
-    ${axisText}
   </svg>`;
 }
 // Earliest logged-drive date for a chart's trip subset, so range navigation
@@ -5209,10 +5168,9 @@ function renderSupervisedDashboardCard() {
   buckets.forEach((b, i) => { b.tip = `${b.label}  ·  Day ${formatHM(seriesA[i] * 60)}  ·  Night ${formatHM(seriesB[i] * 60)}`; });
   const avgA = elapsedBucketAvg(buckets, seriesA);
   const avgB = elapsedBucketAvg(buckets, seriesB);
-  const supLayout = dashChartLayout(buckets.length, true, true);
 
   return `
-  <div class="card" style="padding:12px 10px;">
+  <div class="card" style="padding:8px 10px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;">
       <p class="settings-title" style="margin:0;">Supervised Driving</p>
       <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
@@ -5255,10 +5213,10 @@ function renderSupervisedDashboardCard() {
 
     ${dashSegAndNav("sup", period, offset, range, earliestTripDateFor("supervised"))}
     ${renderBarChart("sup", buckets, [
-      { data: seriesA, avg: avgA, color: "var(--amber)", axisSide: "left", fmtAxis: v => fmtAxisHM(v * 60) },
-      { data: seriesB, avg: avgB, color: "var(--cost)", axisSide: "right", fmtAxis: v => fmtAxisHM(v * 60) },
-    ], 90, state.dashSupTipIndex, supLayout)}
-    ${renderChartLabels(buckets, supLayout, period)}
+      { data: seriesA, avg: avgA, color: "var(--amber)" },
+      { data: seriesB, avg: avgB, color: "var(--cost)" },
+    ], 90, state.dashSupTipIndex)}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
       <div class="item"><span class="sw" style="background:var(--cost);"></span><span class="lbl">Night hours</span><span class="avgval mono">${formatHM(avgB * 60)} avg</span></div>
@@ -5267,12 +5225,9 @@ function renderSupervisedDashboardCard() {
 }
 // --- Driving metrics card (Distance / Time / Fuel Cost — any combination) --
 // The three metrics are independently toggled in Settings and overlaid on
-// one chart; only the first two get a real left/right axis (see
-// renderBarChart). If all three are on, the third has no axis of its own
-// and falls back to a fixed role factor, so it still renders at a visibly
-// different bar height rather than risking an exact-height match against
-// one of the axis'd series (e.g. if estimated cost happens to be exactly
-// proportional to distance).
+// one chart. Each has a fixed role factor so that if two metrics happen to
+// be exactly proportional (e.g. estimated cost = distance × rate), they
+// still render at different bar heights instead of collapsing into one.
 const DRIVING_METRIC_ROLE_FACTOR = { distance: 1, time: 0.82, cost: 0.64 };
 function renderDrivingMetricsCard() {
   const wantDistance = state.settings.dashShowDistance !== false;
@@ -5293,32 +5248,24 @@ function renderDrivingMetricsCard() {
     data: bucketData.map(d => kmToDisplay(d.distanceKm)),
     fmtTip: v => `${v.toFixed(1)} ${unitLabel()}`,
     fmtLegend: avg => `${avg.toFixed(1)} ${unitLabel()}/day`,
-    fmtAxis: v => `${Math.round(v)} ${unitLabel()}`,
   });
   if (wantTime) metrics.push({
     key: "time", label: "Time", color: "var(--time)",
     data: bucketData.map(d => d.minutes),
     fmtTip: v => formatHM(v),
     fmtLegend: avg => `${formatHM(avg)}/day`,
-    fmtAxis: v => fmtAxisHM(v),
   });
   if (wantCost) metrics.push({
     key: "cost", label: "Fuel Cost", color: "var(--cost)",
     data: bucketData.map(d => d.cost || 0),
     fmtTip: v => formatCurrency(v),
     fmtLegend: avg => `${formatCurrency(avg)}/day`,
-    fmtAxis: v => formatCurrency(v),
   });
 
-  // Only the first two metrics shown get a real axis (left/right) --
-  // scaled to their own true max, since the axis is showing their actual
-  // numbers now rather than a relative height. Any third metric has
-  // nowhere left to put a scale, so it keeps the old relative-shrink
-  // approach (DRIVING_METRIC_ROLE_FACTOR) purely for visual sizing.
-  const series = metrics.map((m, i) => ({
+  const multi = metrics.length > 1;
+  const series = metrics.map(m => ({
     ...m,
-    axisSide: i === 0 ? "left" : i === 1 ? "right" : null,
-    bFactor: i < 2 ? 1 : DRIVING_METRIC_ROLE_FACTOR[m.key],
+    bFactor: multi ? DRIVING_METRIC_ROLE_FACTOR[m.key] : 1,
     avgBucket: elapsedBucketAvg(buckets, m.data),
     avgDay: m.data.reduce((s, v) => s + v, 0) / elapsedDays,
   }));
@@ -5332,14 +5279,12 @@ function renderDrivingMetricsCard() {
     : labels.length === 2 ? labels.join(" & ")
     : `${labels.slice(0, -1).join(", ")} & ${labels[labels.length - 1]}`;
 
-  const normLayout = dashChartLayout(buckets.length, series.some(s => s.axisSide === "left"), series.some(s => s.axisSide === "right"));
-
   return `
-  <div class="card" style="padding:12px 10px;">
-    <p class="settings-title" style="margin:0 0 10px;">${title}</p>
+  <div class="card" style="padding:8px 10px;">
+    <p class="settings-title" style="margin:0 0 8px;">${title}</p>
     ${dashSegAndNav("norm", period, offset, range, earliestTripDateFor("normal"))}
-    ${renderBarChart("norm", buckets, series.map(s => ({ data: s.data, avg: s.avgBucket, color: s.color, bFactor: s.bFactor, axisSide: s.axisSide, fmtAxis: s.fmtAxis })), 110, state.dashNormTipIndex, normLayout)}
-    ${renderChartLabels(buckets, normLayout, period)}
+    ${renderBarChart("norm", buckets, series.map(s => ({ data: s.data, avg: s.avgBucket, color: s.color, bFactor: s.bFactor })), 110, state.dashNormTipIndex)}
+    ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       ${series.map(s => `<div class="item"><span class="sw" style="background:${s.color};"></span><span class="lbl">${s.label}</span><span class="avgval mono">${s.fmtLegend(s.avgDay)}</span></div>`).join("")}
     </div>
