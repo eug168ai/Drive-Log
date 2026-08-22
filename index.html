@@ -650,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.16";
+const APP_BUILD = "2026-08-22.17";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5852,7 +5852,12 @@ function renderPlanTab() {
       ? `<button id="logFillupBtnLog" class="btn btn-ghost">${icons.locate} Log a Refuel</button>` : "";
     const plannerEntry = state.active ? "" : `
     <button type="button" id="newPlannerRouteBtn" class="btn btn-amber">${icons.route} Plan Drive</button>`;
-    return `${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${refuelBtn}${plannerEntry}`;
+    // Settings -> Drive Type -> Show on Drive Screen: an at-a-glance
+    // reminder of which type is currently set, for anyone who switches
+    // between them often and would otherwise have to open Settings to check.
+    const driveTypeTag = state.settings.showDriveTypeOnLog
+      ? `<div style="margin-bottom:8px;"><span class="tag ${state.settings.driveType}">${labelFor(DRIVE_TYPES, state.settings.driveType)}</span></div>` : "";
+    return `${driveTypeTag}${renderDashboardSection()}${mapsError}${renderQuickDriveSection()}${refuelBtn}${plannerEntry}`;
   }
 
   const n = p.stops.length;
@@ -6360,7 +6365,7 @@ function renderSettingsTab() {
     </div>
     ${state.settings.driveType === "supervised" ? `
     <div class="switch-row" style="margin-bottom:0;">
-      <span class="settings-desc" style="margin:0;">Show Supervised Driving</span>
+      <span class="settings-desc" style="margin:0;">Supervised Driving</span>
       <div id="showSupervisedDashboardSwitch" class="switch ${state.settings.showSupervisedDashboard !== false ? "on" : ""}"><div class="knob"></div></div>
     </div>
     ` : ""}
