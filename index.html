@@ -650,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.25";
+const APP_BUILD = "2026-08-22.26";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -2646,7 +2646,12 @@ const LIVE_STEP_PASSED_HYSTERESIS_M = 8;
 // name -- a small deliberate lag so a step-advance right at the edge of its
 // own hysteresis doesn't read as the pill flickering.
 const LIVE_PILL_HOLD_M = 20;
-const LIVE_LEG_ARRIVE_M = 45;        // close enough to a stop to call that leg finished
+// How long the driver must stay continuously within Settings > Route Match
+// Radius of a stop before it auto-completes -- see the nearDest check in
+// handleLiveFix. Stepping back outside that radius resets the clock, so a
+// route that merely passes close by (without actually stopping) can't
+// trigger it just by being near for an instant.
+const LIVE_LEG_ARRIVE_DWELL_MS = 10000;
 const LIVE_MAX_FIX_ACCURACY_M = 60;  // ignore fixes noisier than this
 const LIVE_MAX_JUMP_M = 600;         // ignore a single fix-to-fix jump this large (GPS glitch, not highway driving with sparse fixes)
 const LIVE_BREADCRUMB_MIN_GAP_M = 15; // minimum spacing between recorded path points -- keeps the eventual polyline compact without visibly changing its shape
@@ -3133,7 +3138,7 @@ async function startLiveDrive() {
     legIdx: 0,
     legStartedAt: Date.now(),
     legDistanceM: 0,
-    legArriveMinDist: null,
+    destDwellStartMs: null,
     completedLegs: [],
     breadcrumbs: [],
     lastFix: { lat: firstFix.latitude, lng: firstFix.longitude, heading: firstFix.heading, t: Date.now() },
@@ -3208,7 +3213,7 @@ function finishCurrentLiveLeg() {
   liveDrive.legIdx++;
   liveDrive.legStartedAt = Date.now();
   liveDrive.legDistanceM = 0;
-  liveDrive.legArriveMinDist = null; // fresh start for the next leg's own destination
+  liveDrive.destDwellStartMs = null; // fresh start for the next leg's own destination
   persistLiveDriveSnapshot();
 }
 
@@ -3357,22 +3362,31 @@ function handleLiveFix(pos) {
   const p = state.planner;
   if (p && liveDrive.legIdx < p.legs.length) {
     const destStop = p.stops[liveDrive.legIdx + 1];
-    // Same "closest approach, then moving away again" hysteresis already
-    // used for step completion just above (stepEndMinDist) — a single fix
-    // landing inside LIVE_LEG_ARRIVE_M isn't enough on its own, since GPS
-    // noise or a road that just happens to pass close to the stop (without
-    // actually stopping there) can land one fix that close in passing. This
-    // is also most of what makes automatic multi-stop advance reliable at
-    // all, alongside the manual Next button for whatever it still misses
-    // (e.g. dropping someone off just off the geocoded pin's exact spot).
+    // Arrival radius matches Settings > Route Match Radius -- the same
+    // forgiveness for GPS drift/an inexact geocode already used to match a
+    // fix against a saved address, rather than a separate hardcoded value
+    // the driver has no way to see or adjust. A single fix landing inside
+    // that radius isn't enough on its own though — a road that just happens
+    // to pass close to the stop (without actually stopping there) would
+    // trigger it in passing — so this also requires staying inside the
+    // radius continuously for LIVE_LEG_ARRIVE_DWELL_MS; stepping back
+    // outside it resets the clock. This is also most of what makes
+    // automatic multi-stop advance reliable at all, alongside the manual
+    // Next button for whatever it still misses (e.g. dropping someone off
+    // just off the geocoded pin's exact spot).
     let nearDest = false;
     if (destStop && destStop.lat != null) {
+      const radius = Number(state.settings.routeMatchRadius) || 300;
       const d = haversineMeters(lat, lng, destStop.lat, destStop.lng);
-      if (liveDrive.legArriveMinDist == null || d < liveDrive.legArriveMinDist) liveDrive.legArriveMinDist = d;
-      nearDest = liveDrive.legArriveMinDist < LIVE_LEG_ARRIVE_M && d > liveDrive.legArriveMinDist + LIVE_STEP_PASSED_HYSTERESIS_M;
+      if (d <= radius) {
+        if (liveDrive.destDwellStartMs == null) liveDrive.destDwellStartMs = Date.now();
+        nearDest = Date.now() - liveDrive.destDwellStartMs >= LIVE_LEG_ARRIVE_DWELL_MS;
+      } else {
+        liveDrive.destDwellStartMs = null;
+      }
     }
     // Also treat running out of this leg's own turn-by-turn steps as
-    // arrival, not just being within LIVE_LEG_ARRIVE_M of the geocoded
+    // arrival, not just being within the arrival radius of the geocoded
     // stop pin — the two can diverge (a route's last step can end at a
     // slightly different point than the address's own coordinates), which
     // left the app showing "You have arrived" (driven by this same signal
@@ -4311,7 +4325,7 @@ async function resumeLiveDriveIfAny() {
     legIdx: saved.legIdx || 0,
     legStartedAt: saved.legStartedAt || saved.startedAt,
     legDistanceM: saved.legDistanceM || 0,
-    legArriveMinDist: null,
+    destDwellStartMs: null,
     completedLegs: saved.completedLegs || [],
     breadcrumbs: saved.breadcrumbs || [],
     lastFix: null,
