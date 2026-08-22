@@ -319,15 +319,18 @@
   .planner-paused-overlay .icon{width:44px;height:44px;}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-    /* Same fixed-mm shape as the live-driving screens' shading (see
-       .planner-drive-banner/.planner-eta-bar) -- fixed distances rather
-       than a percentage of the topbar's own height, so it doesn't shrink
-       proportionally and go mostly transparent when this box gets tall
-       (more than a couple of stops, or the saved-address pill row
-       expanding a focused field), which used to leave whatever sits near
-       the bottom -- often the always-visible Add Stop row -- rendered over
-       a nearly-transparent gradient with the map bleeding through. */
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
+    /* Unlike the live-driving screens' shading (fixed content, so a fixed
+       mm-based fade works well there), this box's height is however tall
+       the address form currently is -- one stop or several, a pill row
+       expanded under a focused field, etc. A fixed-distance fade doesn't
+       scale with that: on a tall form it leaves whatever's further down
+       (often the always-visible Add Stop row) sitting over already-
+       transparent gradient with the map bleeding through behind it. Percent-
+       based instead, so the opaque backing always covers the *whole*
+       address form regardless of how tall it gets, and only fades out in
+       a fixed final stretch right after it -- the shading effectively
+       starts right below the last address field every time. */
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) calc(100% - 24px), transparent 100%);
     transition:opacity .25s ease;}
   /* Tapping the map with every stop already filled has nothing left to
      pick, so it toggles this instead — hiding the address form and bottom
@@ -444,7 +447,7 @@
   .planner-compass-needle .icon{width:20px;height:20px;}
   .planner-compass-needle .icon .compass-south{fill:var(--compass-south, #fff);}
 
-  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 200px);z-index:31;
+  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 58px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
     color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
   .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
@@ -506,17 +509,20 @@
   /* Same shape as .planner-eta-bar's, mirrored -- opaque only for a short
      stretch, then fully transparent well short of the angle/compass FABs
      (which now have no background of their own either, see their own
-     comments) so nothing shades the map behind them. The fade has to
-     actually finish (reach fully transparent) before this element's own
-     bottom edge, or there's nothing left showing through below it (just
-     bare map) to fade INTO -- the eye reads that as a hard cutoff rather
-     than a gradient, which is exactly what a longer fade distance did on
-     this shorter banner (plenty of room on the taller eta-bar, not enough
-     here). */
+     comments) so nothing shades the map behind them. The fade needs real
+     room to actually finish (reach fully transparent) before this
+     element's own bottom edge, or there's nothing left showing through
+     below it (just bare map) to fade INTO -- the eye reads that as a hard
+     cutoff rather than a gradient. The icon+text row is naturally short,
+     so a big chunk of extra bottom padding (pure fade room, not touching
+     the row itself -- align-items:flex-start keeps that pinned to the
+     top rather than re-centering into the padding) gives the identical
+     gradient the same amount of room the taller eta-bar already has,
+     reading equally gradual on both. */
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
-    padding:calc(env(safe-area-inset-top) + 8px) 10px 10px;
+    padding:calc(env(safe-area-inset-top) + 8px) 10px 16mm;
     background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
-    display:flex;align-items:center;gap:12px;transform:translateZ(0);}
+    display:flex;align-items:flex-start;gap:12px;transform:translateZ(0);}
   /* Google Maps' own maneuver icon is a blue rounded square with a white
      arrow, top-left of the screen — this is the left-most element in the
      row, and the row itself sits at the very top (see .planner-drive-banner
@@ -644,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.14";
+const APP_BUILD = "2026-08-22.15";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3634,7 +3640,7 @@ function updateLiveZoom(speedMs) {
 // Ascending tilt/zoom order — simplest to reason about with five manual
 // steps rather than the earlier arbitrary ordering that only had three.
 const LIVE_ANGLE_MODE_CYCLE = ["auto", "overhead", "low", "medium", "high"];
-const LIVE_ANGLE_MODE_LABELS = { auto: "Angle: Auto", overhead: "Overhead", low: "Angle: Low", medium: "Angle: Medium", high: "Angle: High" };
+const LIVE_ANGLE_MODE_LABELS = { auto: "Auto", overhead: "Overhead", low: "Low", medium: "Medium", high: "High" };
 // Cycles the angle FAB through LIVE_ANGLE_MODE_CYCLE — a plain targeted
 // DOM update, not a render(), so it doesn't interrupt live tracking or
 // recreate the map. Zoom is a fully independent axis (its own FAB, its own
@@ -5838,7 +5844,7 @@ function renderPlanTab() {
     <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
-    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m].replace("Angle: ", "")).join(" / ")}">${icons.angleView}</button>
+    ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m]).join(" / ")}">${icons.angleView}</button>
     <button type="button" class="planner-compass-fab ${liveDrive && liveDrive.northLocked ? "active" : ""}" id="plannerCompassBtn" title="${liveDrive && liveDrive.northLocked ? "North locked — tap to follow direction of travel" : "Tap to lock the map facing North"}"><span class="planner-compass-needle" id="plannerCompassNeedle">${icons.compassNeedle}</span></button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
@@ -5880,17 +5886,7 @@ function renderPlanTab() {
           <button type="button" id="plannerCompleteDoneBtn" class="btn btn-amber">${icons.check} Save Drive</button>
         </div>`}
     </div>
-    ${p.confirmingDiscard ? `
-    <div class="modal-backdrop">
-      <div class="modal-card">
-        <h2 style="color:var(--work);">Discard this drive?</h2>
-        <p class="settings-desc" style="margin:0 0 18px;">Nothing from this drive will be saved. This action can't be undone.</p>
-        <div class="row-2">
-          <button type="button" id="plannerKeepDriveBtn" class="btn btn-ghost">Keep Drive</button>
-          <button type="button" id="plannerConfirmDiscardBtn" class="btn btn-stop">Discard</button>
-        </div>
-      </div>
-    </div>` : ""}` : (p.showSavedList ? "" : `
+    ` : (p.showSavedList ? "" : `
     <div class="planner-bottom-sheet">
       ${p.previewError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.previewError)}</p>` : ""}
       ${p.previewing && !plannerDirectionsResult ? `<p class="settings-desc" style="text-align:center;margin:0 0 8px;">${icons.route} Calculating route…</p>` : ""}
@@ -5902,9 +5898,30 @@ function renderPlanTab() {
       </div>
       ` : ""}
     </div>`)}
-    ${state.plannerSaveRouteForm ? renderPlannerSaveRouteModal() : ""}
-    ${state.plannerSaveAddressForm ? renderPlannerSaveAddressModal() : ""}
-    ${state.plannerLogForm ? renderPlannerLogModal() : ""}
+  </div>`;
+}
+// Discard-confirm, Save Route/Address, and Log this Drive are all reached
+// only while the Trip Planner's own fullscreen view is showing, but are
+// rendered at the top level (renderApp), not nested inside it -- that
+// fullscreen view sets its own CSS `perspective` (for the driving view's 3D
+// tilt), which per spec makes it the containing block for any
+// position:fixed descendant. A modal nested inside it inherited that same
+// 3D containing block/rendering context as the constantly-transforming
+// map underneath, which still painted the modal on top correctly but
+// swallowed taps meant for its own buttons. Rendering these as siblings of
+// .planner-fullscreen instead (same fix already proven for the Supervised
+// conditions prompt) sidesteps the whole issue rather than fighting it.
+function renderPlannerDiscardConfirmModal() {
+  return `
+  <div class="modal-backdrop">
+    <div class="modal-card">
+      <h2 style="color:var(--work);">Discard this drive?</h2>
+      <p class="settings-desc" style="margin:0 0 18px;">Nothing from this drive will be saved. This action can't be undone.</p>
+      <div class="row-2">
+        <button type="button" id="plannerKeepDriveBtn" class="btn btn-ghost">Keep Drive</button>
+        <button type="button" id="plannerConfirmDiscardBtn" class="btn btn-stop">Discard</button>
+      </div>
+    </div>
   </div>`;
 }
 
@@ -6114,6 +6131,10 @@ function renderApp() {
     ${state.confirmingCancelDrive ? renderCancelDriveModal() : state.driveSummary ? renderDriveSummaryModal() : ""}
     ${state.businessForm ? renderBusinessDetailsModal() : ""}
     ${(state.pendingTrip || state.pendingPlannerTrips) ? renderConditionsModal() : ""}
+    ${state.planner && state.planner.confirmingDiscard ? renderPlannerDiscardConfirmModal() : ""}
+    ${state.planner && state.plannerSaveRouteForm ? renderPlannerSaveRouteModal() : ""}
+    ${state.planner && state.plannerSaveAddressForm ? renderPlannerSaveAddressModal() : ""}
+    ${state.planner && state.plannerLogForm ? renderPlannerLogModal() : ""}
     ${state.confirmingClearHistory ? renderClearHistoryModal() : ""}
     ${state.editingTrip ? renderEditTripModal() : ""}
     ${state.confirmingDeleteSelected ? renderDeleteSelectedModal() : ""}
