@@ -411,23 +411,28 @@
   .planner-recenter-fab .icon{width:18px;height:18px;}
 
   .planner-angle-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 104px);width:40px;height:40px;border-radius:50%;
-    background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--amber);color:var(--amber);
-    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);
-    transform:translateZ(0);}
+    background:transparent;border:1.5px solid var(--amber);color:var(--amber);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));transform:translateZ(0);}
   .planner-angle-fab.active{background:rgba(var(--amber-rgb),.18);}
   .planner-angle-fab .icon{width:18px;height:18px;}
 
   .planner-compass-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 154px);width:40px;height:40px;border-radius:50%;
-    background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--border);color:var(--text);
-    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);
-    transform:translateZ(0);}
+    background:transparent;border:1.5px solid var(--border);color:var(--text);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));transform:translateZ(0);}
   .planner-compass-fab.active{border-color:var(--amber);}
   /* Rotates BY the same angle as the map's own CSS rotation (see
      rotateLiveMap's --compass-rot) so the needle tracks wherever true
      north has actually landed on screen, whichever way the map itself is
-     currently turned to face. */
+     currently turned to face. --compass-south (set alongside plannerMapIsNight,
+     see applyMapDayNightStyle) keeps its non-north half legible against
+     the actual day/night MAP colors now that the FAB behind it has no
+     backing of its own -- white shows up on the dark night style, black on
+     the light day style, same logic the map's own styling already uses. */
   .planner-compass-needle{display:flex;width:20px;height:20px;transform:rotate(var(--compass-rot, 0deg));}
   .planner-compass-needle .icon{width:20px;height:20px;}
+  .planner-compass-needle .icon .compass-south{fill:var(--compass-south, #fff);}
 
   .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 200px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
@@ -488,9 +493,14 @@
      intermittently vanishing, not a confirmed fix (no code path was found
      that actually removes them; this targets the layer-eviction bugs
      mobile Chrome can show near a large, busy 3D-transformed neighbor). */
+  /* Same shape as .planner-eta-bar's, mirrored -- opaque only for roughly
+     the turn banner's own content height, then fully transparent well
+     short of the angle/compass FABs (which now have no background of
+     their own either, see their own comments) so nothing shades the map
+     behind them. */
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 10px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 8mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 14mm, transparent 26mm);
     display:flex;align-items:center;gap:12px;transform:translateZ(0);}
   /* Google Maps' own maneuver icon is a blue rounded square with a white
      arrow, top-left of the screen — this is the left-most element in the
@@ -527,9 +537,14 @@
      Background mirrors .planner-drive-banner's exactly (same stops,
      opposite direction) -- see its own comment. Also on its own
      compositing layer for the same experimental reason. */
+  /* Same shape as .planner-drive-banner's, mirrored -- opaque only for
+     roughly the ETA/Remaining/Distance row's own height, so the pill row
+     and controls above it (and the position arrow above that) sit against
+     the live map directly, same as everything else that dropped its own
+     background. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 14mm, transparent 26mm);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -614,7 +629,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.10";
+const APP_BUILD = "2026-08-22.11";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1539,7 +1554,7 @@ const icons = {
   forkLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M7 9V6h3"/></svg>`,
   forkRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M17 9V6h-3"/></svg>`,
   angleView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 6h6l5 12z"/><path d="M4 18h16"/></svg>`,
-  compassNeedle: `<svg class="icon" viewBox="0 0 24 24"><path d="M12 2 15 12 12 12 9 12z" fill="var(--red)"/><path d="M12 22 9 12 12 12 15 12z" fill="var(--muted)"/></svg>`,
+  compassNeedle: `<svg class="icon" viewBox="0 0 24 24"><path d="M12 2 15 12 12 12 9 12z" fill="var(--red)"/><path class="compass-south" d="M12 22 9 12 12 12 15 12z"/></svg>`,
   zoomView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/><path d="M8 10.5h5"/></svg>`,
 };
 
@@ -4490,6 +4505,11 @@ async function ensurePlannerMap() {
   const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
   const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
   plannerMapIsNight = night;
+  // The compass needle's non-north half (see .planner-compass-needle's own
+  // comment) has no FAB backing to sit on anymore -- matches the map's own
+  // day/night styling rather than the app's light/dark UI theme, since
+  // it's read against the actual map colors showing through behind it.
+  document.documentElement.style.setProperty("--compass-south", night ? "#fff" : "#000");
   liveMapLabelsKey = null;
   plannerMapInstance = new Map(canvas, {
     // Upright at this point by construction (rotation always starts back at
