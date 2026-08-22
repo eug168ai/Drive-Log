@@ -608,7 +608,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.7";
+const APP_BUILD = "2026-08-22.8";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5811,6 +5811,7 @@ function renderPlanTab() {
     ${driving ? renderPlannerEtaBar() : complete ? `
     <div class="planner-bottom-sheet">
       ${renderPlannerCompleteSummary()}
+      ${p.completeSaveError ? `<p class="settings-desc" style="color:var(--work);margin:0 0 8px;">${escAttr(p.completeSaveError)}</p>` : ""}
       ${p.saved
         ? `<button type="button" id="plannerCompleteCloseBtn" class="btn btn-amber">${icons.check} Done</button>`
         : `
@@ -6626,6 +6627,7 @@ function renderConditionsModal() {
     <div class="modal-card">
       <h2>Driving conditions</h2>
       ${renderConditionsFields(f)}
+      ${f.error ? `<p class="err" style="margin:0 0 12px;">${f.error}</p>` : ""}
       <div class="row-2">
         <button id="backConditionsBtn" class="btn btn-ghost">Back</button>
         <button id="saveConditionsTripBtn" class="btn btn-amber">Save Drive</button>
@@ -8323,32 +8325,48 @@ function attachAppHandlers() {
       if (completeDoneBtn) completeDoneBtn.onclick = async () => {
         if (completeDoneBtn.disabled) return; // already saving — ignore a double-tap
         completeDoneBtn.disabled = true;
-        // Tag per leg is read live here, not whatever it was when the drive
-        // ended — the briefcase toggles on this screen stay editable right up
-        // until this tap actually commits the trips.
-        const trips = p.completeSummary.trips;
-        trips.forEach((trip, i) => { if (p.legs[i]) trip.tag = p.legs[i].tag; });
-        // A live/planned drive skipped the conditions prompt entirely for
-        // Supervised legs (unlike Quick Drive's own pendingTrip flow) --
-        // one supervised leg or several, ask once and apply it to all of
-        // them, same as the fields already available afterward in Edit
-        // Drive, just asked up front instead of only if you go looking.
-        if (trips.some(t => t.tag === "supervised")) {
-          completeDoneBtn.disabled = false;
-          const first = trips.find(t => t.tag === "supervised");
-          const dn = defaultDayNightFor(first.date, first.startTime, first.startLat, first.startLng);
-          state.pendingPlannerTrips = trips;
-          state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
-          state.addingSupervisor = false;
-          state.newSupervisorName = ""; state.newSupervisorLicence = "";
+        p.completeSaveError = "";
+        try {
+          // Tag per leg is read live here, not whatever it was when the drive
+          // ended — the briefcase toggles on this screen stay editable right up
+          // until this tap actually commits the trips.
+          const trips = p.completeSummary.trips;
+          trips.forEach((trip, i) => { if (p.legs[i]) trip.tag = p.legs[i].tag; });
+          // A live/planned drive skipped the conditions prompt entirely for
+          // Supervised legs (unlike Quick Drive's own pendingTrip flow) --
+          // one supervised leg or several, ask once and apply it to all of
+          // them, same as the fields already available afterward in Edit
+          // Drive, just asked up front instead of only if you go looking.
+          if (trips.some(t => t.tag === "supervised")) {
+            completeDoneBtn.disabled = false;
+            const first = trips.find(t => t.tag === "supervised");
+            const dn = defaultDayNightFor(first.date, first.startTime, first.startLat, first.startLng);
+            state.pendingPlannerTrips = trips;
+            state.conditionsForm = { timeOfDay: dn, roadType: "sealed", weather: "dry", traffic: "medium", supervisorId: state.settings.lastSupervisorId || "" };
+            state.addingSupervisor = false;
+            state.newSupervisorName = ""; state.newSupervisorLicence = "";
+            render();
+            return;
+          }
+          for (const trip of trips) await finalizeTrip(trip);
+          // Stay right here on the summary instead of jumping to the Log tab —
+          // the button below turns into Done, which is the actual exit.
+          p.saved = true;
           render();
-          return;
+        } catch (e) {
+          // Without this, any failure here (a thrown error partway through
+          // finalizeTrip, or building this same screen's own next render)
+          // left the button permanently disabled with no visible sign
+          // anything went wrong — a tap that looked like it did nothing.
+          console.error("Save Drive failed", e);
+          p.completeSaveError = "Couldn't save this drive — " + (e && e.message ? e.message : "something went wrong") + ". Try again.";
+          // Falls back to the known-good pre-save view rather than leaving
+          // p.saved set — if the crash happened while rendering *that*
+          // state, retrying it here would just throw the same way again.
+          p.saved = false;
+          completeDoneBtn.disabled = false;
+          render();
         }
-        for (const trip of trips) await finalizeTrip(trip);
-        // Stay right here on the summary instead of jumping to the Log tab —
-        // the button below turns into Done, which is the actual exit.
-        p.saved = true;
-        render();
       };
       const completeCloseBtn = document.getElementById("plannerCompleteCloseBtn");
       if (completeCloseBtn) completeCloseBtn.onclick = cancelPlanner;
@@ -9200,30 +9218,43 @@ function attachAppHandlers() {
 
     const saveTripBtn = document.getElementById("saveConditionsTripBtn");
     if (saveTripBtn) saveTripBtn.onclick = async () => {
-      const sup = state.supervisors.find(s => s.id === f.supervisorId);
-      if (sup) {
-        state.settings.lastSupervisorId = sup.id;
-        await storageSet(SETTINGS_KEY, state.settings);
+      if (saveTripBtn.disabled) return; // already saving — ignore a double-tap
+      saveTripBtn.disabled = true;
+      try {
+        const sup = state.supervisors.find(s => s.id === f.supervisorId);
+        if (sup) {
+          state.settings.lastSupervisorId = sup.id;
+          await storageSet(SETTINGS_KEY, state.settings);
+        }
+        const conditions = {
+          timeOfDay: f.timeOfDay, roadType: f.roadType, weather: f.weather, traffic: f.traffic,
+          supervisorName: sup ? sup.name : "", supervisorLicence: sup ? sup.licence : "",
+        };
+        if (state.pendingPlannerTrips) {
+          // Only the Supervised-tagged trips in this batch actually get the
+          // conditions -- a Personal or Business leg saved in the same drive
+          // has nothing to do with them.
+          const trips = state.pendingPlannerTrips.map(t => t.tag === "supervised" ? { ...t, ...conditions } : t);
+          state.pendingPlannerTrips = null;
+          for (const trip of trips) await finalizeTrip(trip);
+          const p = state.planner;
+          if (p) p.saved = true;
+        } else {
+          const trip = { ...state.pendingTrip, ...conditions };
+          state.pendingTrip = null;
+          await finalizeTrip(trip);
+        }
+        render();
+      } catch (e) {
+        // Same failure mode as plannerCompleteDoneBtn -- without this, any
+        // error here left the button disabled forever with no visible sign
+        // anything went wrong, and the conditions/trip data it was holding
+        // silently gone.
+        console.error("Save Drive (conditions) failed", e);
+        f.error = "Couldn't save this drive — " + (e && e.message ? e.message : "something went wrong") + ". Try again.";
+        saveTripBtn.disabled = false;
+        render();
       }
-      const conditions = {
-        timeOfDay: f.timeOfDay, roadType: f.roadType, weather: f.weather, traffic: f.traffic,
-        supervisorName: sup ? sup.name : "", supervisorLicence: sup ? sup.licence : "",
-      };
-      if (state.pendingPlannerTrips) {
-        // Only the Supervised-tagged trips in this batch actually get the
-        // conditions -- a Personal or Business leg saved in the same drive
-        // has nothing to do with them.
-        const trips = state.pendingPlannerTrips.map(t => t.tag === "supervised" ? { ...t, ...conditions } : t);
-        state.pendingPlannerTrips = null;
-        for (const trip of trips) await finalizeTrip(trip);
-        const p = state.planner;
-        if (p) p.saved = true;
-      } else {
-        const trip = { ...state.pendingTrip, ...conditions };
-        state.pendingTrip = null;
-        await finalizeTrip(trip);
-      }
-      render();
     };
   }
 
