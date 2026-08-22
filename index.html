@@ -72,9 +72,18 @@
      the Trip Planner's fullscreen driving/complete view is showing (e.g.
      the Supervised conditions prompt after Save Drive) rendered correctly
      but sat behind that view, completely invisible, reading as the tap
-     having done nothing at all. */
+     having done nothing at all. translateZ(0): .planner-fullscreen sets
+     its own perspective (for the driving view's 3D tilt), which makes it
+     the containing block for any position:fixed descendant -- including
+     any modal opened while the Trip Planner is showing at all (Log this
+     Drive, Save this Drive/Address, the discard-drive confirm), not just
+     the live map itself. That 3D containing-block puts the modal in the
+     same 3D rendering/hit-testing context as the constantly-transforming
+     map underneath it, which showed correctly (paint order still wins)
+     but could swallow taps meant for it -- same class of issue already
+     isolated for the eta-bar/turn-banner/FABs, for the same reason. */
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;
-                  justify-content:center;padding:20px;z-index:100;}
+                  justify-content:center;padding:20px;z-index:100;transform:translateZ(0);}
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
@@ -310,14 +319,15 @@
   .planner-paused-overlay .icon{width:44px;height:44px;}
   .planner-topbar{position:absolute;top:0;left:0;right:0;z-index:20;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 8px;
-    /* Fixed-size fade at the very bottom, not a percentage of the topbar's
-       own height -- with more than a couple of stops, or the saved-address
-       pill row expanding a focused field, this box gets tall, and a
-       percentage-based fade (its old 80%/100% stops) shrinks its solid
-       backing proportionally, leaving whatever sits in the last fifth --
-       often the always-visible Add Stop row -- rendered over a mostly
-       transparent gradient with the map bleeding through behind it. */
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.99), rgba(var(--bg-rgb),.99) calc(100% - 28px - 2mm), transparent 100%);
+    /* Same fixed-mm shape as the live-driving screens' shading (see
+       .planner-drive-banner/.planner-eta-bar) -- fixed distances rather
+       than a percentage of the topbar's own height, so it doesn't shrink
+       proportionally and go mostly transparent when this box gets tall
+       (more than a couple of stops, or the saved-address pill row
+       expanding a focused field), which used to leave whatever sits near
+       the bottom -- often the always-visible Add Stop row -- rendered over
+       a nearly-transparent gradient with the map bleeding through. */
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
     transition:opacity .25s ease;}
   /* Tapping the map with every stop already filled has nothing left to
      pick, so it toggles this instead — hiding the address form and bottom
@@ -447,12 +457,12 @@
 
   .planner-bottom-sheet{position:absolute;left:0;right:0;bottom:0;z-index:20;
     padding:14px 10px calc(14px + env(safe-area-inset-bottom));
-    background:none;
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
     transition:opacity .25s ease;}
   .planner-route-summary{background:rgba(var(--surface-rgb),.9);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     border:1px solid var(--border);border-radius:12px;
     padding:5px 7px;margin-bottom:8px;max-height:46vh;overflow-y:auto;}
-  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:3px;}
+  .planner-route-badge{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:0;}
   .planner-route-badge-label{display:flex;align-items:center;gap:6px;color:var(--amber);font-size:11px;font-weight:700;
     text-transform:uppercase;letter-spacing:.04em;}
   .planner-route-badge .icon{width:13px;height:13px;}
@@ -505,7 +515,7 @@
      here). */
   .planner-drive-banner{position:absolute;top:0;left:0;right:0;z-index:30;
     padding:calc(env(safe-area-inset-top) + 8px) 10px 10px;
-    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 8mm, transparent 18mm);
+    background:linear-gradient(to bottom, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
     display:flex;align-items:center;gap:12px;transform:translateZ(0);}
   /* Google Maps' own maneuver icon is a blue rounded square with a white
      arrow, top-left of the screen — this is the left-most element in the
@@ -549,7 +559,7 @@
      background. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 8mm, transparent 18mm);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -634,7 +644,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.13";
+const APP_BUILD = "2026-08-22.14";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5887,7 +5897,7 @@ function renderPlanTab() {
       ${p.stage === "preview" ? renderPlannerRouteSummary() : ""}
       ${p.stage === "preview" ? `
       <div style="display:flex;gap:8px;">
-        <button type="button" id="plannerLogDriveBtn" class="btn btn-ghost" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
+        <button type="button" id="plannerLogDriveBtn" class="btn btn-amber" style="width:auto;flex:1;">${icons.clock} Log Drive</button>
         <button type="button" id="plannerStartDrivingBtn" class="btn btn-amber" style="width:auto;flex:1;">${icons.play} Start Drive</button>
       </div>
       ` : ""}
