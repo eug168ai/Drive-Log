@@ -650,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.17";
+const APP_BUILD = "2026-08-22.18";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1463,14 +1463,14 @@ const state = {
   loginEnterPin: "",
   settings: {
     driveType: "normal", lastSupervisorId: "", showDriveTypeOnLog: false, requirePin: false,
-    unit: null, learnRoutes: true, routeMatchRadius: 500,
-    odometerFrequency: "quarterly", odometerReminders: true, lastOdometerReading: null,
+    unit: null, learnRoutes: true, routeMatchRadius: 300,
+    odometerFrequency: "quarterly", odometerReminders: false, lastOdometerReading: null,
     fuelMode: "estimated", fuelRate: "", fuelPrice: "", fuelTrackingEnabled: true, selectedVehicle: null,
     syncReminderFrequency: "weekly", syncRemindersEnabled: true, lastSyncAt: null,
     supervisedTotalHoursTarget: null, supervisedNightHoursTarget: null, supervisedCompletionNotified: false,
     supervisedTargetDate: "",
     dashboardShowFuelStats: true, darkMode: true, themeColor: "amber",
-    showSupervisedDashboard: true, showNormalDashboard: true, showDistanceTimeDashboard: true,
+    showSupervisedDashboard: false, showNormalDashboard: true, showDistanceTimeDashboard: true,
     dashShowDistance: true, dashShowTime: false, dashShowCost: true,
   },
   dashSupPeriod: "week", dashSupOffset: 0, dashSupPaceUnit: "day", dashSupTipIndex: null,
@@ -2107,7 +2107,7 @@ async function resolveSavedAddressCoords(address) {
 // instead of the exact saved address. If a GPS fix is close enough to a
 // saved Home/Work/Other address, prefer that address's exact text.
 async function matchSavedAddressLabel(lat, lng) {
-  const radius = Number(state.settings.routeMatchRadius) || 500; // same knob as route-tag matching (Settings -> Route Match Radius)
+  const radius = Number(state.settings.routeMatchRadius) || 300; // same knob as route-tag matching (Settings -> Route Match Radius)
   // Geocoded in parallel rather than one at a time — with several saved
   // addresses, waiting on each network round trip in sequence noticeably
   // slows down every location resolve.
@@ -2298,7 +2298,7 @@ async function geocodeSavedAddressCached(address) {
 // auto-fill and end-of-drive snapping. Returns the winning entry's own
 // address text plus its geocoded coords, or null if nothing's close enough.
 async function matchSavedAddressNear(lat, lng) {
-  const radius = Number(state.settings.routeMatchRadius) || 500;
+  const radius = Number(state.settings.routeMatchRadius) || 300;
   for (const a of savedAddressList()) {
     try {
       const geo = await geocodeSavedAddressCached(a.address);
@@ -4835,9 +4835,9 @@ async function loadData() {
   if (state.settings.requirePin === undefined) state.settings.requirePin = false;
   if (!state.settings.unit) state.settings.unit = defaultUnitForLocale();
   if (state.settings.learnRoutes === undefined) state.settings.learnRoutes = true;
-  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 500;
+  if (state.settings.routeMatchRadius === undefined) state.settings.routeMatchRadius = 300;
   if (!state.settings.odometerFrequency) state.settings.odometerFrequency = "quarterly";
-  if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = true;
+  if (state.settings.odometerReminders === undefined) state.settings.odometerReminders = false;
   if (state.settings.lastOdometerReading === undefined) state.settings.lastOdometerReading = null;
   if (!state.settings.fuelMode) state.settings.fuelMode = "estimated";
   if (state.settings.fuelTrackingEnabled === undefined) state.settings.fuelTrackingEnabled = true;
@@ -4852,7 +4852,7 @@ async function loadData() {
   if (state.settings.dashShowTime === undefined) state.settings.dashShowTime = state.settings.showDistanceTimeDashboard === true;
   if (state.settings.dashShowCost === undefined) state.settings.dashShowCost = state.settings.dashboardShowFuelStats !== false;
   if (state.settings.dashboardShowFuelStats === undefined) state.settings.dashboardShowFuelStats = true;
-  if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = true;
+  if (state.settings.showSupervisedDashboard === undefined) state.settings.showSupervisedDashboard = false;
   if (state.settings.showNormalDashboard === undefined) state.settings.showNormalDashboard = true;
   if (state.settings.showDistanceTimeDashboard === undefined) state.settings.showDistanceTimeDashboard = true;
   if (state.settings.darkMode === undefined) state.settings.darkMode = true;
