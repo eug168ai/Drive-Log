@@ -650,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.15";
+const APP_BUILD = "2026-08-22.16";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -5165,34 +5165,55 @@ function renderChartLabels(buckets, layout, period) {
   }).join("");
   return `<div class="daylabels">${items}</div>`;
 }
-// N-series overlay bar chart: every series shares the same column, drawn
-// from the same baseline. Each series' `bFactor` (< 1 shrinks it relative to
-// its own max) lets it read as visually "smaller" than the others rather
-// than risking an exact-height match — and for each bucket, series are drawn
-// tallest-to-shortest so the shorter ones end up on top/in front and always
-// stay visible, even on the rare bucket where the shrink still isn't enough.
+// Two rendering modes, picked per-chart by the caller:
+//
+// Overlay (stacked=false, the default): every series shares the same
+// column, drawn from the same baseline independently of the others. Each
+// series' `bFactor` (< 1 shrinks it relative to its own max) lets it read
+// as visually "smaller" than the others rather than risking an exact-
+// height match, and for each bucket, series are drawn tallest-to-shortest
+// so the shorter ones end up on top/in front and always stay visible.
+// Right for series with unrelated units (distance/time/cost) where a
+// summed "total" bar height wouldn't mean anything.
+//
+// Stacked (stacked=true): series are the same unit and genuinely make up
+// a whole (e.g. day/night hours of one drive), so they're drawn one atop
+// the other against a *shared* max (the biggest per-bucket total, not
+// each series' own independent max) -- the full bar height is then an
+// honest total, not just whichever series happened to be tallest. Order
+// matches the `series` array (first at the baseline, next stacked above).
+//
 // `series` is an array of { data, avg, color, bFactor }.
-function renderBarChart(chartId, buckets, series, height, tipIndex) {
+function renderBarChart(chartId, buckets, series, height, tipIndex, stacked) {
   const padTop = 6, padBottom = 6;
   const plotH = height - padTop - padBottom;
   const n = buckets.length;
   const { w, barW, xs } = dashColumnLayout(n);
   const baseline = height - padBottom;
+  const sharedMax = stacked
+    ? Math.max(1, ...buckets.map((b, i) => series.reduce((s, ser) => s + (ser.data[i] || 0), 0)))
+    : null;
   const prepared = series.map(s => ({
     ...s,
     factor: s.bFactor || 1,
-    max: Math.max(1, ...s.data.map(v => v || 0)),
+    max: stacked ? sharedMax : Math.max(1, ...s.data.map(v => v || 0)),
   }));
   let tip = "";
   const cols = buckets.map((b, i) => {
     const x = xs[i];
+    let stackTop = baseline;
     const bars = prepared.map(s => {
       const v = s.data[i];
       if (v == null) return null;
       const h = (v / s.max) * plotH * s.factor;
+      if (stacked) {
+        const y = stackTop - h;
+        stackTop = y;
+        return { h, y, color: s.color };
+      }
       return { h, y: baseline - h, color: s.color };
     }).filter(Boolean);
-    bars.sort((p, q) => q.h - p.h);
+    if (!stacked) bars.sort((p, q) => q.h - p.h);
     const rects = bars.map(bar => `<rect x="${x.toFixed(1)}" y="${bar.y.toFixed(1)}" width="${barW.toFixed(1)}" height="${Math.max(0, bar.h).toFixed(1)}" rx="3" fill="${bar.color}"/>`).join("");
     if (i === tipIndex) tip = renderChartTip(x + barW / 2, bars.length ? Math.min(...bars.map(p => p.y)) : baseline, b.tip, w);
     return `<g class="col" data-i="${i}" data-chart="${chartId}">${rects}</g>`;
@@ -5330,7 +5351,7 @@ function renderSupervisedDashboardCard() {
     ${renderBarChart("sup", buckets, [
       { data: seriesA, avg: avgA, color: "var(--amber)" },
       { data: seriesB, avg: avgB, color: "var(--cost)" },
-    ], 90, state.dashSupTipIndex)}
+    ], 90, state.dashSupTipIndex, true)}
     ${renderChartLabels(buckets, dashColumnLayout(buckets.length), period)}
     <div class="legend2">
       <div class="item"><span class="sw" style="background:var(--amber);"></span><span class="lbl">Day hours</span><span class="avgval mono">${formatHM(avgA * 60)} avg</span></div>
