@@ -72,16 +72,19 @@
      the Trip Planner's fullscreen driving/complete view is showing (e.g.
      the Supervised conditions prompt after Save Drive) rendered correctly
      but sat behind that view, completely invisible, reading as the tap
-     having done nothing at all. translateZ(0): .planner-fullscreen sets
-     its own perspective (for the driving view's 3D tilt), which makes it
-     the containing block for any position:fixed descendant -- including
-     any modal opened while the Trip Planner is showing at all (Log this
-     Drive, Save this Drive/Address, the discard-drive confirm), not just
-     the live map itself. That 3D containing-block puts the modal in the
-     same 3D rendering/hit-testing context as the constantly-transforming
-     map underneath it, which showed correctly (paint order still wins)
-     but could swallow taps meant for it -- same class of issue already
-     isolated for the eta-bar/turn-banner/FABs, for the same reason. */
+     having done nothing at all. translateZ(0) traces back to
+     .planner-fullscreen's own former `perspective` (for the driving view's
+     old CSS-transform 3D tilt, since replaced by the map's native vector
+     camera -- see MAP_ID), which made it the containing block for any
+     position:fixed descendant, putting a modal opened while the Trip
+     Planner was showing (Log this Drive, Save this Drive/Address, the
+     discard-drive confirm) in the same 3D rendering/hit-testing context as
+     the constantly-transforming map underneath -- it showed correctly
+     (paint order still wins) but could swallow taps meant for it. The
+     modals themselves were relocated out of that subtree entirely as the
+     real fix (see renderApp), and the perspective they were reacting to no
+     longer exists either -- translateZ(0) is kept here only because
+     removing it has no upside, not because anything still needs it. */
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;
                   justify-content:center;padding:20px;z-index:100;transform:translateZ(0);}
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
@@ -267,41 +270,21 @@
   .planner-leg-tags .toggle{padding:7px;font-size:13px;}
   .planner-route-card{cursor:pointer;}
 
-  /* Trip Planner: fullscreen map builder + live GPS driving mode */
-  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;perspective:1200px;perspective-origin:50% 83%;}
-  .planner-map-rotate-wrap{position:absolute;inset:0;transform-origin:50% 50%;}
-  .planner-map-rotate-wrap.driving{top:-35%;left:-35%;right:-35%;bottom:-35%;width:170%;height:170%;
-    /* No CSS transition here on purpose — heading and tilt are already
-       smoothly interpolated frame-by-frame in JS (stepLiveMoveAnimation /
-       rotateLiveMap's own tilt easing), and a CSS transition retargeting on
-       top of that every animation frame fought it, lagging behind the
-       already-smooth JS value enough that the marker's own (instant, un-
-       eased) counter-rotation stopped lining up with the map's rotation —
-       the actual cause of the position arrow not reliably pointing straight
-       up on screen.
-       Best-effort smoothing for the rotated/tilted route line and tiles —
-       promotes the wrapper to its own composited layer up front rather
-       than only once a transform starts, which noticeably reduces (if
-       never fully eliminates) the jagged edges that come from rasterizing
-       a 2D map at an angle. There's no way to fully match a true vector
-       tilt without switching to Maps' vector renderer. */
-    will-change:transform;backface-visibility:hidden;-webkit-backface-visibility:hidden;}
-  /* rotateX(tilt) foreshortens the wrapper's vertical reach by roughly
-     cos(tilt) before perspective even gets involved — at the steepest tilt
-     (74deg) that alone is ~3.6x, and perspective's own extra compression on
-     the receding/far side pushes the real requirement well past that, which
-     420% wasn't (black wedges showed at the corners at some heading/tilt
-     combinations). Sized with real headroom above the worst case instead of
-     the smallest number that happened to look fine in one test. */
-  .planner-map-rotate-wrap.driving.angled{top:-330%;left:-330%;right:-330%;bottom:-330%;width:760%;height:760%;}
+  /* Trip Planner: fullscreen map builder + live GPS driving mode.
+     The driving view's tilt/heading used to be faked with a CSS transform
+     on an oversized, rotated wrapper (plus a matching perspective on this
+     container) -- switched to the Maps JS API's own vector-map camera
+     (map.moveCamera's heading/tilt, see rotateLiveMap) instead, which
+     renders a true 3D camera rather than approximating one, so none of
+     that CSS scaffolding (or its oversizing to cover the corners a rotated
+     square wrapper would otherwise reveal) is needed anymore. */
+  .planner-fullscreen{position:fixed;inset:0;z-index:60;background:var(--bg);overflow:hidden;}
+  .planner-map-rotate-wrap{position:absolute;inset:0;}
   #plannerMapCanvas{position:absolute;inset:0;background:var(--bg);}
-  /* At steep tilt, the far/receding edge of the tilted map plane can cross
-     behind the camera's perspective point — a known CSS 3D artifact (warped
-     or flipped-looking tiles) rather than anything meaningful about the
-     route. Rather than trying to clip the exact 3D geometry precisely, a
-     plain top vignette hides whatever that edge does, the same way real
-     driving-nav apps fade their view into a "sky" near the top rather than
-     showing the raw tile edge. */
+  /* Purely stylistic at this point (the vector camera's own tilt no longer
+     has a raw tile edge to hide) — real driving-nav apps fade the top of a
+     tilted view into a "sky" look rather than cutting the map off sharply,
+     so this keeps that same feel. */
   /* Height scales with the actual tilt (see rotateLiveMap) rather than a
      flat 24vh regardless of angle -- that flat height was tuned for the
      steepest tilt tier and, applied identically at every shallower one
@@ -435,14 +418,15 @@
     display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;
     filter:drop-shadow(0 2px 6px rgba(0,0,0,.5));transform:translateZ(0);}
   .planner-compass-fab.active{background:rgba(var(--amber-rgb),.18);}
-  /* Rotates BY the same angle as the map's own CSS rotation (see
+  /* Rotates BY the same angle as the map camera's own heading (see
      rotateLiveMap's --compass-rot) so the needle tracks wherever true
-     north has actually landed on screen, whichever way the map itself is
-     currently turned to face. --compass-south (set alongside plannerMapIsNight,
-     see applyMapDayNightStyle) keeps its non-north half legible against
-     the actual day/night MAP colors now that the FAB behind it has no
-     backing of its own -- white shows up on the dark night style, black on
-     the light day style, same logic the map's own styling already uses. */
+     north has actually landed on screen, whichever way the camera is
+     currently turned to face. --compass-south (set in ensurePlannerMap,
+     alongside the map's own day/night styling/colorScheme) keeps its
+     non-north half legible against the actual day/night MAP colors now
+     that the FAB behind it has no backing of its own -- white shows up on
+     the dark night style, black on the light day style, same logic the
+     map's own styling already uses. */
   .planner-compass-needle{display:flex;width:20px;height:20px;transform:rotate(var(--compass-rot, 0deg));}
   .planner-compass-needle .icon{width:20px;height:20px;}
   .planner-compass-needle .icon .compass-south{fill:var(--compass-south, #fff);}
@@ -650,7 +634,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.26";
+const APP_BUILD = "2026-08-22.27";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -668,6 +652,11 @@ const GOOGLE_TOKEN_KEY = "driving-log:google-token";
 // Replace this with your own OAuth Client ID from Google Cloud Console before sharing this file.
 const GOOGLE_CLIENT_ID = "247082567215-2sethv759pn3rp0g7fvrkf0lgnfok0e0.apps.googleusercontent.com";
 const GOOGLE_MAPS_API_KEY = "AIzaSyB2oTEiedrTleQf_ugwHqgodNltiakkoyk";
+// Vector-rendering Map ID (Cloud Console > Google Maps Platform > Map
+// Management), used only for the live-driving map so its camera can use
+// real heading/tilt (see ensurePlannerMap/applyLiveCamera) instead of the
+// old CSS-transform approximation of one.
+const MAP_ID = "835c3c5600e25621f3167001";
 function mapsConfigured() { return GOOGLE_MAPS_API_KEY && !GOOGLE_MAPS_API_KEY.startsWith("PASTE_"); }
 
 window.gm_authFailure = function () {
@@ -2687,10 +2676,8 @@ const LIVE_DRIVING_ZOOM = 18;        // street-level zoom while driving, and the
 const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drives the dynamic tilt/zoom
 // Angle (tilt) and zoom are independent axes — each has its own FAB, cycle,
 // and "auto" that follows speed. "rotates" controls whether the map turns
-// to course-up at all: overhead stays north-up, so its labels are
-// guaranteed never upside-down regardless of heading. Road labels always
-// stay on regardless of tier (only genuinely unreadable — rotated too far
-// from upright — ever turns them off, see updateLiveMapLabelVisibility); an
+// to course-up at all: overhead stays north-up. Road labels always stay on
+// regardless of tier or heading now (see MAP_ID's own comment) -- an
 // earlier "main" tier that hid minor/local road names at the steepest tilt
 // made road names disappear exactly when a driver most wanted to check
 // which street they were on. Tilt/zoom values are a best-effort match to
@@ -2703,9 +2690,9 @@ const LIVE_SPEED_SMOOTHING = 0.25;   // low-pass factor for the speed that drive
 // never picks it (Google's own nav view never goes flat just from slowing
 // down, see LIVE_ANGLE_TIER_MODE's own comment). A prior "high" at 60°
 // existed here too but was pulled entirely over an unresolved rendering
-// complaint after always-on road labels (see updateLiveMapLabelVisibility)
-// didn't fix it -- reintroduced at a shallower 52° as a middle ground worth
-// re-testing, between that old 60° and medium's 45°.
+// complaint on the old CSS-rotated raster map -- reintroduced at a
+// shallower 52° as a middle ground worth re-testing, between that old 60°
+// and medium's 45°.
 const LIVE_ANGLE_PROFILES = {
   overhead: { tilt: 0, rotates: false },
   low: { tilt: 22, rotates: true },
@@ -2733,66 +2720,14 @@ const LIVE_ZOOM_PROFILES = { wide: 15, far: 16.5, normal: 17, close: 18, tight: 
 const LIVE_AUTO_LOW_TIER_MAX_MS = 6;   // at/below ~22 km/h -> low angle / close zoom
 const LIVE_AUTO_HIGH_TIER_MIN_MS = 18; // at/above ~65 km/h -> high angle / far zoom
 const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so hovering near one doesn't flicker
-// Road labels on the raster map tiles rotate along with everything else
-// (see rotateLiveMap), so past roughly a quarter turn from north-up they'd
-// read sideways-to-upside-down — genuinely hard to read, not just tilted.
-// Rather than either always showing them (sometimes unreadable) or always
-// hiding them (never seeing road names), updateLiveMapLabelVisibility
-// toggles them off only while the map is rotated past that point, and back
-// on once heading swings back closer to upright. POIs/transit/admin labels
-// are always off — clutter the turn banner already covers better.
-// A quarter turn is 90 -- was set to 70 (well short of where labels
-// actually start reading upside-down), which meant road names sat hidden
-// for most of a drive: heading almost anywhere except roughly north kept
-// the map rotated past 70 in course-up mode. Matches the comment's own
-// reasoning now, showing labels across a much wider heading range. North
-// Lock (the compass FAB) is the other way to guarantee they show — it
-// keeps the map north-up regardless of heading.
-const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 90;
-// Road labels (every class, not just highways) stay on regardless of tilt
-// or zoom tier -- `upright` is the one thing that ever turns them off, once
-// the map's rotated far enough from north that they'd read sideways/upside
-// down rather than just decluttered.
-function drivingMapStyles(upright) {
-  const hide = [
-    { featureType: "poi", elementType: "labels", stylers: [{ visibility: "off" }] },
-    { featureType: "transit", elementType: "labels", stylers: [{ visibility: "off" }] },
-    { featureType: "administrative", elementType: "labels", stylers: [{ visibility: "off" }] },
-  ];
-  if (!upright) {
-    // Still rotated too far from upright to read — every label stays off,
-    // not just road ones. featureType:"all" rather than just "road" here:
-    // building/POI names are already unconditionally hidden above via
-    // featureType:"poi", but real-world testing showed campus building
-    // labels ("Margaret Graham Building" etc.) rendering upside down
-    // anyway — Google's own building-footprint labels aren't reliably
-    // covered by the "poi" selector, so this is the actual catch-all.
-    // road.highway included, since Google's more-specific-selector-wins
-    // cascade means an "always on" rule for it here would override this
-    // and show highway names upside down.
-    hide.push({ featureType: "all", elementType: "labels", stylers: [{ visibility: "off" }] });
-  } else {
-    // road.highway and road.arterial are never hidden while upright,
-    // explicit for both their shield badge (labels.icon — whose
-    // white/green/yellow color comes from Google's own tile rendering, not
-    // something the styles array can set) and name text (labels.text), so
-    // neither is ever accidentally caught by a broader "road" rule.
-    // road.arterial is included here (not just road.highway) because
-    // Google classifies plenty of real numbered routes — state highways
-    // like "A77" outside the US Interstate system, for one — as arterial
-    // rather than highway. road.local (residential streets) gets the same
-    // explicit "on" so a name is never lost regardless of tilt/zoom tier.
-    // Whether Google draws the shield and name together, rather than just
-    // the shield, at a given zoom is its own label-placement decision — no
-    // lever here forces that either way.
-    hide.push({ featureType: "road.highway", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
-    hide.push({ featureType: "road.highway", elementType: "labels.text", stylers: [{ visibility: "on" }] });
-    hide.push({ featureType: "road.arterial", elementType: "labels.icon", stylers: [{ visibility: "on" }] });
-    hide.push({ featureType: "road.arterial", elementType: "labels.text", stylers: [{ visibility: "on" }] });
-    hide.push({ featureType: "road.local", elementType: "labels", stylers: [{ visibility: "on" }] });
-  }
-  return [...(plannerMapIsNight ? NIGHT_MAP_STYLE : []), ...hide];
-}
+// Road labels used to rotate along with everything else on the old CSS-
+// rotated raster tiles (see rotateLiveMap), reading sideways-to-upside-down
+// past roughly a quarter turn from north-up -- driving now uses a real
+// vector-map camera instead (see MAP_ID/applyLiveCamera), whose label text
+// is rendered facing the viewer regardless of the camera's own heading, so
+// there's nothing left to hide here. POI/transit/admin label decluttering
+// (this used to also always turn those off) would need vector maps' own
+// Feature Layer styling to bring back -- not done here.
 const MANEUVER_LABELS = {
   "turn-left": "Turn Left", "turn-right": "Turn Right",
   "turn-slight-left": "Bear Left", "turn-slight-right": "Bear Right",
@@ -3014,46 +2949,25 @@ function offsetLatLng(lat, lng, bearingDeg, distanceM) {
 function metersPerPixelAtZoom(zoom, lat) {
   return 156543.03392 * Math.cos((lat || 0) * Math.PI / 180) / Math.pow(2, zoom);
 }
-// Must match .planner-fullscreen's own perspective/perspective-origin in
-// the CSS — used below to counteract exactly what that perspective does to
-// vertical position, so keep the two in sync if either one changes.
-const LIVE_MAP_PERSPECTIVE_PX = 1200;
-const LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION = 0.83;
-// The map is always centered (by Maps itself) at 50% of the screen. Panning
-// that center to a point AHEAD of the driver — rather than the driver's own
-// position — leaves the driver below the 50% line, at LIVE_MARKER_SCREEN_FRACTION
-// of the way down in the *flat, untilted* render Maps actually produces.
+// The map camera is always centered at 50% of the screen. Panning that
+// center to a point AHEAD of the driver — rather than the driver's own
+// position — leaves the driver below the 50% line, at
+// liveMarkerScreenFraction's fraction of the way down the screen instead.
 //
-// When a tilt is applied (see rotateLiveMap's rotateX), that flat fraction
-// no longer lands at the same fraction on the final, tilted screen —
-// perspective foreshortening pulls it up toward the vanishing point
-// (perspective-origin) the steeper the tilt gets, which is exactly what
-// made the marker drift up away from the bottom the more tilted the view
-// was. tiltDeg lets this solve for the flat-map fraction that, once
-// projected through that same perspective, actually lands the marker at
-// LIVE_MARKER_SCREEN_FRACTION on screen — derived by inverting the CSS
-// perspective-projection formula (scale = d/(d - z)) for a point rotated
-// rotateX(tiltDeg) around the wrapper's own center (screen-50%).
-function lookAheadCenter(lat, lng, headingDeg, zoom, tiltDeg) {
+// This used to also have to invert the CSS perspective-projection formula
+// to counteract our own fake-3D CSS transform (a tilted view pulled the
+// flat-map fraction up toward the vanishing point, which needed solving
+// backwards for whatever flat-map fraction would land in the right place
+// once tilted) — now that tilt/heading are real vector-map camera
+// properties (see rotateLiveMap's setHeading/setTilt), Maps' own renderer
+// already projects this offset correctly on its own, so this is just a
+// plain real-world-meters offset with no tilt-dependent correction needed.
+function lookAheadCenter(lat, lng, headingDeg, zoom) {
   if (headingDeg == null) return { lat, lng };
-  // Not #plannerMapCanvas's own height — when angled, its wrapper (and so
-  // the canvas filling it) is scaled up to 420% to cover the tilt, so only
-  // the fixed, always-viewport-sized .planner-fullscreen reports the actual
-  // visible screen height.
   const heightPx = window.innerHeight || 700;
   const markerFraction = liveMarkerScreenFraction(heightPx);
   const mpp = metersPerPixelAtZoom(zoom || LIVE_DRIVING_ZOOM, lat);
-  const targetFraction = markerFraction - 0.5; // constant either way — see K below
-  let fraction = targetFraction;
-  const theta = (tiltDeg || 0) * Math.PI / 180;
-  if (theta > 0.0001) {
-    const D = LIVE_MAP_PERSPECTIVE_PX / heightPx;
-    const A = markerFraction - LIVE_MAP_PERSPECTIVE_ORIGIN_FRACTION;
-    const K = targetFraction;
-    const denom = D * Math.cos(theta) + A * Math.sin(theta);
-    if (Math.abs(denom) > 0.0001) fraction = D * K / denom;
-  }
-  const offsetM = fraction * heightPx * mpp;
+  const offsetM = (markerFraction - 0.5) * heightPx * mpp;
   return offsetLatLng(lat, lng, headingDeg, offsetM);
 }
 // Circular low-pass filter — averages across the shorter arc between the two
@@ -3505,27 +3419,28 @@ async function rerouteLiveDrive(lat, lng) {
   updateLiveDriveDOM();
 }
 
-// Rotates the whole map DOM (tiles, route line, and marker together) so
-// direction-of-travel points up the screen, nav-app style. The marker's own
-// icon rotation stays heading-relative-to-north (set below), which cancels
-// out against this counter-rotation to leave the arrow pointing straight up.
+// Rotates the map camera's own heading (see applyLiveCamera) so direction-
+// of-travel points up the screen, nav-app style. The live position marker's
+// own icon rotation stays heading-relative-to-north (set in
+// applyLiveMarkerFrame), which cancels out against this counter-rotation to
+// leave the (invisible -- see plannerLiveMarker's own comment) marker
+// pointing straight up, same idea the visible position arrow overlay itself
+// uses.
 //
 // liveMapRotationDeg is deliberately never wrapped back to a 0-360 range —
-// only the shortest delta from its current value is ever added to it — so
-// the CSS transition always takes the short way around. A naive
-// `rotate(${-heading}deg)` set fresh from a mod-360 heading each fix will,
-// whenever heading crosses the 0/360 boundary (e.g. 359deg -> 1deg), animate
-// the LONG way around (the browser interpolates the raw degree values, not
-// the visual angle) — that's the map "spinning" the user was seeing.
+// only the shortest delta from its current value is ever added to it —
+// so easing this toward a new target always takes the short way around.
+// A naive fresh mod-360 heading set each fix would, whenever heading
+// crosses the 0/360 boundary (e.g. 359deg -> 1deg), ease the LONG way
+// around instead (interpolating the raw degree values, not the visual
+// angle) — that's the map "spinning" the user was seeing.
 let liveMapRotationDeg = 0;
 let liveMapLastHeadingDeg = 0;
 let liveMapLastSpeedMs = 0;
 // The rendered tilt, eased toward whatever the current angle profile
 // targets — profile.tilt itself jumps between fixed tiers (e.g. auto
 // switching low -> medium -> high as speed changes, or a manual FAB tap),
-// and with no CSS transition to soften that anymore (see
-// .planner-map-rotate-wrap.driving's own comment), this is what keeps a
-// tier change easing smoothly instead of snapping.
+// and this is what keeps a tier change easing smoothly instead of snapping.
 let liveMapCurrentTilt = 0;
 const LIVE_TILT_SMOOTHING = 0.08;
 // Picks which speed tier ("low"/"mid"/"high") an axis's "auto" resolves to,
@@ -3597,12 +3512,6 @@ function rotateLiveMap(headingDeg, speedMs) {
     liveMapRotationDeg += delta;
   }
   liveMapCurrentTilt += (profile.tilt - liveMapCurrentTilt) * LIVE_TILT_SMOOTHING;
-  updateLiveMapLabelVisibility();
-  const wrap = document.getElementById("plannerMapRotateWrap");
-  if (wrap) {
-    const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
-    wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
-  }
   const skyMask = document.getElementById("plannerSkyMask");
   if (skyMask) skyMask.style.setProperty("--mask-vh", `${skyMaskVh(liveMapCurrentTilt)}vh`);
   // The fixed "you are here" arrow (see .planner-position-arrow) never
@@ -3613,23 +3522,24 @@ function rotateLiveMap(headingDeg, speedMs) {
   // ahead by construction.
   const arrow = document.getElementById("plannerPositionArrow");
   if (arrow) arrow.style.setProperty("--arrow-rot", `${mapRotates ? 0 : liveMapLastHeadingDeg}deg`);
-  // The compass needle rotates BY the same angle as the map's own CSS
-  // rotation (not against it) so it tracks where true north actually lands
-  // on screen -- north starts "up" on the unrotated map, so once the map
-  // itself is rotated liveMapRotationDeg clockwise, north has moved to that
-  // same clockwise angle from up. Negating this here pointed the needle
-  // exactly opposite (e.g. heading east rotates the map -90deg/course-up,
-  // putting true north to the driver's left/270deg -- negating that gives
-  // 90deg, dead opposite).
+  // The compass needle rotates BY the same angle as the map camera's own
+  // heading (not against it) so it tracks where true north actually lands
+  // on screen -- north starts "up" on an unrotated camera, so once the
+  // camera itself is rotated liveMapRotationDeg clockwise, north has moved
+  // to that same clockwise angle from up. Negating this here pointed the
+  // needle exactly opposite (e.g. heading east rotates the camera
+  // -90deg/course-up, putting true north to the driver's left/270deg --
+  // negating that gives 90deg, dead opposite).
   const compass = document.getElementById("plannerCompassNeedle");
   if (compass) compass.style.setProperty("--compass-rot", `${liveMapRotationDeg}deg`);
   // Destination/stop pins (drawPlannerRoutePins) are real Markers sitting on
-  // the same map that .planner-map-rotate-wrap spins via CSS for course-up
-  // mode -- unlike the arrow/compass above (plain CSS elements outside that
-  // rotated wrapper), these tilt and spin right along with the tiles, so a
-  // pin that's supposed to hang straight down visibly leans or tips over
-  // mid-turn. Counter-rotating each pin's own icon by the map's current
-  // rotation cancels that out so it keeps pointing straight down on screen
+  // the same map whose camera turns for course-up mode (see applyLiveCamera)
+  // -- unlike the arrow/compass above (plain CSS elements entirely outside
+  // the map), legacy Markers are ground-plane content, not billboards, so
+  // they tilt and spin right along with the roads under them, and a pin
+  // that's supposed to hang straight down visibly leans or tips over
+  // mid-turn. Counter-rotating each pin's own icon by the camera's current
+  // heading cancels that out so it keeps pointing straight down on screen
   // regardless of heading. No-op outside live driving (liveMapRotationDeg
   // stays 0 there).
   plannerRoutePins.forEach(m => {
@@ -3641,24 +3551,24 @@ function rotateLiveMap(headingDeg, speedMs) {
     }
   });
 }
-// Toggles road labels off only while the map is rotated far enough from
-// upright that they'd read sideways-to-upside-down (see drivingMapStyles) —
-// re-styling the map is a real (if cheap) operation, so this only actually
-// calls setOptions on an actual change, not every fix.
-let liveMapLabelsKey = null;
-function updateLiveMapLabelVisibility() {
-  if (!plannerMapInstance || !liveDrive) return;
-  const norm = ((liveMapRotationDeg % 360) + 360) % 360;
-  const angleFromUpright = norm > 180 ? 360 - norm : norm;
-  const upright = angleFromUpright < LIVE_LABEL_UPRIGHT_THRESHOLD_DEG;
-  const key = `${upright}`;
-  if (key === liveMapLabelsKey) return;
-  liveMapLabelsKey = key;
-  plannerMapInstance.setOptions({ styles: drivingMapStyles(upright) });
+// Pushes center/zoom/heading/tilt to the map's vector camera in one atomic
+// moveCamera call, rather than as separate setCenter/setHeading/setTilt
+// calls -- moveCamera is the API's own recommended way to update multiple
+// camera properties together (e.g. every animation frame), and bundling
+// them avoids a visibly inconsistent in-between frame that three separate
+// calls could otherwise produce. liveMapRotationDeg is negated back into
+// Maps' own heading convention (see rotateLiveMap's mapRotates comment for
+// why the sign is flipped in the first place).
+function applyLiveCamera(lat, lng, headingDeg, zoom) {
+  if (!plannerMapInstance) return;
+  plannerMapInstance.moveCamera({
+    center: lookAheadCenter(lat, lng, headingDeg, zoom),
+    zoom, heading: -liveMapRotationDeg, tilt: liveMapCurrentTilt,
+  });
 }
-// Zoom is a real map property (not a CSS transform), so it's applied
-// directly rather than through the wrapper — throttled to avoid firing
-// setZoom on every single fix, which reads as jittery rather than smooth.
+// Zoom is decided independently of heading/tilt (see resolveLiveZoom) --
+// throttled here to avoid retargeting the camera's zoom on every single
+// fix, which reads as jittery rather than smooth.
 let liveMapLastAppliedZoom = null;
 function updateLiveZoom(speedMs) {
   if (!plannerMapInstance || !liveDrive || liveDrive.zoomMode === "manual") return;
@@ -3680,24 +3590,22 @@ function cycleLiveAngleMode() {
   if (!liveDrive) return;
   const idx = LIVE_ANGLE_MODE_CYCLE.indexOf(liveDrive.angleMode);
   liveDrive.angleMode = LIVE_ANGLE_MODE_CYCLE[(idx + 1) % LIVE_ANGLE_MODE_CYCLE.length];
-  const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
-  const wrap = document.getElementById("plannerMapRotateWrap");
-  if (wrap) wrap.classList.toggle("angled", profile.tilt > 0);
   const skyMask = document.getElementById("plannerSkyMask");
+  const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
   if (skyMask) skyMask.classList.toggle("show", profile.tilt > 0);
   const btn = document.getElementById("plannerAngleBtn");
   if (btn) btn.classList.toggle("active", liveDrive.angleMode !== "auto");
   flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
-  // rotateLiveMap only just changed the CSS tilt/rotation -- without also
-  // re-centering here, the camera stays panned for the OLD tilt until the
-  // next GPS fix (up to ~1s away) catches it up, which is exactly what read
-  // as the position arrow "disconnecting" from the route right after
-  // switching angle mode. Skipped while the driver has manually panned
-  // (same guard as applyLiveMarkerFrame) so this doesn't yank a deliberate
-  // look-around back to the driver's position.
-  if (plannerMapInstance && liveDrive.lastFix && liveDrive.panMode !== "manual") {
-    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  // rotateLiveMap only just changed the target tilt/rotation -- without also
+  // pushing that to the camera here, it stays on the OLD tilt until the next
+  // GPS fix (up to ~1s away) catches it up, which is exactly what read as
+  // the position arrow "disconnecting" from the route right after switching
+  // angle mode. Skipped while the driver has manually panned (same guard as
+  // applyLiveMarkerFrame) so this doesn't yank a deliberate look-around back
+  // to the driver's position.
+  if (liveDrive.lastFix && liveDrive.panMode !== "manual" && plannerMapInstance) {
+    applyLiveCamera(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom());
   }
 }
 // The compass FAB (below the angle FAB) -- toggles whether the map stays
@@ -3716,10 +3624,10 @@ function toggleLiveNorthLock() {
   }
   flashLiveModeLabel(liveDrive.northLocked ? "North Locked" : "Follows Direction");
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
-  // Same re-center as cycleLiveAngleMode -- otherwise the camera stays
-  // anchored for the pre-toggle rotation until the next GPS fix.
-  if (plannerMapInstance && liveDrive.lastFix && liveDrive.panMode !== "manual") {
-    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  // Same camera push as cycleLiveAngleMode -- otherwise it stays anchored
+  // for the pre-toggle rotation until the next GPS fix.
+  if (liveDrive.lastFix && liveDrive.panMode !== "manual" && plannerMapInstance) {
+    applyLiveCamera(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom());
   }
 }
 // Pinch replaces the old zoom FAB/cycle entirely -- gestureHandling:"greedy"
@@ -3784,28 +3692,19 @@ function twoTouchDistance(touches) {
   const dx = touches[1].clientX - touches[0].clientX, dy = touches[1].clientY - touches[0].clientY;
   return Math.sqrt(dx * dx + dy * dy);
 }
-// Pans the map so its content follows the finger -- correcting for tilt
-// (see tiltCorrectedVector) and then un-rotating the result by the
-// current heading, so a raw on-screen drag vector is converted back into
-// the map's own north-up pixel space before asking Maps (which has no
-// concept of this screen being rotated at all) to pan by it.
+// Pans the map so its content follows the finger, like sliding a sheet of
+// paper underneath -- panBy moves the *center* by the given screen pixels
+// (east/south for positive x/y), the opposite of which direction the
+// content itself appears to move, hence the negation. Used to need to
+// manually un-rotate and un-tilt the raw drag vector first, back when the
+// map itself had no idea this screen looked rotated/tilted at all (the old
+// CSS-transform approach) -- now that heading/tilt are real camera
+// properties (see MAP_ID/applyLiveCamera), panBy's own screen-relative pan
+// already accounts for the camera's current orientation on its own, and
+// manually correcting for it here first would now double-correct.
 function panLiveMapByScreenDelta(dxScreen, dyScreen) {
   if (!plannerMapInstance) return;
-  const tilted = tiltCorrectedVector(dxScreen, dyScreen, liveMapCurrentTilt);
-  const rotRad = -liveMapRotationDeg * Math.PI / 180;
-  const mapDx = tilted.dx * Math.cos(rotRad) - tilted.dy * Math.sin(rotRad);
-  const mapDy = tilted.dx * Math.sin(rotRad) + tilted.dy * Math.cos(rotRad);
-  const distancePx = Math.sqrt(mapDx * mapDx + mapDy * mapDy);
-  if (distancePx < 0.5) return;
-  const center = plannerMapInstance.getCenter();
-  if (!center) return;
-  // atan2(east, north) -- mapDy is screen-down, so north is -mapDy.
-  const bearingDeg = Math.atan2(mapDx, -mapDy) * 180 / Math.PI;
-  const mpp = metersPerPixelAtZoom(plannerMapInstance.getZoom(), center.lat());
-  // Dragging a finger across the screen drags the *content* with it, like
-  // sliding a sheet of paper underneath -- the center (what's under the
-  // middle of the screen) moves the opposite way.
-  plannerMapInstance.setCenter(offsetLatLng(center.lat(), center.lng(), bearingDeg + 180, distancePx * mpp));
+  plannerMapInstance.panBy(-dxScreen, -dyScreen);
 }
 let liveSnapbackTimer = null;
 // How long to keep showing wherever a manual pan/rotate left the view
@@ -3822,8 +3721,8 @@ function scheduleLiveSnapback() {
     if (!liveDrive) return;
     liveDrive.panMode = "auto";
     liveDrive.headingMode = "auto";
-    if (plannerMapInstance && liveDrive.lastFix) {
-      plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+    if (liveDrive.lastFix && plannerMapInstance) {
+      applyLiveCamera(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom());
     }
   }, LIVE_SNAPBACK_DELAY_MS);
 }
@@ -3855,11 +3754,12 @@ function handleLiveTouchMove(e) {
   if (e.touches.length !== 2) return;
   if (liveRotateStartAngleDeg != null) {
     liveMapRotationDeg = liveRotateStartRotationDeg + (twoTouchAngleDeg(e.touches, liveMapCurrentTilt) - liveRotateStartAngleDeg);
-    const wrap = document.getElementById("plannerMapRotateWrap");
-    if (wrap) {
-      const tilt = liveMapCurrentTilt > 0.5 ? `rotateX(${liveMapCurrentTilt}deg) ` : "";
-      wrap.style.transform = `${tilt}rotate(${liveMapRotationDeg}deg)`;
-    }
+    // Pushed directly rather than through applyLiveCamera -- this gesture
+    // only ever changes heading/tilt, and applyLiveCamera would also
+    // recompute and jump the center, fighting whatever position a
+    // simultaneous one-finger pan (panLiveMapByScreenDelta) or the pinch
+    // below just set.
+    if (plannerMapInstance) plannerMapInstance.setHeading(-liveMapRotationDeg);
   }
   if (liveZoomStartDist != null && liveZoomStartZoom != null && plannerMapInstance) {
     const dist = twoTouchDistance(e.touches);
@@ -3909,22 +3809,23 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   if (icon && typeof icon === "object") { icon.rotation = heading || 0; plannerLiveMarker.setIcon(icon); }
   // Centers on a point offset ahead of the driver (rather than on them
   // exactly) so the marker sits low on screen, leaving most of the screen
-  // showing the road still ahead of them. setCenter, not panTo — this runs
+  // showing the road still ahead of them. moveCamera, not panTo — this runs
   // every animation frame (see stepLiveMoveAnimation) and already produces
   // its own smooth motion between fixes; panTo's own competing animation,
   // retargeted 60 times a second, was fighting that and making the camera
   // lag/drift instead of holding the marker at a fixed point on screen.
-  // The just-eased value (rotateLiveMap above already updated it this
-  // frame), not the raw profile's target -- during a tier transition the
-  // rendered tilt is still easing toward that target, and using the target
-  // early would offset the camera for a tilt that isn't actually on screen
-  // yet, drifting the marker off its intended spot until the ease catches up.
+  // applyLiveCamera reads liveMapCurrentTilt/liveMapRotationDeg, both of
+  // which rotateLiveMap above already eased one step closer to their target
+  // this same frame -- during a tier transition the applied tilt is still
+  // easing toward that target, and jumping straight to the target early
+  // would offset the camera for a tilt that isn't actually on screen yet,
+  // drifting the marker off its intended spot until the ease catches up.
   // Skipped entirely once the driver has touched the map (see
   // panMode/handleLiveTouchStart) -- this runs up to 60 times a second, so a
   // manual pan was otherwise overwritten within a single frame, reading as
   // "touch doesn't work" even though the drag itself was registering fine.
   if (liveDrive && liveDrive.panMode === "manual") return;
-  plannerMapInstance.setCenter(lookAheadCenter(lat, lng, heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  applyLiveCamera(lat, lng, heading, plannerMapInstance.getZoom());
 }
 
 // GPS fixes land roughly once a second (watchPosition's maximumAge allows
@@ -4442,7 +4343,6 @@ let plannerDirectionsChangedListener = null;
 let plannerLiveMarker = null;
 let plannerTripStartMarker = null;
 let plannerRoutePins = [];
-let plannerMapIsNight = false;
 // A teardrop pin path (viewBox-style coordinates, tip at 12,24) rather than
 // Google's own default marker -- that one only comes in its stock red, and
 // suppressed here anyway (see suppressMarkers) since a plain, unlabeled
@@ -4564,35 +4464,40 @@ async function ensurePlannerMap() {
   // reads as "zoomed in and following you".
   if (driving && liveDrive && liveDrive.lastFix) {
     zoom = resolveLiveZoom(liveDrive.smoothSpeedMs || 0);
-    const tiltDeg = resolveLiveAngleProfile(liveDrive.smoothSpeedMs || 0).tilt;
-    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom, tiltDeg);
+    center = lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, zoom);
   }
   // Best known fix for deciding day/night styling: live position, else the
   // first resolved stop, else the last GPS fix from an in-progress drive.
   const nightRef = myLocation || firstStop || (driving && liveDrive && liveDrive.lastFix) || null;
   const night = isNightTime(nightRef && nightRef.lat, nightRef && nightRef.lng);
-  plannerMapIsNight = night;
   // The compass needle's non-north half (see .planner-compass-needle's own
   // comment) has no FAB backing to sit on anymore -- matches the map's own
   // day/night styling rather than the app's light/dark UI theme, since
   // it's read against the actual map colors showing through behind it.
   document.documentElement.style.setProperty("--compass-south", night ? "#fff" : "#000");
-  liveMapLabelsKey = null;
   plannerMapInstance = new Map(canvas, {
-    // Upright at this point by construction (rotation always starts back at
-    // 0 in startLiveDrive/resumeLiveDriveIfAny), so all road labels are safe
-    // to show for this very first paint regardless of the chosen profile.
-    center, zoom, styles: driving ? drivingMapStyles(true) : (night ? NIGHT_MAP_STYLE : []),
+    center, zoom,
+    // Vector rendering (Map ID) only while driving -- it's what makes the
+    // course-up/tilted camera below a real 3D camera (map.moveCamera's own
+    // heading/tilt) instead of the old CSS transform hack, which is also
+    // what keeps road labels legible at any rotation without needing to
+    // hide them (see the old drivingMapStyles/updateLiveMapLabelVisibility,
+    // since removed). The planning/preview map stays on the classic raster
+    // renderer, styled the existing way -- Map ID styling is managed from
+    // Cloud Console rather than the runtime `styles` option, so the two
+    // don't mix, and there's nothing tilt/heading-related to gain there.
+    ...(driving ? { mapId: MAP_ID, colorScheme: night ? "DARK" : "LIGHT", heading: 0, tilt: 0 }
+                : { styles: night ? NIGHT_MAP_STYLE : [] }),
     disableDefaultUI: true, zoomControl: !driving,
-    // Native gesture handling is unaware of the CSS rotate/tilt this screen
-    // wraps around the map (see .planner-map-rotate-wrap) -- it computes
-    // pan/pinch/rotate in the map's own un-rotated, un-tilted pixel space,
-    // so the same finger movement produces a visibly different on-screen
-    // result depending on the current heading (dragging didn't track the
-    // finger once rotated, and two-finger rotate itself fought whatever
-    // native handling was also doing with the same touches). Disabled
-    // entirely while driving in favor of a fully custom, rotation/tilt-
-    // corrected pan+pinch+rotate implementation (see handleLiveTouchMove).
+    // Our own custom touch handling (handleLiveTouchMove) still owns
+    // pan/pinch/rotate while driving rather than the map's native gesture
+    // support -- it directly drives liveMapRotationDeg/liveMapCurrentTilt/
+    // zoom, the same values applyLiveCamera pushes to the vector camera
+    // every frame, and keeping one code path in charge of those avoids the
+    // native handler and this one fighting over the same touches. Worth
+    // revisiting now that the camera is a real 3D one (native gesture
+    // handling no longer has a fake CSS tilt to misunderstand), but that's
+    // a separate change from moving the camera itself over to it.
     gestureHandling: driving ? "none" : "greedy",
     // Frees up double-click for toggling map-focus mode below instead of
     // the default double-click-to-zoom-in.
@@ -5959,7 +5864,7 @@ function renderPlanTab() {
 
   return `
   <div class="planner-fullscreen ${p.mapFocusMode ? "map-focus" : ""}">
-    <div class="planner-map-rotate-wrap ${driving ? "driving" : ""} ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "angled" : ""}" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
+    <div class="planner-map-rotate-wrap" id="plannerMapRotateWrap"><div id="plannerMapCanvas"></div></div>
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m]).join(" / ")}">${icons.angleView}</button>
@@ -6021,14 +5926,19 @@ function renderPlanTab() {
 // Discard-confirm, Save Route/Address, and Log this Drive are all reached
 // only while the Trip Planner's own fullscreen view is showing, but are
 // rendered at the top level (renderApp), not nested inside it -- that
-// fullscreen view sets its own CSS `perspective` (for the driving view's 3D
-// tilt), which per spec makes it the containing block for any
-// position:fixed descendant. A modal nested inside it inherited that same
-// 3D containing block/rendering context as the constantly-transforming
-// map underneath, which still painted the modal on top correctly but
-// swallowed taps meant for its own buttons. Rendering these as siblings of
-// .planner-fullscreen instead (same fix already proven for the Supervised
-// conditions prompt) sidesteps the whole issue rather than fighting it.
+// fullscreen view used to set its own CSS `perspective` (for the driving
+// view's old CSS-transform 3D tilt, since replaced by the map's native
+// vector camera -- see MAP_ID), which per spec made it the containing
+// block for any position:fixed descendant. A modal nested inside it
+// inherited that same 3D containing block/rendering context as the
+// constantly-transforming map underneath, which still painted the modal on
+// top correctly but swallowed taps meant for its own buttons. Rendering
+// these as siblings of .planner-fullscreen instead (same fix already
+// proven for the Supervised conditions prompt) sidesteps the whole issue
+// rather than fighting it -- kept this way even though the perspective
+// that originally caused it is gone too, since these were never tab-scoped
+// for any other reason and moving them back would just reopen the same
+// class of bug the first time that CSS reappears.
 function renderPlannerDiscardConfirmModal() {
   return `
   <div class="modal-backdrop">
