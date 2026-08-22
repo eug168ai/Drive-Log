@@ -623,7 +623,7 @@
      left edge, same overall position as before. */
   .planner-eta-metrics-row .m.eta{display:inline-flex;flex-direction:column;align-items:center;text-align:center;justify-self:start;}
   .planner-eta-metrics-row .m.remain{text-align:center;}
-  .planner-eta-metrics-row .m.dist{text-align:right;}
+  .planner-eta-metrics-row .m.dist{display:inline-flex;flex-direction:column;align-items:center;text-align:center;justify-self:end;}
   .planner-eta-metrics-row .m.remain .v{font-size:22px;font-weight:800;color:var(--amber);}
   .planner-eta-bar.paused .planner-eta-metrics-row .m.remain .v{color:var(--muted);}
   .planner-eta-metrics-row .m.eta .v, .planner-eta-metrics-row .m.dist .v{font-size:15px;font-weight:700;color:var(--text);}
@@ -650,7 +650,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.24";
+const APP_BUILD = "2026-08-22.25";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3609,6 +3609,23 @@ function rotateLiveMap(headingDeg, speedMs) {
   // 90deg, dead opposite).
   const compass = document.getElementById("plannerCompassNeedle");
   if (compass) compass.style.setProperty("--compass-rot", `${liveMapRotationDeg}deg`);
+  // Destination/stop pins (drawPlannerRoutePins) are real Markers sitting on
+  // the same map that .planner-map-rotate-wrap spins via CSS for course-up
+  // mode -- unlike the arrow/compass above (plain CSS elements outside that
+  // rotated wrapper), these tilt and spin right along with the tiles, so a
+  // pin that's supposed to hang straight down visibly leans or tips over
+  // mid-turn. Counter-rotating each pin's own icon by the map's current
+  // rotation cancels that out so it keeps pointing straight down on screen
+  // regardless of heading. No-op outside live driving (liveMapRotationDeg
+  // stays 0 there).
+  plannerRoutePins.forEach(m => {
+    if (typeof m.getIcon !== "function" || typeof m.setIcon !== "function") return; // the connector Polylines, not pins
+    const icon = m.getIcon();
+    if (icon && typeof icon === "object" && icon.path) {
+      icon.rotation = -liveMapRotationDeg;
+      m.setIcon(icon);
+    }
+  });
 }
 // Toggles road labels off only while the map is rotated far enough from
 // upright that they'd read sideways-to-upside-down (see drivingMapStyles) —
@@ -3658,6 +3675,16 @@ function cycleLiveAngleMode() {
   if (btn) btn.classList.toggle("active", liveDrive.angleMode !== "auto");
   flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
+  // rotateLiveMap only just changed the CSS tilt/rotation -- without also
+  // re-centering here, the camera stays panned for the OLD tilt until the
+  // next GPS fix (up to ~1s away) catches it up, which is exactly what read
+  // as the position arrow "disconnecting" from the route right after
+  // switching angle mode. Skipped while the driver has manually panned
+  // (same guard as applyLiveMarkerFrame) so this doesn't yank a deliberate
+  // look-around back to the driver's position.
+  if (plannerMapInstance && liveDrive.lastFix && liveDrive.panMode !== "manual") {
+    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  }
 }
 // The compass FAB (below the angle FAB) -- toggles whether the map stays
 // north-up regardless of the current angle tier, same targeted-DOM-update
@@ -3675,6 +3702,11 @@ function toggleLiveNorthLock() {
   }
   flashLiveModeLabel(liveDrive.northLocked ? "North Locked" : "Follows Direction");
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
+  // Same re-center as cycleLiveAngleMode -- otherwise the camera stays
+  // anchored for the pre-toggle rotation until the next GPS fix.
+  if (plannerMapInstance && liveDrive.lastFix && liveDrive.panMode !== "manual") {
+    plannerMapInstance.setCenter(lookAheadCenter(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom(), liveMapCurrentTilt));
+  }
 }
 // Pinch replaces the old zoom FAB/cycle entirely -- gestureHandling:"greedy"
 // on the map (see ensurePlannerMap) already lets a pinch reach the map, but
