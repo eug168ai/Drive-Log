@@ -68,8 +68,13 @@
        padding:5px 6px;box-shadow:inset 0 2px 4px rgba(0,0,0,.6);}
   .odo span{font-size:16px;font-weight:600;color:var(--amber);width:0.85ch;text-align:center;
             text-shadow:0 0 8px rgba(var(--amber-rgb),.45);}
+  /* Above .planner-fullscreen's own z-index:60 -- a modal triggered while
+     the Trip Planner's fullscreen driving/complete view is showing (e.g.
+     the Supervised conditions prompt after Save Drive) rendered correctly
+     but sat behind that view, completely invisible, reading as the tap
+     having done nothing at all. */
   .modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;
-                  justify-content:center;padding:20px;z-index:50;}
+                  justify-content:center;padding:20px;z-index:100;}
   .modal-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;
              max-width:420px;width:100%;max-height:88vh;overflow-y:auto;}
   .modal-card h2{font-size:16px;margin:0 0 14px;}
@@ -608,7 +613,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.8";
+const APP_BUILD = "2026-08-22.9";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
