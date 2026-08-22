@@ -411,7 +411,19 @@
     transform:translateZ(0);}
   .planner-angle-fab.active{background:rgba(var(--amber-rgb),.18);}
   .planner-angle-fab .icon{width:18px;height:18px;}
-  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 150px);z-index:31;
+
+  .planner-compass-fab{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 154px);width:40px;height:40px;border-radius:50%;
+    background:rgba(var(--surface-rgb),.94);border:1.5px solid var(--border);color:var(--text);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:31;box-shadow:0 4px 14px rgba(0,0,0,.3);
+    transform:translateZ(0);}
+  .planner-compass-fab.active{border-color:var(--amber);}
+  /* Counter-rotates against the map's own CSS rotation (see rotateLiveMap's
+     --compass-rot) so the needle always points at true north on screen,
+     whichever way the map itself is currently turned to face. */
+  .planner-compass-needle{display:flex;width:20px;height:20px;transform:rotate(var(--compass-rot, 0deg));}
+  .planner-compass-needle .icon{width:20px;height:20px;}
+
+  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 200px);z-index:31;
     padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
     color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
   .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
@@ -511,7 +523,7 @@
      compositing layer for the same experimental reason. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.99) 0, rgba(var(--bg-rgb),.99) 2mm, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 55%, transparent 100%);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -596,7 +608,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.6";
+const APP_BUILD = "2026-08-22.7";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -1521,6 +1533,7 @@ const icons = {
   forkLeft: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M7 9V6h3"/></svg>`,
   forkRight: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20v-6"/><path d="M12 14 7 6"/><path d="M12 14l5-8"/><path d="M17 9V6h-3"/></svg>`,
   angleView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18 9 6h6l5 12z"/><path d="M4 18h16"/></svg>`,
+  compassNeedle: `<svg class="icon" viewBox="0 0 24 24"><path d="M12 2 15 12 12 12 9 12z" fill="var(--red)"/><path d="M12 22 9 12 12 12 15 12z" fill="var(--muted)"/></svg>`,
   zoomView: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20l-4.8-4.8"/><path d="M8 10.5h5"/></svg>`,
 };
 
@@ -2681,7 +2694,14 @@ const LIVE_AUTO_SPEED_HYSTERESIS_MS = 2; // margin around those thresholds so ho
 // toggles them off only while the map is rotated past that point, and back
 // on once heading swings back closer to upright. POIs/transit/admin labels
 // are always off — clutter the turn banner already covers better.
-const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 70;
+// A quarter turn is 90 -- was set to 70 (well short of where labels
+// actually start reading upside-down), which meant road names sat hidden
+// for most of a drive: heading almost anywhere except roughly north kept
+// the map rotated past 70 in course-up mode. Matches the comment's own
+// reasoning now, showing labels across a much wider heading range. North
+// Lock (the compass FAB) is the other way to guarantee they show — it
+// keeps the map north-up regardless of heading.
+const LIVE_LABEL_UPRIGHT_THRESHOLD_DEG = 90;
 // Road labels (every class, not just highways) stay on regardless of tilt
 // or zoom tier -- `upright` is the one thing that ever turns them off, once
 // the map's rotated far enough from north that they'd read sideways/upside
@@ -3077,7 +3097,7 @@ async function startLiveDrive() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
-    panMode: "auto", headingMode: "auto",
+    panMode: "auto", headingMode: "auto", northLocked: false,
   };
   liveMapRotationDeg = 0;
   liveMapLastHeadingDeg = 0;
@@ -3501,11 +3521,17 @@ function rotateLiveMap(headingDeg, speedMs) {
   // auto heading-follow here is what keeps this per-fix/per-frame call
   // from snapping it straight back to the course-up target on the very
   // next tick.
+  // North Lock (the compass FAB, see toggleLiveNorthLock) overrides the
+  // angle profile's own rotate/no-rotate call -- someone who wants a 3D
+  // tilt but still wants the map facing north (rather than swinging to
+  // face the direction of travel) can have both at once, whereas Overhead
+  // ties the two together (flat + north-up) with no way to pick one alone.
+  const mapRotates = profile.rotates && !(liveDrive && liveDrive.northLocked);
   if (!liveDrive || liveDrive.headingMode !== "manual") {
-    // Overhead stays north-up: target 0 instead of the heading, via the same
-    // shortest-path delta math, so switching into it eases back to north
-    // rather than jumping.
-    const target = profile.rotates ? ((-liveMapLastHeadingDeg % 360) + 360) % 360 : 0;
+    // North-up (whether from Overhead or North Lock) targets 0 instead of
+    // the heading, via the same shortest-path delta math, so switching into
+    // it eases back to north rather than jumping.
+    const target = mapRotates ? ((-liveMapLastHeadingDeg % 360) + 360) % 360 : 0;
     const current = ((liveMapRotationDeg % 360) + 360) % 360;
     let delta = target - current;
     if (delta > 180) delta -= 360;
@@ -3522,12 +3548,18 @@ function rotateLiveMap(headingDeg, speedMs) {
   const skyMask = document.getElementById("plannerSkyMask");
   if (skyMask) skyMask.style.setProperty("--mask-vh", `${skyMaskVh(liveMapCurrentTilt)}vh`);
   // The fixed "you are here" arrow (see .planner-position-arrow) never
-  // moves on screen, so it only needs to rotate at all in north-up
-  // "overhead" mode, where the map itself stays fixed and heading has to
-  // be shown some other way -- every course-up mode already points the
-  // arrow's fixed screen-up straight ahead by construction.
+  // moves on screen, so it only needs to rotate at all in a north-up mode
+  // (Overhead, or North Lock over any tilt tier), where the map itself
+  // stays fixed and heading has to be shown some other way -- every
+  // course-up mode already points the arrow's fixed screen-up straight
+  // ahead by construction.
   const arrow = document.getElementById("plannerPositionArrow");
-  if (arrow) arrow.style.setProperty("--arrow-rot", `${profile.rotates ? 0 : liveMapLastHeadingDeg}deg`);
+  if (arrow) arrow.style.setProperty("--arrow-rot", `${mapRotates ? 0 : liveMapLastHeadingDeg}deg`);
+  // The compass needle counter-rotates against the map's own CSS rotation
+  // so it always points at true north on screen, whatever direction the
+  // map is currently facing.
+  const compass = document.getElementById("plannerCompassNeedle");
+  if (compass) compass.style.setProperty("--compass-rot", `${-liveMapRotationDeg}deg`);
 }
 // Toggles road labels off only while the map is rotated far enough from
 // upright that they'd read sideways-to-upside-down (see drivingMapStyles) —
@@ -3576,6 +3608,23 @@ function cycleLiveAngleMode() {
   const btn = document.getElementById("plannerAngleBtn");
   if (btn) btn.classList.toggle("active", liveDrive.angleMode !== "auto");
   flashLiveModeLabel(LIVE_ANGLE_MODE_LABELS[liveDrive.angleMode]);
+  rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
+}
+// The compass FAB (below the angle FAB) -- toggles whether the map stays
+// north-up regardless of the current angle tier, same targeted-DOM-update
+// pattern as cycleLiveAngleMode above rather than a full render().
+// Independent of angleMode: North Lock can be combined with any tilt tier
+// (see rotateLiveMap's mapRotates), so cycling the angle FAB afterward
+// doesn't need to touch or reset this.
+function toggleLiveNorthLock() {
+  if (!liveDrive) return;
+  liveDrive.northLocked = !liveDrive.northLocked;
+  const btn = document.getElementById("plannerCompassBtn");
+  if (btn) {
+    btn.classList.toggle("active", liveDrive.northLocked);
+    btn.title = liveDrive.northLocked ? "North locked — tap to follow direction of travel" : "Tap to lock the map facing North";
+  }
+  flashLiveModeLabel(liveDrive.northLocked ? "North Locked" : "Follows Direction");
   rotateLiveMap(liveMapLastHeadingDeg, liveMapLastSpeedMs);
 }
 // Pinch replaces the old zoom FAB/cycle entirely -- gestureHandling:"greedy"
@@ -4181,7 +4230,7 @@ async function resumeLiveDriveIfAny() {
     offRouteStrikes: 0, lastRerouteAt: 0, rerouting: false,
     smoothFix: null, smoothHeading: null, smoothSpeedMs: null,
     angleMode: "auto", autoAngleTier: "low", zoomMode: "auto", autoZoomTier: "low", manualZoom: null,
-    panMode: "auto", headingMode: "auto",
+    panMode: "auto", headingMode: "auto", northLocked: false,
   };
   stopLiveMoveAnimation();
   if (navigator.geolocation) {
@@ -5730,6 +5779,7 @@ function renderPlanTab() {
     ${driving ? `<div class="planner-sky-mask ${liveAngleProfile && liveAngleProfile.tilt > 0 ? "show" : ""}" id="plannerSkyMask" style="--mask-vh:${skyMaskVh(liveAngleProfile ? liveAngleProfile.tilt : 0)}vh"></div>` : ""}
     ${(!driving && !complete && p.stage !== "preview" && !p.showSavedList) ? `<button type="button" class="planner-recenter-fab" id="plannerRecenterBtn" title="Recenter on current location">${icons.locate}</button>` : ""}
     ${driving ? `<button type="button" class="planner-angle-fab ${liveDrive && liveDrive.angleMode !== "auto" ? "active" : ""}" id="plannerAngleBtn" title="Cycle angle: ${LIVE_ANGLE_MODE_CYCLE.map(m => LIVE_ANGLE_MODE_LABELS[m].replace("Angle: ", "")).join(" / ")}">${icons.angleView}</button>
+    <button type="button" class="planner-compass-fab ${liveDrive && liveDrive.northLocked ? "active" : ""}" id="plannerCompassBtn" title="${liveDrive && liveDrive.northLocked ? "North locked — tap to follow direction of travel" : "Tap to lock the map facing North"}"><span class="planner-compass-needle" id="plannerCompassNeedle">${icons.compassNeedle}</span></button>
     <span class="planner-angle-flash" id="plannerAngleFlash"></span>` : ""}
     ${driving && liveDrive && liveDrive.paused ? `<div class="planner-paused-overlay">${icons.pause}</div>` : ""}
 
@@ -8470,6 +8520,8 @@ function attachAppHandlers() {
       if (nextLegBtn) nextLegBtn.onclick = advanceToNextLegManually;
       const angleBtn = document.getElementById("plannerAngleBtn");
       if (angleBtn) angleBtn.onclick = cycleLiveAngleMode;
+      const compassBtn = document.getElementById("plannerCompassBtn");
+      if (compassBtn) compassBtn.onclick = toggleLiveNorthLock;
       updateLiveDriveDOM();
     }
 
