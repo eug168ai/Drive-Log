@@ -596,7 +596,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.5";
+const APP_BUILD = "2026-08-22.6";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3018,11 +3018,37 @@ function distanceToStepEndMeters(toStepIdx) {
 let liveDrive = null;
 let liveWatchId = null;
 
+// Opens Google Maps (app on mobile, maps.google.com in a new tab on
+// desktop) with the full planned route pre-filled — real turn-by-turn
+// voice navigation happens there, running in parallel to this app's own
+// live GPS timer/distance tracking underneath.
+// origin/destination/each waypoint can be a {lat,lng} (Trip Planner stops,
+// already resolved) or a plain address string (Quick Drive, which doesn't
+// require a resolved end location) -- Maps geocodes a string destination
+// itself. dir_action=navigate starts turn-by-turn immediately rather than
+// just opening the route preview, which matters for Android Auto/CarPlay:
+// only an actively-navigating Maps shows turn-by-turn on the car's own
+// display, independent of whatever's on the phone's screen at the time.
+function launchGoogleMapsNavigation({ origin, destination, waypoints }) {
+  const fmt = s => (typeof s === "string" ? s : `${s.lat},${s.lng}`);
+  const params = new URLSearchParams({
+    api: "1", origin: fmt(origin), destination: fmt(destination), travelmode: "driving", dir_action: "navigate",
+  });
+  if (waypoints && waypoints.length) params.set("waypoints", waypoints.map(fmt).join("|"));
+  window.open(`https://www.google.com/maps/dir/?${params.toString()}`, "_blank", "noopener");
+}
+
 async function startLiveDrive() {
   const p = state.planner;
   if (!p || !plannerDirectionsResult) return;
   if (!p.legs.every(l => l.tag)) { p.previewError = "Tag every leg before starting."; render(); return; }
   if (!navigator.geolocation) { p.previewError = "Location isn't available on this device."; render(); return; }
+
+  // Fired synchronously, before any await, so the browser still counts
+  // this as a direct response to the tap and doesn't block the popup.
+  if (state.settings.launchGoogleMapsNav) {
+    launchGoogleMapsNavigation({ origin: p.stops[0], destination: p.stops[p.stops.length - 1], waypoints: p.stops.slice(1, -1) });
+  }
 
   let firstFix;
   try { firstFix = await getCurrentPosition(); }
@@ -6138,6 +6164,12 @@ function renderSettingsTab() {
       </button>
       ${state.googleError ? `<p class="settings-desc" style="color:var(--work);margin-top:8px;">${state.googleError}</p>` : ""}
     `}
+    <div style="margin-top:9px;padding-top:9px;border-top:1px solid var(--border);">
+      <div class="switch-row" style="margin:0;">
+        <span class="settings-desc" style="margin:0;">Launch Google Maps Navigation on Start Drive</span>
+        <div id="launchGoogleMapsNavSwitch" class="switch ${state.settings.launchGoogleMapsNav ? "on" : ""}"><div class="knob"></div></div>
+      </div>
+    </div>
     ${state.showBuildInfo ? `<p class="settings-desc" style="margin:10px 0 0;font-size:10px;color:var(--faint);">Build ${APP_BUILD}</p>` : ""}
   </div>
 
@@ -8541,6 +8573,7 @@ function attachAppHandlers() {
       ["dashShowDistanceSwitch", "dashShowDistance"],
       ["dashShowTimeSwitch", "dashShowTime"],
       ["dashShowCostSwitch", "dashShowCost"],
+      ["launchGoogleMapsNavSwitch", "launchGoogleMapsNav"],
     ].forEach(([id, key]) => {
       const el = document.getElementById(id);
       if (el) el.onclick = async () => {
