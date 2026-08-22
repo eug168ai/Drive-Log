@@ -117,11 +117,17 @@
   .toggle.work.on{background:rgba(224,100,44,.18);border-color:var(--work);color:var(--work);}
   .toggle.supervised.on{background:rgba(76,159,242,.18);border-color:var(--blue);color:var(--blue);}
   .btn{width:100%;border:none;border-radius:8px;padding:12px;font-weight:700;font-size:15px;cursor:pointer;font-family:inherit;appearance:none;-webkit-appearance:none;
-       display:flex;align-items:center;justify-content:center;gap:8px;}
+       display:flex;align-items:center;justify-content:center;gap:8px;white-space:nowrap;}
   .btn-amber{background:var(--amber);color:var(--bg);}
   .btn-stop{background:var(--work);color:#fff;}
   .btn-ghost{background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:14px;padding:10px;}
   .btn-grey{background:var(--grey-btn);color:var(--grey-btn-text);}
+  /* Log Drive/Start Drive share a row with two icon buttons on the saved
+     routes card -- the default padding/font/gap (sized for a full-width
+     button) left "Start Drive" no room to fit its icon and label on one
+     line at that width, wrapping to a second line and doubling the
+     button's height. */
+  .plannerLogSavedBtn, .plannerStartSavedBtn{padding:10px 6px;font-size:13.5px;gap:5px;}
   .btn:disabled{opacity:.4;cursor:not-allowed;}
   .tag{display:inline-flex;align-items:center;padding:2px 8px;border-radius:5px;font-size:10px;
        font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
@@ -590,7 +596,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-21.22";
+const APP_BUILD = "2026-08-22.1";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
