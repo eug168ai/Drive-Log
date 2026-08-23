@@ -431,13 +431,20 @@
   .planner-compass-needle .icon{width:20px;height:20px;}
   .planner-compass-needle .icon .compass-south{fill:var(--compass-south, #fff);}
 
-  .planner-angle-flash{position:absolute;right:14px;top:calc(env(safe-area-inset-top) + 58px);z-index:31;
-    padding:6px 12px;border-radius:8px;background:rgba(var(--surface-rgb),.94);border:1px solid var(--amber);
-    color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;pointer-events:none;opacity:0;}
+  /* Plain centered text, no pill/box -- right:34px (the angle FAB's own
+     center: right:14px + half its 40px width) plus translateX(50%) centers
+     this on the FAB regardless of how wide the label text itself is,
+     rather than right-aligning it in its own bordered box off to the side.
+     A white text-shadow halo (same idea as .planner-position-arrow's own
+     drop-shadow halo) keeps amber-on-map legible now that there's no
+     background to sit on. */
+  .planner-angle-flash{position:absolute;right:34px;top:calc(env(safe-area-inset-top) + 58px);z-index:31;
+    color:var(--amber);font-size:12px;font-weight:700;white-space:nowrap;text-align:center;pointer-events:none;opacity:0;
+    text-shadow:0 0 3px #fff, 0 0 3px #fff, 0 1px 3px rgba(0,0,0,.6);}
   .planner-angle-flash.show{animation:plannerAngleFlash 1.4s ease-out;}
   @keyframes plannerAngleFlash{
-    0%{opacity:0;transform:translateY(-4px);}
-    12%{opacity:1;transform:translateY(0);}
+    0%{opacity:0;transform:translateX(50%) translateY(-4px);}
+    12%{opacity:1;transform:translateX(50%) translateY(0);}
     75%{opacity:1;}
     100%{opacity:0;}
   }
@@ -549,7 +556,7 @@
      background. */
   .planner-eta-bar{position:absolute;left:0;right:0;bottom:0;z-index:30;
     padding:8px 10px calc(6px + env(safe-area-inset-bottom));
-    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 10mm, transparent 22mm);
+    background:linear-gradient(to top, rgba(var(--bg-rgb),.93) 0, rgba(var(--bg-rgb),.93) 13mm, transparent 25mm);
     display:flex;flex-direction:column;align-items:stretch;gap:10px;transform:translateZ(0);}
   /* The "you are here" indicator -- a plain CSS-fixed overlay, not the
      google.maps.Marker tied to a real lat/lng (see plannerLiveMarker,
@@ -616,6 +623,7 @@
      than the rest of these tightly-set mono figures. */
   .planner-eta-metrics-row .v .unit{font-size:.62em;font-weight:700;margin-left:1px;}
   .planner-eta-metrics-row .v .ampm{font-size:.6em;font-weight:700;margin-left:1px;}
+  .planner-eta-metrics-row .v .time-colon{margin:0 -.1em;}
   .planner-eta-metrics-row .m.dist .v .unit{font-size:.65em;font-weight:700;margin-left:1px;}
   .planner-eta-metrics-row .m .l{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.05em;}
 
@@ -634,7 +642,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.27";
+const APP_BUILD = "2026-08-22.28";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -3067,6 +3075,7 @@ async function startLiveDrive() {
   liveMapLastSpeedMs = 0;
   liveMapCurrentTilt = 0;
   liveMapLastAppliedZoom = null;
+  liveMapLastAppliedHeading = null;
   stopLiveMoveAnimation();
   await persistLiveDriveSnapshot();
 
@@ -3489,7 +3498,7 @@ function rotateLiveMap(headingDeg, speedMs) {
   liveMapLastHeadingDeg = headingDeg || 0;
   if (speedMs != null) liveMapLastSpeedMs = speedMs;
   const profile = resolveLiveAngleProfile(liveMapLastSpeedMs);
-  // A two-finger touch rotate (see handleLiveTouchMove) already set
+  // A two-finger rotate gesture (see handleLiveHeadingChanged) already set
   // liveMapRotationDeg directly and owns it until released -- skipping the
   // auto heading-follow here is what keeps this per-fix/per-frame call
   // from snapping it straight back to the course-up target on the very
@@ -3558,12 +3567,17 @@ function rotateLiveMap(headingDeg, speedMs) {
 // them avoids a visibly inconsistent in-between frame that three separate
 // calls could otherwise produce. liveMapRotationDeg is negated back into
 // Maps' own heading convention (see rotateLiveMap's mapRotates comment for
-// why the sign is flipped in the first place).
+// why the sign is flipped in the first place). liveMapLastAppliedHeading
+// is recorded here so handleLiveHeadingChanged can tell this call apart
+// from a real rotate gesture (heading_changed fires for both).
+let liveMapLastAppliedHeading = null;
 function applyLiveCamera(lat, lng, headingDeg, zoom) {
   if (!plannerMapInstance) return;
+  const heading = -liveMapRotationDeg;
+  liveMapLastAppliedHeading = heading;
   plannerMapInstance.moveCamera({
     center: lookAheadCenter(lat, lng, headingDeg, zoom),
-    zoom, heading: -liveMapRotationDeg, tilt: liveMapCurrentTilt,
+    zoom, heading, tilt: liveMapCurrentTilt,
   });
 }
 // Zoom is decided independently of heading/tilt (see resolveLiveZoom) --
@@ -3649,62 +3663,57 @@ function handleLiveZoomChanged() {
   liveDrive.manualZoom = z;
   liveMapLastAppliedZoom = z;
 }
-// Google's own native gesture handling (pan/pinch/rotate) has no idea this
-// screen wraps the map in an outer CSS rotate/tilt (see
-// .planner-map-rotate-wrap) -- it computes everything in the map's own
-// un-rotated, un-tilted pixel space, so a raw drag or twist produces a
-// visibly wrong (rotated, or just unresponsive under tilt) on-screen
-// result once that's re-projected through our transform. Disabled entirely
-// while driving (see gestureHandling in ensurePlannerMap) in favor of this
-// fully custom pan + pinch-zoom + rotate, all correcting for the current
-// tilt/rotation before touching the map -- one finger drags to look
-// around, two fingers pinch to zoom and/or twist to rotate, either at
-// once. All of it pauses the camera's own per-frame follow (see panMode
-// in applyLiveMarkerFrame, headingMode in rotateLiveMap) for as long as
-// any finger is down, plus a grace period after the last one lifts (see
-// scheduleLiveSnapback), rather than fighting the gesture within a single
-// frame or snapping back the instant a finger releases.
-let liveTouchLastX = null, liveTouchLastY = null;
-let liveRotateStartAngleDeg = null;
-let liveRotateStartRotationDeg = 0;
-let liveZoomStartDist = null;
-let liveZoomStartZoom = null;
-// Vertical on-screen distances are foreshortened by the current tilt (a
-// perspective projection of the tilted map plane) relative to horizontal
-// ones -- measured in raw screen coordinates with no correction, a
-// physical two-finger twist (or a straight vertical drag) maps to a
-// smaller and smaller effective distance the steeper the tilt, which is
-// why rotate/pan read as unresponsive in Low/Medium but fine in flat
-// Overhead. Scaling the vertical component back up by 1/cos(tilt) is a
-// simple, approximate undo of that foreshortening -- not exact
-// perspective math, but should track physical finger movement much more
-// directly at any tilt. Returns the corrected {dx, dy}, not an angle,
-// since both the rotate and pan gestures below need the raw vector.
-function tiltCorrectedVector(dx, dy, tiltDeg) {
-  const tiltRad = (tiltDeg || 0) * Math.PI / 180;
-  return { dx, dy: tiltRad > 0.01 ? dy / Math.cos(tiltRad) : dy };
+// Shortest signed difference (in degrees, (-180, 180]) from `b` to `a` --
+// same wraparound-aware math as rotateLiveMap's own delta easing, pulled
+// out here since handleLiveHeadingChanged below needs the identical check
+// (is this actually a different angle, not just the same one crossing the
+// 0/360 seam) to tell a real rotate gesture apart from our own heading.
+function shortestAngleDiffDeg(a, b) {
+  return (((a - b) % 360) + 540) % 360 - 180;
 }
-function twoTouchAngleDeg(touches, tiltDeg) {
-  const raw = tiltCorrectedVector(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY, tiltDeg);
-  return Math.atan2(raw.dy, raw.dx) * 180 / Math.PI;
+// Native gesture handling (pan/pinch-zoom/rotate) now drives the map
+// directly -- see gestureHandling/headingInteractionEnabled in
+// ensurePlannerMap -- rather than a hand-rolled touch reimplementation of
+// all three. That used to be necessary because native handling had no
+// idea this screen wrapped the map in an outer CSS rotate/tilt of its own;
+// now that heading/tilt are the map's own real camera properties (see
+// MAP_ID/applyLiveCamera), there's nothing left for native handling to
+// misunderstand. tiltInteractionEnabled stays off, though -- tilt was
+// never a manual gesture even in the old custom implementation, only ever
+// driven by the angle profile/FAB (see rotateLiveMap), and turning on a
+// new gesture for it wasn't part of this change.
+//
+// dragstart/dragend below cover one-finger panning; heading_changed below
+// covers two-finger rotate (which Maps doesn't fire a dedicated start/end
+// event for the way it does for drag) -- both funnel into the same
+// panMode/headingMode + scheduleLiveSnapback bookkeeping the FAB toggles
+// and per-frame auto-follow already use, so a gesture pauses the camera's
+// own follow for as long as it's active, plus a grace period after, same
+// as before.
+function handleLiveDragStart() {
+  if (!liveDrive) return;
+  cancelLiveSnapback();
+  liveDrive.panMode = "manual";
 }
-function twoTouchDistance(touches) {
-  const dx = touches[1].clientX - touches[0].clientX, dy = touches[1].clientY - touches[0].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
+function handleLiveDragEnd() {
+  if (!liveDrive) return;
+  scheduleLiveSnapback();
 }
-// Pans the map so its content follows the finger, like sliding a sheet of
-// paper underneath -- panBy moves the *center* by the given screen pixels
-// (east/south for positive x/y), the opposite of which direction the
-// content itself appears to move, hence the negation. Used to need to
-// manually un-rotate and un-tilt the raw drag vector first, back when the
-// map itself had no idea this screen looked rotated/tilted at all (the old
-// CSS-transform approach) -- now that heading/tilt are real camera
-// properties (see MAP_ID/applyLiveCamera), panBy's own screen-relative pan
-// already accounts for the camera's current orientation on its own, and
-// manually correcting for it here first would now double-correct.
-function panLiveMapByScreenDelta(dxScreen, dyScreen) {
-  if (!plannerMapInstance) return;
-  plannerMapInstance.panBy(-dxScreen, -dyScreen);
+// heading_changed fires for our own applyLiveCamera calls too (every
+// frame), not just a real rotate gesture -- comparing against
+// liveMapLastAppliedHeading (set in the same call applyLiveCamera pushes a
+// heading) is what tells the two apart, same pattern as
+// handleLiveZoomChanged already uses for pinch vs. our own setZoom.
+function handleLiveHeadingChanged() {
+  if (!liveDrive || !plannerMapInstance) return;
+  const h = plannerMapInstance.getHeading();
+  if (h == null) return;
+  if (liveMapLastAppliedHeading != null && Math.abs(shortestAngleDiffDeg(h, liveMapLastAppliedHeading)) < 0.5) return;
+  liveMapRotationDeg = -h;
+  liveDrive.panMode = "manual";
+  liveDrive.headingMode = "manual";
+  cancelLiveSnapback();
+  scheduleLiveSnapback();
 }
 let liveSnapbackTimer = null;
 // How long to keep showing wherever a manual pan/rotate left the view
@@ -3725,64 +3734,6 @@ function scheduleLiveSnapback() {
       applyLiveCamera(liveDrive.lastFix.lat, liveDrive.lastFix.lng, liveDrive.lastFix.heading, plannerMapInstance.getZoom());
     }
   }, LIVE_SNAPBACK_DELAY_MS);
-}
-function handleLiveTouchStart(e) {
-  if (!liveDrive) return;
-  e.preventDefault();
-  cancelLiveSnapback();
-  liveDrive.panMode = "manual";
-  if (e.touches.length === 1) {
-    liveTouchLastX = e.touches[0].clientX;
-    liveTouchLastY = e.touches[0].clientY;
-  } else if (e.touches.length === 2) {
-    liveRotateStartAngleDeg = twoTouchAngleDeg(e.touches, liveMapCurrentTilt);
-    liveRotateStartRotationDeg = liveMapRotationDeg;
-    liveDrive.headingMode = "manual";
-    liveZoomStartDist = twoTouchDistance(e.touches);
-    liveZoomStartZoom = plannerMapInstance ? plannerMapInstance.getZoom() : null;
-  }
-}
-function handleLiveTouchMove(e) {
-  if (!liveDrive) return;
-  e.preventDefault();
-  if (e.touches.length === 1 && liveTouchLastX != null) {
-    const t = e.touches[0];
-    panLiveMapByScreenDelta(t.clientX - liveTouchLastX, t.clientY - liveTouchLastY);
-    liveTouchLastX = t.clientX; liveTouchLastY = t.clientY;
-    return;
-  }
-  if (e.touches.length !== 2) return;
-  if (liveRotateStartAngleDeg != null) {
-    liveMapRotationDeg = liveRotateStartRotationDeg + (twoTouchAngleDeg(e.touches, liveMapCurrentTilt) - liveRotateStartAngleDeg);
-    // Pushed directly rather than through applyLiveCamera -- this gesture
-    // only ever changes heading/tilt, and applyLiveCamera would also
-    // recompute and jump the center, fighting whatever position a
-    // simultaneous one-finger pan (panLiveMapByScreenDelta) or the pinch
-    // below just set.
-    if (plannerMapInstance) plannerMapInstance.setHeading(-liveMapRotationDeg);
-  }
-  if (liveZoomStartDist != null && liveZoomStartZoom != null && plannerMapInstance) {
-    const dist = twoTouchDistance(e.touches);
-    if (dist > 1) plannerMapInstance.setZoom(liveZoomStartZoom + Math.log2(dist / liveZoomStartDist));
-  }
-}
-function handleLiveTouchEnd(e) {
-  e.preventDefault();
-  if (e.touches.length === 1) {
-    // Dropped from two fingers to one -- re-arm single-finger pan tracking
-    // from here rather than a stale (or never-set) last position, which
-    // would otherwise read as one big instantaneous jump on the next move.
-    liveTouchLastX = e.touches[0].clientX;
-    liveTouchLastY = e.touches[0].clientY;
-    liveRotateStartAngleDeg = null;
-    liveZoomStartDist = null;
-    return;
-  }
-  if (e.touches.length > 0) return; // still 2+ fingers down
-  liveTouchLastX = null; liveTouchLastY = null;
-  liveRotateStartAngleDeg = null;
-  liveZoomStartDist = null;
-  scheduleLiveSnapback();
 }
 // Briefly shows the newly-selected mode's name next to the FABs — restarting
 // the CSS animation (even mid-flash, via the offsetWidth reflow trick) so
@@ -3821,7 +3772,7 @@ function applyLiveMarkerFrame(lat, lng, heading, speedMs) {
   // would offset the camera for a tilt that isn't actually on screen yet,
   // drifting the marker off its intended spot until the ease catches up.
   // Skipped entirely once the driver has touched the map (see
-  // panMode/handleLiveTouchStart) -- this runs up to 60 times a second, so a
+  // panMode/handleLiveDragStart) -- this runs up to 60 times a second, so a
   // manual pan was otherwise overwritten within a single frame, reading as
   // "touch doesn't work" even though the drag itself was registering fine.
   if (liveDrive && liveDrive.panMode === "manual") return;
@@ -3925,9 +3876,13 @@ function computeLiveRemaining() {
   const rawEta = eta.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true });
   // Tighten the gap before AM/PM the same way distance/duration tighten
   // theirs before "km"/"hr" -- a plain locale-inserted space there reads
-  // looser than the rest of this readout.
+  // looser than the rest of this readout. The colon gets the same
+  // treatment -- a monospace digit face centers ":" in a full glyph-width
+  // cell same as every digit, which reads as an oversized gap either side
+  // of it next to the tight digit-to-digit spacing everywhere else here.
   const ampmMatch = rawEta.match(/^(.*\d)\s*([AP]M)$/i);
-  const etaStr = ampmMatch ? `${ampmMatch[1]}<span class="ampm">${ampmMatch[2]}</span>` : rawEta;
+  const timePart = (ampmMatch ? ampmMatch[1] : rawEta).replace(":", `<span class="time-colon">:</span>`);
+  const etaStr = ampmMatch ? `${timePart}<span class="ampm">${ampmMatch[2]}</span>` : timePart;
   return { km: remainingM / 1000, min: remainingMin, etaStr };
 }
 
@@ -4185,6 +4140,7 @@ async function resumeStoppedDrive() {
   liveMapLastSpeedMs = 0;
   liveMapCurrentTilt = 0;
   liveMapLastAppliedZoom = null;
+  liveMapLastAppliedHeading = null;
   stopLiveMoveAnimation();
   await persistLiveDriveSnapshot();
   render();
@@ -4486,40 +4442,44 @@ async function ensurePlannerMap() {
     // renderer, styled the existing way -- Map ID styling is managed from
     // Cloud Console rather than the runtime `styles` option, so the two
     // don't mix, and there's nothing tilt/heading-related to gain there.
-    ...(driving ? { mapId: MAP_ID, colorScheme: night ? "DARK" : "LIGHT", heading: 0, tilt: 0 }
-                : { styles: night ? NIGHT_MAP_STYLE : [] }),
+    ...(driving
+      ? {
+          mapId: MAP_ID, colorScheme: night ? "DARK" : "LIGHT", heading: 0, tilt: 0,
+          // Lets a real two-finger twist rotate the camera natively (see
+          // handleLiveHeadingChanged, which detects it and pauses auto-
+          // follow the same way the FAB toggles already do). Tilt stays
+          // off, though — even the old hand-rolled touch handling never
+          // exposed tilt as a manual gesture, only the angle profile/FAB
+          // (see rotateLiveMap) ever set it, and this isn't adding a new
+          // gesture beyond what already existed.
+          headingInteractionEnabled: true, tiltInteractionEnabled: false,
+        }
+      : { styles: night ? NIGHT_MAP_STYLE : [] }),
     disableDefaultUI: true, zoomControl: !driving,
-    // Our own custom touch handling (handleLiveTouchMove) still owns
-    // pan/pinch/rotate while driving rather than the map's native gesture
-    // support -- it directly drives liveMapRotationDeg/liveMapCurrentTilt/
-    // zoom, the same values applyLiveCamera pushes to the vector camera
-    // every frame, and keeping one code path in charge of those avoids the
-    // native handler and this one fighting over the same touches. Worth
-    // revisiting now that the camera is a real 3D one (native gesture
-    // handling no longer has a fake CSS tilt to misunderstand), but that's
-    // a separate change from moving the camera itself over to it.
-    gestureHandling: driving ? "none" : "greedy",
+    // "greedy" now for both -- native pan/pinch-zoom/rotate handles the
+    // driving view directly (see handleLiveDragStart/handleLiveZoomChanged/
+    // handleLiveHeadingChanged), rather than a hand-rolled reimplementation
+    // of all three that existed only because native handling had no idea
+    // this screen used to wrap the map in an outer CSS rotate/tilt of its
+    // own (see MAP_ID's own comment) -- nothing left for it to misunderstand
+    // now that heading/tilt are the map's real camera properties.
+    gestureHandling: "greedy",
     // Frees up double-click for toggling map-focus mode below instead of
     // the default double-click-to-zoom-in.
     disableDoubleClickZoom: !driving && !complete,
   });
 
   if (driving) {
-    // Still fires (and still the right signal for "pinch changed the
-    // zoom") for the setZoom() calls handleLiveTouchMove makes itself now,
-    // same as it did for Maps' own native pinch before gestureHandling was
-    // turned off here.
+    // zoom_changed/heading_changed fire for our own setZoom/moveCamera
+    // calls too, not just a real pinch/rotate -- see handleLiveZoomChanged/
+    // handleLiveHeadingChanged's own comments for how each tells the two
+    // apart. dragstart/dragend cover one-finger pan (see
+    // handleLiveDragStart's own comment for why rotate needs a different
+    // signal than these).
     plannerMapInstance.addListener("zoom_changed", handleLiveZoomChanged);
-    // Native touch listeners rather than Maps' own dragstart/dragend -- see
-    // handleLiveTouchStart's own comment for why this screen replaces
-    // Maps' native gesture handling outright instead of just watching
-    // alongside it. Not passive: these need to preventDefault so the
-    // browser doesn't also try to scroll/zoom the page from the same
-    // touches now that Maps itself won't.
-    canvas.addEventListener("touchstart", handleLiveTouchStart, { passive: false });
-    canvas.addEventListener("touchmove", handleLiveTouchMove, { passive: false });
-    canvas.addEventListener("touchend", handleLiveTouchEnd, { passive: false });
-    canvas.addEventListener("touchcancel", handleLiveTouchEnd, { passive: false });
+    plannerMapInstance.addListener("heading_changed", handleLiveHeadingChanged);
+    plannerMapInstance.addListener("dragstart", handleLiveDragStart);
+    plannerMapInstance.addListener("dragend", handleLiveDragEnd);
   }
 
   if (!driving && !complete) {
