@@ -17,7 +17,7 @@
   :root{
     --bg:#14171C; --bg-rgb:20,23,28; --surface:#1E2229; --surface-rgb:30,34,41; --border:#2A2F38;
     --text:#EDEEF0; --muted:#8B92A0; --faint:#565D6B;
-    --amber:#F2A93B; --amber-rgb:242,169,59; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --red:#E5484D; --cost:#C2661C; --time:#F7CB89;
+    --amber:#EF9610; --amber-rgb:239,150,16; --work:#E0642C; --normal:#4C9F70; --blue:#4C9FF2; --red:#E5484D; --cost:#875A17; --time:#F4B85C;
     --grey-card:#27272A; --grey-border:#3F3F46; --grey-tag-bg:#3F3F46; --grey-tag-text:#D4D4D8; --grey-btn:#52525B; --grey-btn-text:#F4F4F5;
   }
   html[data-theme="light"]{
@@ -33,13 +33,17 @@
      dashboard series colors always read as one hue family, whichever accent
      is picked. --amber-rgb mirrors --amber as bare R,G,B channels so tint
      backgrounds (rgba(var(--amber-rgb), .14) etc.) can react to the accent too. */
-  html[data-theme="dark"][data-accent="green"]{--amber:#3ECF8E; --amber-rgb:62,207,142; --cost:#197E4F; --time:#8BE2BB;}
+  html[data-theme="dark"][data-accent="green"]{--amber:#2CB376; --amber-rgb:44,179,118; --cost:#245A42; --time:#5BD69F;}
   html[data-theme="light"][data-accent="green"]{--amber:#1C8F5B; --amber-rgb:28,143,91; --cost:#0F5C34; --time:#146742;}
-  html[data-theme="dark"][data-accent="blue"]{--amber:#4C9FF2; --amber-rgb:76,159,242; --cost:#2B6FC2; --time:#94C5F7;}
+  html[data-theme="dark"][data-accent="teal"]{--amber:#24AF9E; --amber-rgb:36,175,158; --cost:#1D554E; --time:#4BDAC8;}
+  html[data-theme="light"][data-accent="teal"]{--amber:#228D80; --amber-rgb:34,141,128; --cost:#13554D; --time:#165C53;}
+  html[data-theme="dark"][data-accent="blue"]{--amber:#2188EF; --amber-rgb:33,136,239; --cost:#1B5894; --time:#6DB1F4;}
   html[data-theme="light"][data-accent="blue"]{--amber:#2568C4; --amber-rgb:37,104,196; --cost:#1A4C8C; --time:#1B4B8D;}
-  html[data-theme="dark"][data-accent="purple"]{--amber:#7E3FF2; --amber-rgb:126,63,242; --cost:#5A2BB0; --time:#B28CF7;}
+  html[data-theme="dark"][data-accent="purple"]{--amber:#6114EF; --amber-rgb:97,20,239; --cost:#40188A; --time:#9460F4;}
   html[data-theme="light"][data-accent="purple"]{--amber:#6425C7; --amber-rgb:100,37,199; --cost:#431A87; --time:#481B8F;}
-  html[data-theme="dark"][data-accent="red"]{--amber:#F2453B; --amber-rgb:242,69,59; --cost:#A82920; --time:#F78F89;}
+  html[data-theme="dark"][data-accent="pink"]{--amber:#EF1073; --amber-rgb:239,16,115; --cost:#871749; --time:#F45CA0;}
+  html[data-theme="light"][data-accent="pink"]{--amber:#C81363; --amber-rgb:200,19,99; --cost:#880B43; --time:#900E47;}
+  html[data-theme="dark"][data-accent="red"]{--amber:#EF1C10; --amber-rgb:239,28,16; --cost:#871D17; --time:#F4655C;}
   html[data-theme="light"][data-accent="red"]{--amber:#C2261C; --amber-rgb:194,38,28; --cost:#7A1810; --time:#8C1B14;}
   *{box-sizing:border-box;}
   body{
@@ -256,9 +260,15 @@
   .tip-bg{fill:var(--bg);stroke:var(--border);stroke-width:1;}
   .tip-text{fill:var(--text);font-size:10px;font-family:ui-monospace,monospace;}
   .col{cursor:pointer;}
-  .swatch-row{display:flex;gap:5px;}
-  .swatch-btn{flex:1;min-width:0;border:1px solid var(--c);border-radius:8px;padding:8px 2px;font-size:10.5px;font-weight:700;text-align:center;cursor:pointer;font-family:inherit;white-space:nowrap;overflow:hidden;background:rgba(var(--c-rgb),.14);color:var(--c);}
-  .swatch-btn.active{background:var(--c);color:#14171C;border-color:var(--c);}
+  /* space-between (not a fixed gap) so seven circles always fit on one
+     row regardless of viewport width -- the gap shrinks first, the circles
+     themselves never do. */
+  .swatch-row{display:flex;justify-content:space-between;}
+  .swatch-btn{width:32px;height:32px;border-radius:50%;flex-shrink:0;border:none;cursor:pointer;
+    background:var(--c);display:flex;align-items:center;justify-content:center;padding:0;color:#fff;}
+  .swatch-btn:focus-visible{outline:2px solid var(--text);outline-offset:3px;}
+  .swatch-btn .icon{width:15px;height:15px;opacity:0;transform:scale(.6);transition:opacity .12s,transform .12s;}
+  .swatch-btn.active .icon{opacity:1;transform:scale(1);}
 
   .planner-leg-row{padding:8px 0;}
   .planner-leg-route-line{font-size:13px;font-weight:600;color:var(--text);}
@@ -648,7 +658,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.30";
+const APP_BUILD = "2026-08-22.31";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
@@ -4670,11 +4680,13 @@ async function storageDelete(key) {
 }
 
 const THEME_COLORS = [
-  { key: "amber", label: "Amber", swatch: "#F2A93B", rgb: "242,169,59" },
-  { key: "green", label: "Green", swatch: "#3ECF8E", rgb: "62,207,142" },
-  { key: "blue", label: "Blue", swatch: "#4C9FF2", rgb: "76,159,242" },
-  { key: "purple", label: "Purple", swatch: "#7E3FF2", rgb: "126,63,242" },
-  { key: "red", label: "Red", swatch: "#F2453B", rgb: "242,69,59" },
+  { key: "amber", label: "Amber", swatch: "#EF9610", rgb: "239,150,16" },
+  { key: "green", label: "Green", swatch: "#2CB376", rgb: "44,179,118" },
+  { key: "teal", label: "Teal", swatch: "#24AF9E", rgb: "36,175,158" },
+  { key: "blue", label: "Blue", swatch: "#2188EF", rgb: "33,136,239" },
+  { key: "purple", label: "Purple", swatch: "#6114EF", rgb: "97,20,239" },
+  { key: "pink", label: "Pink", swatch: "#EF1073", rgb: "239,16,115" },
+  { key: "red", label: "Red", swatch: "#EF1C10", rgb: "239,28,16" },
 ];
 function applyTheme() {
   const isLight = state.settings.darkMode === false;
@@ -6311,7 +6323,7 @@ function renderSettingsTab() {
     <div class="swatch-row">
       ${THEME_COLORS.map(c => {
         const selected = (state.settings.themeColor || "amber") === c.key;
-        return `<button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}" style="--c:${c.swatch};--c-rgb:${c.rgb};">${c.label}</button>`;
+        return `<button type="button" class="swatch-btn ${selected ? "active" : ""}" data-themecolor="${c.key}" title="${c.label}" style="--c:${c.swatch};">${icons.check}</button>`;
       }).join("")}
     </div>
   </div>
