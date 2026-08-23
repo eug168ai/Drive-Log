@@ -67,7 +67,7 @@
   .brand{display:flex;align-items:center;gap:8px;}
   /* Tighter than .brand's own default gap, to sit the steering-wheel icon
      closer to "Drive Log" than the plain login-screen brand mark needs. */
-  #appHomeBtn .brand{gap:5px;}
+  #appHomeBtn .brand{gap:4px;}
   .brand h1{font-size:18px;font-weight:700;letter-spacing:-0.02em;margin:0;line-height:1;}
   .brand p{color:var(--faint);font-size:12px;margin:2px 0 0;}
   .odo-label{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 4px;text-align:center;}
@@ -337,16 +337,16 @@
   /* align-items:flex-start (rather than .brand's own default center) so
      the icon's top lines up with the top of "Drive Log" above it, not the
      vertical center of that plus the supervisor-name line below it. */
-  .planner-header .brand{cursor:pointer;align-items:flex-start;gap:5px;}
+  .planner-header .brand{cursor:pointer;align-items:flex-start;gap:4px;}
   .planner-header .brand:active{opacity:.7;}
   /* Shared with the main app header's own steering-wheel brand mark (see
      renderApp) -- same theme-reactive color, same size, one rule for both
      rather than near-duplicates. margin-top nudges it a touch above the
      text block's own top (rather than flush with it) -- reads as sitting
      slightly higher than "Drive Log" instead of exactly level with it. */
-  .brand-icon{width:38px;height:38px;border-radius:10px;background:transparent;margin-top:-4px;
+  .brand-icon{width:39px;height:39px;border-radius:10px;background:transparent;margin-top:-4px;margin-left:-4px;
     color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-  .brand-icon .icon{width:30px;height:30px;}
+  .brand-icon .icon{width:31px;height:31px;}
   .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
   .planner-header-star{color:var(--amber);}
@@ -669,7 +669,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.34";
+const APP_BUILD = "2026-08-22.35";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
