@@ -344,9 +344,14 @@
      rather than near-duplicates. margin-top nudges it a touch above the
      text block's own top (rather than flush with it) -- reads as sitting
      slightly higher than "Drive Log" instead of exactly level with it. */
-  .brand-icon{width:40px;height:40px;border-radius:10px;background:transparent;margin-top:-4px;margin-left:-6px;
+  .brand-icon{width:40px;height:40px;border-radius:10px;background:transparent;margin-top:-5px;margin-left:-7px;
     color:var(--amber);display:flex;align-items:center;justify-content:center;flex-shrink:0;}
   .brand-icon .icon{width:32px;height:32px;}
+  /* .planner-topbar sits at 10px side padding vs .wrap's 16px, so the shared
+     margin-left above lands the icon 6px further left here than on the main
+     header -- this extra nudge cancels that out so both read at the same
+     left inset from the screen edge. */
+  .planner-header .brand-icon{margin-left:-1px;}
   .planner-header-actions{display:flex;align-items:center;gap:2px;flex-shrink:0;}
   .icon-btn:disabled{opacity:.3;cursor:not-allowed;}
   .planner-header-star{color:var(--amber);}
@@ -669,7 +674,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.36";
+const APP_BUILD = "2026-08-22.37";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
