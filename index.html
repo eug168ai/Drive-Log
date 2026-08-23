@@ -534,7 +534,13 @@
     min-width:36px;height:24px;padding:0 6px;border-radius:5px;background:#2E7D32;color:#FFD400;
     font-size:13px;font-weight:800;letter-spacing:.02em;border:1.5px solid #fff;}
   .planner-turn-shield.show{display:inline-flex;}
-  .planner-turn-dist{margin-left:auto;text-align:right;flex-shrink:0;max-width:38%;}
+  /* Shrink-wrapped and centered on itself (same trick as the ETA bar's own
+     metrics row) so the turn instruction always sits centered directly
+     under the distance value above it, whatever width either one renders
+     at, rather than both sharing a right-aligned edge that only lines up
+     when they happen to be the same width. margin-left:auto still anchors
+     the whole (now content-sized) block to the right side of the banner. */
+  .planner-turn-dist{margin-left:auto;display:flex;flex-direction:column;align-items:center;flex-shrink:0;max-width:38%;}
   .planner-turn-dist .v{font-size:24px;font-weight:800;color:var(--amber);}
   .planner-turn-dist .v .unit{font-size:.55em;font-weight:700;margin-left:1px;}
   /* Tightens the gap either side of a decimal point in these monospace
@@ -642,7 +648,7 @@
 // Settings to reveal it), whether a still-open tab is running fresh code or
 // is stuck on whatever JS was in memory before the last update. Same date:
 // increment the trailing number; new date: reset it to .1.
-const APP_BUILD = "2026-08-22.29";
+const APP_BUILD = "2026-08-22.30";
 const TRIPS_KEY = "driving-log:trips";
 const PROFILE_KEY = "driving-log:profile";
 const ACTIVE_KEY = "driving-log:active";
